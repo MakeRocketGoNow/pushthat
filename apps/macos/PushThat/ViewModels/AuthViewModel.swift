@@ -281,6 +281,56 @@ class AuthViewModel: ObservableObject {
         return error.localizedDescription
     }
 
+    // MARK: - Settings
+
+    /// A sentence to show as it is.
+    struct Problem: LocalizedError {
+        let errorDescription: String?
+        init(_ message: String) { errorDescription = message }
+    }
+
+    /// Change password, in the spec's order (docs/e2ee.md, "The user document"): a new
+    /// password wrap beside the current one, then Firebase's password, then the old wrap
+    /// deleted. A crash between steps leaves an account that opens with either password,
+    /// never one that opens with neither.
+    func changePassword(current: String, new: String, again: String) async throws {
+        guard let user = auth.currentUser, let email = user.email,
+              let device = AccountKeyStore.accountKey(for: user.uid)
+        else { throw AccountKeyService.KeyError.noKeys }
+        guard new.count >= Self.minimumNewPasswordLength else { throw Problem(Self.newPasswordRule) }
+        guard new == again else { throw Problem("The new passwords do not match.") }
+
+        let currentKeys = try await Self.derive(email: email, password: current)
+        do {
+            _ = try await user.reauthenticate(with: EmailAuthProvider.credential(withEmail: email, password: currentKeys.firebasePassword))
+        } catch let error where Self.isWrongPassword(error) {
+            throw Problem("That is not your current password.")
+        }
+        let newKeys = try await Self.derive(email: email, password: new)
+        let oldWrapIds = try await AccountKeyService.addPasswordWrap(
+            uid: user.uid, email: email, device: device,
+            currentMasterKey: currentKeys.masterKey, newMasterKey: newKeys.masterKey
+        )
+        try await user.updatePassword(to: newKeys.firebasePassword)
+        do {
+            try await AccountKeyService.removeWraps(uid: user.uid, email: email, ids: oldWrapIds)
+        } catch {
+            // The password is changed by now, and saying it failed would send the user to
+            // change it again. The old wrap opens only with the old password and is read
+            // only with the new one; a later change drops it when the map needs the room.
+            print("Password changed, but the old password's wrap was not removed: \(error)")
+        }
+    }
+
+    /// Show a new recovery key: every recovery wrap replaced with one under a new key,
+    /// returned in its display form for the same screen sign-up shows.
+    func newRecoveryKey() async throws -> String {
+        guard let user = auth.currentUser, let email = user.email,
+              let device = AccountKeyStore.accountKey(for: user.uid)
+        else { throw AccountKeyService.KeyError.noKeys }
+        return try await AccountKeyService.replaceRecoveryKey(uid: user.uid, email: email, accountKey: device.key, keyVersion: device.keyVersion)
+    }
+
     // MARK: - Sign out
 
     /// Clears the account key first, so that a sign-out that fails partway never leaves a

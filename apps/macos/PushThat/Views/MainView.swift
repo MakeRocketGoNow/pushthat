@@ -8,6 +8,8 @@ struct MainView: View {
     @State private var searchText = ""
     @State private var isDragOver = false
     @State private var showPlan = false
+    @State private var showChangePassword = false
+    @State private var confirmNewRecoveryKey = false
 
     var body: some View {
         NavigationStack {
@@ -39,6 +41,11 @@ struct MainView: View {
                 PlanView()
                     .frame(minWidth: 360, minHeight: 320)
             }
+            .accountSettings(
+                authViewModel: authViewModel,
+                showChangePassword: $showChangePassword,
+                confirmNewRecoveryKey: $confirmNewRecoveryKey
+            )
             .alert("Error", isPresented: $viewModel.showError) {
                 Button("OK") {}
             } message: {
@@ -181,6 +188,14 @@ struct MainView: View {
             Menu {
                 Button(action: { showPlan = true }) {
                     Label("Plan", systemImage: "star")
+                }
+
+                Button(action: { showChangePassword = true }) {
+                    Label("Change password", systemImage: "key")
+                }
+
+                Button(action: { confirmNewRecoveryKey = true }) {
+                    Label("Show a new recovery key", systemImage: "lock.rotation")
                 }
 
                 Button(action: { authViewModel.signOut() }) {

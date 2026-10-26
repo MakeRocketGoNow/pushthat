@@ -50,6 +50,7 @@
 		A1000020226B52E900000008 /* RecoveryKeyView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000020226B52E900000009 /* RecoveryKeyView.swift */; };
 		A1000020226B52E90000000A /* UnlockView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000020226B52E90000000B /* UnlockView.swift */; };
 		A1000020226B52E90000000C /* RecoveryPromptView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000020226B52E90000000D /* RecoveryPromptView.swift */; };
+		A1000020226B52E90000000E /* AccountSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000020226B52E90000000F /* AccountSettings.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -115,6 +116,7 @@
 		A1000020226B52E900000009 /* RecoveryKeyView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecoveryKeyView.swift; sourceTree = "<group>"; };
 		A1000020226B52E90000000B /* UnlockView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UnlockView.swift; sourceTree = "<group>"; };
 		A1000020226B52E90000000D /* RecoveryPromptView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecoveryPromptView.swift; sourceTree = "<group>"; };
+		A1000020226B52E90000000F /* AccountSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountSettings.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -225,6 +227,7 @@
 				A1000020226B52E900000009 /* RecoveryKeyView.swift */,
 				A1000020226B52E90000000B /* UnlockView.swift */,
 				A1000020226B52E90000000D /* RecoveryPromptView.swift */,
+				A1000020226B52E90000000F /* AccountSettings.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -450,6 +453,7 @@
 				A1000020226B52E900000008 /* RecoveryKeyView.swift in Sources */,
 				A1000020226B52E90000000A /* UnlockView.swift in Sources */,
 				A1000020226B52E90000000C /* RecoveryPromptView.swift in Sources */,
+				A1000020226B52E90000000E /* AccountSettings.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
