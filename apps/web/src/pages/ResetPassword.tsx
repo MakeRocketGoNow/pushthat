@@ -1,5 +1,5 @@
 import { FirebaseError } from 'firebase/app';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
 
 import Button from '@/components/Button';
@@ -49,6 +49,7 @@ export function ResetPassword() {
   const [step, setStep] = useState<Step>({ name: 'checking' });
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const box = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     // The action URL is the same for every email template, so a link of another kind
@@ -65,6 +66,15 @@ export function ResetPassword() {
       .then((email) => setStep({ name: 'password', email }))
       .catch(() => setStep({ name: 'badLink', reason: 'code' }));
   }, [mode, oobCode]);
+
+  // The button that led to a step goes with the step before it, which drops focus to the
+  // page. Each step's heading takes it instead, so a keyboard or screen reader user hears
+  // the step change, above all on the recovery key the user must read. The steps with a
+  // form focus its first field instead.
+  useEffect(() => {
+    if (step.name === 'checking' || step.name === 'password' || step.name === 'recovery') return;
+    box.current?.querySelector<HTMLElement>('h2')?.focus();
+  }, [step.name]);
 
   // Runs one step at a time, and shows its error where the step's form is.
   const run = async (action: () => Promise<void>, describe: (error: unknown) => string) => {
@@ -106,7 +116,7 @@ export function ResetPassword() {
 
   return (
     <div className={styles.container}>
-      <div className={styles.box}>
+      <div className={styles.box} ref={box}>
         <div className={styles.logo}>
           <img src="/pushthat.svg" alt="PushThat Icon" className={styles.icon} />
         </div>
@@ -114,7 +124,7 @@ export function ResetPassword() {
 
         {step.name === 'badLink' && (
           <>
-            <h2 className={styles.title}>
+            <h2 tabIndex={-1} className={styles.title}>
               {step.reason === 'mode' ? 'This is not a password reset link' : 'This link has expired'}
             </h2>
             <p className={styles.message}>
@@ -192,7 +202,9 @@ export function ResetPassword() {
 
         {step.name === 'withoutRecovery' && (
           <>
-            <h2 className={styles.title}>Start over without your recovery key?</h2>
+            <h2 tabIndex={-1} className={styles.title}>
+              Start over without your recovery key?
+            </h2>
             <p className={styles.message}>
               Your pushes are encrypted with a key that only your old password or your recovery key can open. Without
               the recovery key, <strong>the pushes you made before this reset cannot be read</strong> by anyone, us
@@ -252,7 +264,9 @@ export function ResetPassword() {
 
         {step.name === 'keysNotUpdated' && (
           <>
-            <h2 className={styles.title}>Your password is changed</h2>
+            <h2 tabIndex={-1} className={styles.title}>
+              Your password is changed
+            </h2>
             {/* True once phase 3's sign-in (docs/e2ee.md) treats a working password with no
                 key it can open as this page does; the reset email reaches this page only
                 after those clients are out (docs/deploying.md). */}
@@ -269,7 +283,9 @@ export function ResetPassword() {
 
         {step.name === 'done' && (
           <>
-            <h2 className={styles.title}>Your password is changed</h2>
+            <h2 tabIndex={-1} className={styles.title}>
+              Your password is changed
+            </h2>
             <p className={styles.message}>Sign in with your new password, here and on your other devices.</p>
             <div className={styles.footer}>
               <Link className={styles.footerLink} to="/login">
@@ -312,7 +328,9 @@ function PasswordForm({
 
   return (
     <>
-      <h2 className={styles.title}>Choose a new password</h2>
+      <h2 tabIndex={-1} className={styles.title}>
+        Choose a new password
+      </h2>
       <p className={styles.message}>
         For <strong>{email}</strong>
       </p>
@@ -366,7 +384,9 @@ function RecoveryForm({
 
   return (
     <>
-      <h2 className={styles.title}>Enter your recovery key</h2>
+      <h2 tabIndex={-1} className={styles.title}>
+        Enter your recovery key
+      </h2>
       <p className={styles.message}>
         Your password is changed. Your pushes are encrypted with a key your old password opened, so enter the recovery
         key you saved when you signed up to keep them.
@@ -430,7 +450,9 @@ function NewRecoveryKey({
 
   return (
     <>
-      <h2 className={styles.title}>Save your recovery key</h2>
+      <h2 tabIndex={-1} className={styles.title}>
+        Save your recovery key
+      </h2>
       <p className={styles.message}>
         Your password is changed. If you forget your password, this key is the only way to keep your pushes. We cannot
         show it again.
