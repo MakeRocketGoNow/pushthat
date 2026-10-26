@@ -196,15 +196,6 @@ class PushListViewModel: ObservableObject {
         pasteboard.setString(urlString, forType: .string)
     }
 
-    func logout() {
-        do {
-            try Auth.auth().signOut()
-        } catch {
-            errorMessage = error.localizedDescription
-            showError = true
-        }
-    }
-
     // MARK: - Upload
 
     func uploadSelectedPhoto() {

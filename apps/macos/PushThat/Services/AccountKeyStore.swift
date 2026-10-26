@@ -24,8 +24,15 @@ enum AccountKeyStore {
     private static let accountKeyItem = "accountKey"
     private static let deviceIdItem = "deviceId"
 
-    enum StoreError: Error {
+    enum StoreError: LocalizedError {
         case keychain(OSStatus)
+
+        var errorDescription: String? {
+            switch self {
+            case .keychain(let status):
+                return "This device could not keep your encryption key (Keychain error \(status))."
+            }
+        }
     }
 
     /// The shared access group, or nil to use the app's default one.

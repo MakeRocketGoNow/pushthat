@@ -47,6 +47,9 @@
 		A1000021226B52E900000005 /* vectors.json in Resources */ = {isa = PBXBuildFile; fileRef = A1000021226B52E900000004 /* vectors.json */; };
 		A1000020226B52E900000004 /* AccountKeyStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000020226B52E900000005 /* AccountKeyStore.swift */; };
 		A1000020226B52E900000006 /* AccountKeyService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000020226B52E900000007 /* AccountKeyService.swift */; };
+		A1000020226B52E900000008 /* RecoveryKeyView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000020226B52E900000009 /* RecoveryKeyView.swift */; };
+		A1000020226B52E90000000A /* UnlockView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000020226B52E90000000B /* UnlockView.swift */; };
+		A1000020226B52E90000000C /* RecoveryPromptView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000020226B52E90000000D /* RecoveryPromptView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -109,6 +112,9 @@
 		A1000021226B52E900000004 /* vectors.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; name = vectors.json; path = "../../packages/push-test/vectors.json"; sourceTree = SOURCE_ROOT; };
 		A1000020226B52E900000005 /* AccountKeyStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountKeyStore.swift; sourceTree = "<group>"; };
 		A1000020226B52E900000007 /* AccountKeyService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountKeyService.swift; sourceTree = "<group>"; };
+		A1000020226B52E900000009 /* RecoveryKeyView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecoveryKeyView.swift; sourceTree = "<group>"; };
+		A1000020226B52E90000000B /* UnlockView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UnlockView.swift; sourceTree = "<group>"; };
+		A1000020226B52E90000000D /* RecoveryPromptView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecoveryPromptView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -216,6 +222,9 @@
 				A1000003226B52E900000006 /* PushRowView.swift */,
 				A1000003226B52E900000008 /* SwivelCheckView.swift */,
 				A1000003226B52E90000000A /* UploadingOverlayView.swift */,
+				A1000020226B52E900000009 /* RecoveryKeyView.swift */,
+				A1000020226B52E90000000B /* UnlockView.swift */,
+				A1000020226B52E90000000D /* RecoveryPromptView.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -438,6 +447,9 @@
 				A1000020226B52E900000001 /* E2eeCrypto.swift in Sources */,
 				A1000020226B52E900000004 /* AccountKeyStore.swift in Sources */,
 				A1000020226B52E900000006 /* AccountKeyService.swift in Sources */,
+				A1000020226B52E900000008 /* RecoveryKeyView.swift in Sources */,
+				A1000020226B52E90000000A /* UnlockView.swift in Sources */,
+				A1000020226B52E90000000C /* RecoveryPromptView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

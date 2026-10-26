@@ -46,6 +46,14 @@ struct LoginView: View {
                             .focused($focusedField, equals: .password)
                             .submitLabel(.go)
                             .onSubmit { signIn() }
+
+                        // Under the field rather than only as the error, so that a new
+                        // account picks a long password before Register refuses a short
+                        // one. Sign-in keeps taking shorter ones, which existing accounts have.
+                        Text(AuthViewModel.newPasswordRule)
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
                     }
                     .padding(.horizontal, 32)
 
@@ -86,11 +94,6 @@ struct LoginView: View {
                 }
                 .frame(minHeight: geometry.size.height)
             }
-        }
-        .alert("Notice", isPresented: $authViewModel.showError) {
-            Button("OK") {}
-        } message: {
-            Text(authViewModel.errorMessage)
         }
         .onTapGesture {
             focusedField = nil
