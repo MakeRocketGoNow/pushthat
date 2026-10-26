@@ -1,0 +1,23 @@
+.root {
+  h1,
+  h2,
+  h3,
+  h4,
+  h5 {
+    margin: 0 0 0.5em;
+  }
+
+  ul {
+    margin: 0 0 1em;
+    padding-left: 1em;
+  }
+
+  li {
+    margin-bottom: 0.5em;
+    margin-left: 2em;
+  }
+
+  > *:last-child {
+    margin-bottom: 0;
+  }
+}

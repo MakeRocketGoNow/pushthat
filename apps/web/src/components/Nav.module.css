@@ -1,0 +1,45 @@
+.nav {
+  position: relative;
+  display: flex;
+  background: black;
+  border-radius: 8px;
+  padding: 6px;
+  width: fit-content;
+  gap: 4px;
+}
+
+.navItem {
+  position: relative;
+  color: #fff;
+  text-decoration: none;
+  padding: 8px 32px;
+  border-radius: 6px;
+  font-weight: 500;
+  min-width: 50px;
+  z-index: 1;
+}
+
+.navItem:hover {
+  /* background: rgba(255, 105, 180, 0.1); */ /* semi-transparent pink */
+  color: var(--color-primary);
+}
+
+.active {
+  background: var(--color-primary);
+  color: black;
+}
+
+.active:hover {
+  color: black;
+}
+
+.backgroundSlider {
+  position: absolute;
+  height: 40px;
+  background-color: var(--color-primary);
+  transition: all 0.3s ease;
+  border-radius: 6px;
+  box-shadow:
+    0 0 5px var(--color-primary),
+    0 0 25px var(--color-primary);
+}

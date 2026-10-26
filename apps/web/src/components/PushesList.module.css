@@ -1,0 +1,86 @@
+.pushesList {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.pushItem {
+  display: flex;
+  align-items: center;
+  padding: 1rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  gap: 1rem;
+}
+
+.pushItem:hover {
+  background-color: rgba(255, 255, 255, 0.05);
+}
+
+.pushLink {
+  text-decoration: none;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.pushIcon {
+  width: 32px;
+  height: 32px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.pushIcon:hover {
+  background-color: rgba(0, 0, 0, 0.05);
+}
+
+.pushIcon.selected svg {
+}
+
+.favicon {
+  width: 24px;
+  height: 24px;
+  object-fit: contain;
+}
+
+.pushContent {
+  flex: 1;
+  min-width: 0;
+}
+
+.pushTitle {
+  color: white;
+  text-decoration: none;
+  font-size: 1rem;
+  margin: 0;
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pushTitle:hover {
+  text-decoration: underline;
+}
+
+.pushMeta {
+  color: #666;
+  font-size: 0.875rem;
+  margin-top: 0.25rem;
+}
+
+.textContainer {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin-top: 3rem;
+}
+
+.errorContainer {
+  color: #ff4444;
+}

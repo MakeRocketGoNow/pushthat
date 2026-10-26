@@ -1,0 +1,140 @@
+.loginContainer {
+  min-height: var(--min-height);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.loginBox {
+  max-width: 400px;
+  width: 100%;
+  /* background-color: var(--color-surface); */
+  padding: 4px;
+  border-radius: 8px;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+}
+
+.loginLogo {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.loginIcon {
+  width: 128px;
+  height: 128px;
+  margin-bottom: 1.5rem;
+}
+
+.loginHeader {
+  margin-top: 24px;
+  text-align: center;
+  color: var(--color-text);
+}
+
+.loginTitle {
+  font-size: 1.875rem;
+  font-weight: 800;
+  color: var(--color-text);
+}
+
+.loginForm {
+  margin: 32px 0;
+}
+
+.formError {
+  color: var(--color-error);
+  text-align: center;
+  margin-bottom: 16px;
+}
+
+.inputGroup {
+  display: flex;
+  flex-direction: column;
+}
+
+.formInput {
+  padding: 8px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  font-size: 0.875rem;
+  margin-bottom: 8px;
+  background-color: var(--color-surface);
+  color: var(--color-text);
+}
+
+.formInput:focus {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 2px rgba(80, 46, 168, 0.2);
+}
+
+.forgotPasswordContainer {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 16px;
+}
+
+.forgotPassword {
+  display: block;
+  text-align: right;
+  background: transparent;
+  color: var(--color-text);
+  font-size: 0.875rem;
+  text-decoration: none;
+  margin-bottom: 16px;
+}
+
+.forgotPassword:hover {
+  color: var(--color-primary);
+  border-color: var(--color-primary);
+}
+
+.submitButton {
+  width: 100%;
+  padding: 8px 16px;
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.registerButton {
+  margin-top: 1.5rem;
+}
+
+.resetButton {
+  margin-top: 1rem;
+}
+
+.backToLoginContainer {
+  margin-top: 2rem;
+  text-align: center;
+}
+
+.backToLogin {
+  text-decoration: none;
+  color: var(--color-text);
+}
+
+.backToLogin:hover {
+  color: var(--color-primary);
+}
+
+.resetEmailSent {
+  text-align: center;
+  padding: 1rem;
+}
+
+.resetTitle {
+  font-size: 1.5rem;
+  margin-bottom: 1rem;
+}
+
+.resetMessage {
+  margin-bottom: 1rem;
+  line-height: 1.5;
+}
+
+.resetHelp {
+  color: #666;
+  line-height: 1.5;
+}

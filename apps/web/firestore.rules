@@ -1,0 +1,156 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function min(a, b) {
+      return a < b ? a : b;
+    }
+
+    function getPrevMonthString(now) {
+      let prevMonth = (now.month() - 1) < 1 ? 12 : (now.month() - 1);
+      let prevYear = (now.month() - 1) < 1 ? (now.year() - 1) : now.year();
+      let prevMonthString = prevMonth < 10 ? '0' + string(prevMonth) : string(prevMonth);
+
+      return string(prevYear) + '-' + prevMonthString;
+    }
+
+    function getCurrentMonthString(now) {
+      let currentMonthString = now.month() < 10 ? '0' + string(now.month()) : string(now.month());
+
+      return string(now.year()) + '-' + currentMonthString;
+    }
+
+    // Get last day of a given month (handles December rollover)
+    function getLastDayOfMonth(ts) {
+      let nextMonth = ts.month() == 12 ? 1 : ts.month() + 1;
+      let nextMonthYear = ts.month() == 12 ? ts.year() + 1 : ts.year();
+      return timestamp.value(timestamp.date(nextMonthYear, nextMonth, 1).toMillis() - 1).day();
+    }
+
+    function getCurrentUser(userId) {
+      let userPath = /databases/$(database)/documents/users/$(userId);
+
+      return exists(userPath)
+        ? get(userPath)
+        : null;
+    }
+
+    // Helper to get the current billing period key
+    function getBillingPeriodKey(userId) {
+      let user = getCurrentUser(userId);
+      let now = request.time;
+
+      let hasSub = user != null && "subscription" in user.data;
+      // A document made without createdAt (the Chrome extension's first token write used to
+      // make one) counts from today, as onNewPushCreated does before it fills the field in.
+      let start = hasSub && user.data.subscription.startedAt != null
+        ? user.data.subscription.startedAt
+        : user != null && "createdAt" in user.data
+          ? user.data.createdAt
+          : request.time;
+
+      let lastDayOfMonth = getLastDayOfMonth(now);
+      let startDay = start.day();
+      // Check if start was on last day of its month
+      let isLastDayOfStartMonth = startDay >= getLastDayOfMonth(start);
+      let effectiveStartDay = isLastDayOfStartMonth ? lastDayOfMonth : min(startDay, lastDayOfMonth);
+
+      return now.day() < effectiveStartDay
+        ? getPrevMonthString(now)
+        : getCurrentMonthString(now);
+    }
+
+    // The pushes a month each tier allows (docs/billing.md in pushthat-functions; the same
+    // numbers are in its functions/src/plan.ts, and the two are changed together). Pro is
+    // a subscription whose expiresAt is ahead of the clock, which the Stripe webhook keeps
+    // in step and a comp sets by hand; nothing a client can write.
+    function getUserLimit(user, type) {
+      let hasSub = user != null && "subscription" in user.data;
+      let isActive = hasSub
+        && user.data.subscription.expiresAt > request.time;
+
+      return (isActive && type == 'url') ? 10000 : // url - pro tier
+             (isActive && type == 'file') ? 100 : // file - pro tier
+             (type == 'url') ? 50 : // url - free tier
+             3;  // file - free tier
+    }
+
+    // Helper to get current usage for the current billing period
+    function getCurrentUsage(user, userId, type) {
+      let periodKey = getBillingPeriodKey(userId);
+
+      let hasPeriod = user != null && user.data != null
+        && user.data.keys().hasAny(["usageRecords"])
+        && user.data.usageRecords.keys().hasAny([periodKey]);
+      let hasType = hasPeriod && (type == "file" && "file" in user.data.usageRecords[periodKey] || type == "url" && "url" in user.data.usageRecords[periodKey]);
+
+      return (hasType)
+        ? user.data.usageRecords[periodKey][type]
+        : 0;
+    }
+
+    function isWithinUsageLimit(userId, type) {
+      let user = getCurrentUser(userId);
+
+      return getCurrentUsage(user, userId, type) < getUserLimit(user, type);
+    }
+
+    function isOwnUser(userId) {
+      return request.auth != null && request.auth.uid == userId;
+    }
+
+    // A client writes only these fields on its own user document. Everything else on it
+    // (subscription, usageRecords, periodStart, billing ids) is written by Cloud Functions
+    // through the Admin SDK, which these rules do not apply to. It is a list of what clients
+    // may write rather than of what they may not, so a server-owned field added later is
+    // protected without anyone remembering to add it here.
+    match /users/{userId} {
+      allow read: if isOwnUser(userId);
+
+      // Every client's sign-up or first token write: email and createdAt from the apps and
+      // the web, fcmTokens from the apps and the Chrome extension.
+      allow create: if isOwnUser(userId)
+        && request.resource.data.keys().hasOnly(['email', 'createdAt', 'fcmTokens'])
+        && (!('email' in request.resource.data) || request.resource.data.email is string)
+        && (!('createdAt' in request.resource.data) || request.resource.data.createdAt is timestamp)
+        && (!('fcmTokens' in request.resource.data) || request.resource.data.fcmTokens is list);
+
+      // After that, only a device token. createdAt anchors the monthly period the usage is
+      // counted in (getBillingPeriodKey), so moving it would move the count onto an emptier
+      // month.
+      allow update: if isOwnUser(userId)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['fcmTokens'])
+        && request.resource.data.fcmTokens is list;
+
+      // No delete: it would take usageRecords with it and start the period's count again.
+
+      match /usage/{usageId} {
+        allow read: if isOwnUser(userId);
+        // Note: We don't need write rules for usage as it's handled by Cloud Functions
+      }
+    }
+
+    match /pushes/{pushId} {
+      allow read, delete: if request.auth != null
+        && resource.data.userId == request.auth.uid;
+
+      // The one update a client makes: the Android and iOS title scrapers filling in a
+      // URL push's title once the page has answered. A file push is never updated, since
+      // its title names the stored object that onPushRecordDeleted removes, and its type
+      // is what tells that trigger to look; either changed would keep the file for good.
+      // expiresAt, when the sweep deletes a file push, is onNewPushCreated's alone.
+      allow update: if request.auth != null
+        && resource.data.userId == request.auth.uid
+        && resource.data.type == 'url'
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['title', 'searchTokens']);
+
+      allow create: if
+        request.auth != null
+        && request.resource.data.userId == request.auth.uid
+        && (request.resource.data.type in ['url', 'file'])
+        && !('expiresAt' in request.resource.data)
+        && isWithinUsageLimit(request.auth.uid, request.resource.data.type);
+    }
+
+  }
+}

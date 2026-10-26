@@ -1,0 +1,34 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Whether the uploader is Pro: the same test the Firestore rules make on a push, read
+    // across services from the user document (docs/billing.md in pushthat-functions).
+    // Deploying this needs the bucket's service account allowed to read Firestore, which
+    // `firebase deploy` offers to grant the first time.
+    function isPro() {
+      let path = /databases/(default)/documents/users/$(request.auth.uid);
+      return firestore.exists(path)
+        && 'subscription' in firestore.get(path).data
+        && firestore.get(path).data.subscription.expiresAt > request.time;
+    }
+
+    // The largest file each tier may push: 100 MB on Pro, 25 MB on Free. The same numbers
+    // as functions/src/plan.ts, changed together.
+    function maxFileBytes() {
+      return (isPro() ? 100 : 25) * 1024 * 1024;
+    }
+
+    // Allow authenticated users to upload files to their own uploads folder
+    match /uploads/{userId}/{fileName} {
+      // Allow read access to authenticated users (for getting download URLs)
+      allow read: if request.auth != null && request.auth.uid == userId;
+      // Allow write access to authenticated users (for uploading files)
+      allow create, update: if request.auth != null && request.auth.uid == userId
+        && request.resource.size < maxFileBytes();
+      // A client deletes its own upload when the push for it is refused at the month's
+      // limit, since no push document would ever name it for the sweep. Apart, because
+      // a delete has no request.resource and the size test above errors on it.
+      allow delete: if request.auth != null && request.auth.uid == userId;
+    }
+  }
+}

@@ -1,0 +1,51 @@
+{
+  "name": "pushthat-web",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "deploy": "npm run test:rules && npm run build && firebase deploy",
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "build:chrome": "tsc && vite build  -c vite.chrome.config.js",
+    "lint": "eslint .",
+    "preview": "vite preview",
+    "preview:firebase": "firebase emulators:start",
+    "test:rules": "firebase emulators:exec --project demo-pushthat --only firestore,storage \"node --test --test-concurrency=1 tests/*.test.mjs\"",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "spellcheck": "cspell -c .vscode/cspell.json --gitignore  \"**/*.{js,json,jsx,md,ts,tsx}\""
+  },
+  "dependencies": {
+    "@axiomhq/js": "^1.3.1",
+    "@heroicons/react": "^2.2.0",
+    "clsx": "^2.1.1",
+    "firebase": "^11.2.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-helmet": "^6.1.0",
+    "react-router": "^7.1.3"
+  },
+  "devDependencies": {
+    "@crxjs/vite-plugin": "^2.0.0-beta.30",
+    "@eslint/js": "^9.17.0",
+    "@firebase/rules-unit-testing": "^4.0.1",
+    "@trivago/prettier-plugin-sort-imports": "^5.2.1",
+    "@types/chrome": "^0.0.299",
+    "@types/react": "^18.3.18",
+    "@types/react-dom": "^18.3.5",
+    "@types/react-helmet": "^6.1.11",
+    "@vitejs/plugin-react": "^4.3.4",
+    "cspell": "^8.17.2",
+    "eslint": "^9.17.0",
+    "eslint-config-prettier": "^10.0.1",
+    "eslint-plugin-react-hooks": "^5.0.0",
+    "eslint-plugin-react-refresh": "^0.4.16",
+    "globals": "^15.14.0",
+    "prettier": "^3.4.2",
+    "typescript": "~5.6.2",
+    "typescript-eslint": "^8.18.2",
+    "vite": "^6.0.5",
+    "vite-tsconfig-paths": "^5.1.4"
+  }
+}
