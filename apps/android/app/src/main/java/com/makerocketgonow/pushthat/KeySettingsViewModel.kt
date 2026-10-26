@@ -5,6 +5,7 @@ import android.util.Log
 import androidx.annotation.StringRes
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.google.firebase.FirebaseException
 import com.makerocketgonow.pushthat.e2ee.AccountKeyStore
 import com.makerocketgonow.pushthat.e2ee.AccountKeys
 import com.makerocketgonow.pushthat.e2ee.KeysChangedException
@@ -76,7 +77,9 @@ class KeySettingsViewModel(application: Application) : AndroidViewModel(applicat
             // Retrying cannot help: the key this install holds is not the account's.
             is KeysChangedException, is AccountKeys.NoAccountKeyException -> app.getString(R.string.keys_changed_here)
             // Firebase's own message for its errors: a wrong current password, no network.
-            else -> e.message ?: app.getString(R.string.key_settings_failed)
+            is FirebaseException -> e.message ?: app.getString(R.string.key_settings_failed)
+            // Ours are written for the log ("not signed in", a `require`), not for the user.
+            else -> app.getString(R.string.key_settings_failed)
         }
     }
 

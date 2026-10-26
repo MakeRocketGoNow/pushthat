@@ -6,6 +6,7 @@ import androidx.annotation.StringRes
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.firebase.Firebase
+import com.google.firebase.FirebaseException
 import com.google.firebase.auth.auth
 import com.makerocketgonow.pushthat.e2ee.AccountKeyStore
 import com.makerocketgonow.pushthat.e2ee.AccountKeys
@@ -127,13 +128,16 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     // Firebase's own message for its errors (a wrong password, no network, too many tries),
-    // as the screen showed before; ours for the two this flow adds.
+    // as the screen showed before; ours for the two this flow adds. Anything else is a
+    // generic failure: its message is written for the log ("not signed in", a `require`),
+    // not for the person holding the phone.
     private fun messageFor(e: Exception): String {
         val app = getApplication<Application>()
         return when (e) {
             is AccountKeys.WrongRecoveryKeyException -> app.getString(R.string.wrong_recovery_key)
             is KeysChangedException -> app.getString(R.string.keys_changed)
-            else -> e.message ?: app.getString(R.string.authentication_failed)
+            is FirebaseException -> e.message ?: app.getString(R.string.authentication_failed)
+            else -> app.getString(R.string.authentication_failed)
         }
     }
 
