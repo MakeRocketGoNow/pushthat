@@ -3,10 +3,12 @@ package com.makerocketgonow.pushthat.e2ee
 import android.content.Context
 import android.content.SharedPreferences
 import android.security.keystore.KeyGenParameterSpec
+import android.security.keystore.KeyPermanentlyInvalidatedException
 import android.security.keystore.KeyProperties
 import android.util.Log
 import java.security.GeneralSecurityException
 import java.security.KeyStore
+import javax.crypto.AEADBadTagException
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
@@ -79,6 +81,10 @@ object AccountKeyStore {
      * signed out, another account's, or one that can no longer be opened (the Keystore entry
      * is gone, or the file is not what [save] wrote). The last is cleared, so the app asks
      * for the password again rather than failing the same way on every push.
+     *
+     * Null without clearing for any other failure: the Keystore runs in a system service,
+     * which can be busy or restarting, and a key cleared for that would send the user back
+     * to the password for nothing. The next call tries again.
      */
     @Synchronized
     fun load(context: Context, uid: String): Stored? {
@@ -86,20 +92,8 @@ object AccountKeyStore {
         if (prefs.getString(KEY_UID, null) != uid) return null
         val wrapped = prefs.getString(KEY_WRAPPED, null) ?: return null
         val iv = prefs.getString(KEY_IV, null) ?: return null
-        return try {
-            val key = existingKeystoreKey() ?: throw GeneralSecurityException("no Keystore key")
-            val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-            cipher.init(Cipher.DECRYPT_MODE, key, GCMParameterSpec(GCM_TAG_BITS, E2ee.fromBase64(iv)))
-            cipher.updateAAD(aad(uid))
-            val accountKey = cipher.doFinal(E2ee.fromBase64(wrapped))
-            Stored(uid, accountKey, prefs.getLong(KEY_VERSION, 1L))
-        } catch (e: Exception) {
-            // GeneralSecurityException for a Keystore that cannot open it, and
-            // IllegalArgumentException for a stored value that is not base64.
-            Log.w(TAG, "The stored account key could not be opened; it is cleared", e)
-            clear(context)
-            null
-        }
+        val accountKey = open(wrapped, iv, aad(uid)) { clear(context) } ?: return null
+        return Stored(uid, accountKey, prefs.getLong(KEY_VERSION, 1L))
     }
 
     fun hasKey(context: Context, uid: String): Boolean = load(context, uid) != null
@@ -123,6 +117,36 @@ object AccountKeyStore {
         val id = E2ee.newDeviceId()
         prefs.edit().putString(KEY_DEVICE_ID, id).commit()
         return id
+    }
+
+    /**
+     * Decrypts what [save] wrote, or null. [forget] runs only when it can never be opened:
+     * no Keystore key (a restore, or the app's keys wiped), a tag that does not verify (the
+     * key or the file changed), a key the system invalidated, or a stored value that is not
+     * base64. Anything else is taken for a passing Keystore failure and only logged.
+     */
+    private fun open(wrapped: String, iv: String, aad: ByteArray, forget: () -> Unit): ByteArray? {
+        fun permanent(e: Exception): ByteArray? {
+            Log.w(TAG, "A stored value can no longer be opened; it is cleared", e)
+            forget()
+            return null
+        }
+        return try {
+            val key = existingKeystoreKey() ?: return permanent(GeneralSecurityException("no Keystore key"))
+            val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+            cipher.init(Cipher.DECRYPT_MODE, key, GCMParameterSpec(GCM_TAG_BITS, E2ee.fromBase64(iv)))
+            cipher.updateAAD(aad)
+            cipher.doFinal(E2ee.fromBase64(wrapped))
+        } catch (e: AEADBadTagException) {
+            permanent(e)
+        } catch (e: KeyPermanentlyInvalidatedException) {
+            permanent(e)
+        } catch (e: IllegalArgumentException) {
+            permanent(e)
+        } catch (e: Exception) {
+            Log.w(TAG, "The Keystore could not open a stored value this time; it is kept", e)
+            null
+        }
     }
 
     // Binds the ciphertext to the account, so a blob and a uid swapped in the file fail on
