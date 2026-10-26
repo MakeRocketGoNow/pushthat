@@ -1,6 +1,15 @@
-import { confirmPasswordReset, signInWithEmailAndPassword, verifyPasswordResetCode } from 'firebase/auth';
+import { initializeApp } from 'firebase/app';
+import {
+  type Auth,
+  confirmPasswordReset,
+  inMemoryPersistence,
+  initializeAuth,
+  signInWithEmailAndPassword,
+  verifyPasswordResetCode,
+} from 'firebase/auth';
 import {
   type DocumentData,
+  type Firestore,
   type QueryDocumentSnapshot,
   collection,
   doc,
@@ -18,7 +27,7 @@ import {
   writeBatch,
 } from 'firebase/firestore';
 
-import { auth } from '@/config/firebase';
+import { app } from '@/config/firebase';
 
 import {
   type E2ee,
@@ -49,6 +58,29 @@ import {
  * phase 3's sign-in has to handle a working `authKey` with no `password` wrap it can open
  * as it handles a registration, by offering the recovery key or a new account key.
  */
+
+let resetFirebase: { auth: Auth; db: Firestore } | undefined;
+
+/**
+ * The reset's own Firebase app, with its sign-in held in memory. The reset signs in
+ * partway through to read and write the user document, and doing that on the site's
+ * `auth` flipped `AuthContext`: `Layout` swapped its unauthed frame for the authed one,
+ * which remounted the page mid-flow (the link then read as used, and a recovery key just
+ * written was never shown), the Chrome extension was told of a sign-in and could switch
+ * accounts, and a Logout menu appeared over the recovery key. Apart, the site's session
+ * never moves, and the in-memory one ends with the tab. Made on first use, so a page
+ * load that never resets creates nothing.
+ */
+function reset(): { auth: Auth; db: Firestore } {
+  if (!resetFirebase) {
+    const resetApp = initializeApp(app.options, 'password-reset');
+    resetFirebase = {
+      auth: initializeAuth(resetApp, { persistence: inMemoryPersistence }),
+      db: getFirestore(resetApp),
+    };
+  }
+  return resetFirebase;
+}
 
 /** What the steps after the password carry: who, the new password's master key, and the stored keys. */
 export interface ResetSession {
@@ -91,7 +123,7 @@ export async function afterPasswordChanged<T>(step: () => Promise<T>): Promise<T
 
 /** The account the reset link is for; throws when the link has expired or been used. */
 export async function emailForResetCode(oobCode: string): Promise<string> {
-  return verifyPasswordResetCode(auth, oobCode);
+  return verifyPasswordResetCode(reset().auth, oobCode);
 }
 
 /**
@@ -101,10 +133,10 @@ export async function emailForResetCode(oobCode: string): Promise<string> {
  */
 export async function setNewPassword(oobCode: string, email: string, password: string): Promise<ResetSession> {
   const keys = await deriveKeys(email, password);
-  await confirmPasswordReset(auth, oobCode, keys.firebasePassword);
+  await confirmPasswordReset(reset().auth, oobCode, keys.firebasePassword);
   return afterPasswordChanged(async () => {
-    const { user } = await signInWithEmailAndPassword(auth, email, keys.firebasePassword);
-    const snapshot = await getDoc(doc(getFirestore(), 'users', user.uid));
+    const { user } = await signInWithEmailAndPassword(reset().auth, email, keys.firebasePassword);
+    const snapshot = await getDoc(doc(reset().db, 'users', user.uid));
     const stored = snapshot.data()?.e2ee;
     return {
       uid: user.uid,
@@ -198,7 +230,7 @@ export async function startNewKeys(
 }
 
 async function writeKeys(session: ResetSession, e2ee: E2ee): Promise<void> {
-  const ref = doc(getFirestore(), 'users', session.uid);
+  const ref = doc(reset().db, 'users', session.uid);
   if (session.userExists) {
     // A whole new map, not a merge, so the old password's wraps go.
     await updateDoc(ref, { e2ee });
@@ -220,7 +252,7 @@ const DELETE_PAGE = 300;
  * `onPushRecordDeleted` removes a file push's stored object as it does for any delete.
  */
 async function deleteLockedPushes(uid: string, keyVersion: number): Promise<number> {
-  const db = getFirestore();
+  const { db } = reset();
   let deleted = 0;
   let last: QueryDocumentSnapshot<DocumentData> | undefined;
   for (;;) {

@@ -225,10 +225,10 @@ export function ResetPassword() {
         {step.name === 'done' && (
           <>
             <h2 className={styles.title}>Your password is changed</h2>
-            <p className={styles.message}>Sign in with your new password on your other devices.</p>
+            <p className={styles.message}>Sign in with your new password, here and on your other devices.</p>
             <div className={styles.footer}>
-              <Link className={styles.footerLink} to="/links">
-                Go to your pushes
+              <Link className={styles.footerLink} to="/login">
+                Sign in
               </Link>
             </div>
           </>
