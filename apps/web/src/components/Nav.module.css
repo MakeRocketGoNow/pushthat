@@ -33,9 +33,14 @@
   color: black;
 }
 
+/* Pinned to the nav's 6px padding rather than given a height, so it is exactly as tall as
+   the links whatever size their text renders at. It used to be a fixed 40px, which only
+   matched a link (8px padding each side plus a 1.5 line height) at a 16px font: smaller
+   text left it hanging over the nav's bottom edge. */
 .backgroundSlider {
   position: absolute;
-  height: 40px;
+  top: 6px;
+  bottom: 6px;
   background-color: var(--color-primary);
   transition: all 0.3s ease;
   border-radius: 6px;
