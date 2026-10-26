@@ -40,7 +40,7 @@ apps/android        Kotlin app: the push list, the share target, notifications
 apps/ios            Swift app: the push list, a share extension, notifications
 apps/macos          Swift app: a fork of the iOS app for the Mac, with a share extension
 functions           Cloud Functions: billing, the Stripe webhook, file expiry and cleanup
-packages/push-test  A Node script that sends one test push through FCM
+packages/push-test  The encryption reference and its test vectors, and an FCM send script
 docs                Design records and per-app notes
 ```
 

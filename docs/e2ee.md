@@ -30,7 +30,9 @@ authKey   = HMAC-SHA256(prk, "pushthat/auth/v1"   || 0x01)
 masterKey = HMAC-SHA256(prk, "pushthat/master/v1" || 0x01)
 ```
 
-The last three lines are HKDF-SHA256 with an empty salt written out, since every output is one hash block and not every platform ships HKDF. The password is Unicode-normalized to NFC and not trimmed. PBKDF2 was chosen over Argon2id because WebCrypto, Android and CommonCrypto all have it natively and the Chrome extension's service worker has no room for a WASM library; the `kdf` field on the user document names the construction so it can be raised later. 600,000 iterations is OWASP's 2023 figure and costs about a second on a phone, paid once at sign-in.
+The last three lines are HKDF-SHA256 with an empty salt written out, since every output is one hash block and not every platform ships HKDF. The password is Unicode-normalized to NFC and not trimmed.
+
+Byte for byte: every string in a derivation is UTF-8, the labels are ASCII, and `|| 0x01` appends one byte. The email is NFC-normalized first, like the password, since two keyboards can spell one accented letter as different code points; then `trim` removes space, tab, CR and LF from both ends and `lowercase` maps A to Z onto a to z and changes nothing else. Both are deliberately ASCII-only so that no platform's locale or Unicode tables can enter the salt: an address with a capital letter outside ASCII keeps it. Every AES-GCM tag in this document is 16 bytes, every `base64` field (`n`, `ct`, `fk`, `np`) is the standard alphabet with padding, and every `base64url` string is unpadded. PBKDF2 was chosen over Argon2id because WebCrypto, Android and CommonCrypto all have it natively and the Chrome extension's service worker has no room for a WASM library; the `kdf` field on the user document names the construction so it can be raised later. 600,000 iterations is OWASP's 2023 figure and costs about a second on a phone, paid once at sign-in.
 
 `authKey` is what Firebase Auth sees. The clients sign in and register with `base64url(authKey)` (43 characters, no padding) as the Firebase password, never the password itself. Firebase cannot derive `masterKey` from what it holds, and a stolen Firebase hash is behind 600,000 iterations per guess before Firebase's own scrypt.
 
@@ -58,13 +60,13 @@ users/{uid}.e2ee = {
 }
 ```
 
-Each wrap is `accountKey` under AES-256-GCM with a random 12-byte nonce and AAD `"pushthat/wrap/v1:" || uid`, the wrapping key being `masterKey` for `password` and the recovery wrapping key for `recovery`. `wrapId` is 8 random bytes, base64url. `keyVersion` counts account keys: it goes up only when a reset without the recovery key replaces the account key, and every push records the version it was encrypted under.
+Each wrap is `accountKey` under AES-256-GCM with a random 12-byte nonce and AAD `"pushthat/wrap/v1:" || uid` (the Firebase uid, UTF-8), the wrapping key being `masterKey` for `password` and the recovery wrapping key for `recovery`; `ct` is 48 bytes. `wrapId` is 8 random bytes, base64url. `keyVersion` counts account keys: it goes up only when a reset without the recovery key replaces the account key, and every push records the version it was encrypted under.
 
 A password change, in the app: derive the new `masterKey`, write a new `password` wrap, then `updatePassword` with the new `authKey`, then delete the old wrap. The order means a crash between steps leaves an account that opens with either password, never one that opens with neither.
 
 ### The recovery key
 
-20 random bytes, shown once at registration as 32 Crockford base32 characters in groups of four, with a copy button and a "I saved it" confirmation. It wraps `accountKey` as the `recovery` wrap, with the wrapping key `HMAC-SHA256(HMAC-SHA256(32 zero bytes, recoveryBytes), "pushthat/recovery/v1" || 0x01)`. Settings offers to show a new one (which replaces the wrap) for a user who lost it while still signed in.
+20 random bytes, shown once at registration as 32 Crockford base32 characters in groups of four separated by hyphens (`810M-4GT4-8N34-EJ29-995M-RKAE-9X85-2MJK` is the vector's), with a copy button and a "I saved it" confirmation. The encoding is RFC 4648's bit layout (most significant bit first, five bits a symbol) over Crockford's alphabet, `0123456789ABCDEFGHJKMNPQRSTVWXYZ`; 160 bits are exactly 32 symbols, so there is no padding and no check symbol. Reading one back is lenient, which is the point of the alphabet: case does not matter, hyphens and spaces are dropped, and `I` and `L` read as `1`, `O` as `0`. It wraps `accountKey` as the `recovery` wrap, with the wrapping key `HMAC-SHA256(HMAC-SHA256(32 zero bytes, recoveryBytes), "pushthat/recovery/v1" || 0x01)` over the 20 raw bytes, never the text. Settings offers to show a new one (which replaces the wrap) for a user who lost it while still signed in.
 
 ### Where keys live on each device
 
@@ -95,7 +97,7 @@ pushes/{pushId} = {
 }
 ```
 
-`enc` is AES-256-GCM under `metaKey` with a random 12-byte nonce and AAD `"pushthat/push/v1:" || userId || ":" || pushId`. The AAD binds the ciphertext to its document, so a ciphertext moved to another document fails to open. It means the client picks the document id before encrypting (`doc(collection(db, 'pushes'))`, `collection.document()`, `document()`), and the retry workers keep that id across attempts.
+`enc` is AES-256-GCM under `metaKey` with a random 12-byte nonce and AAD `"pushthat/push/v1:" || userId || ":" || pushId`, all UTF-8. The AAD binds the ciphertext to its document, so a ciphertext moved to another document fails to open. It means the client picks the document id before encrypting (`doc(collection(db, 'pushes'))`, `collection.document()`, `document()`), and the retry workers keep that id across attempts.
 
 The plaintext is a JSON object:
 
@@ -104,7 +106,7 @@ The plaintext is a JSON object:
 | `url`  | `url`, `title` (may be empty until scraped), `ext`                                                      |
 | `file` | `name`, `mime`, `size`, `ext`, `fk` (the per-file key, base64), `np` (the file's 8-byte nonce prefix, base64) |
 
-No `url`, `title`, `deviceName` or `ext` field may exist in plaintext on a document that has `enc`; the rules refuse them, so a downgraded client cannot leak by accident.
+The plaintext is the object's JSON in UTF-8 and nothing more is fixed: there is no canonical form, since a client encrypts what its own serializer wrote and parses what it finds, so the vector gives the exact bytes it encrypted rather than an object to re-serialize. `size` is a JSON number. No `url`, `title`, `deviceName` or `ext` field may exist in plaintext on a document that has `enc`; the rules refuse them, so a downgraded client cannot leak by accident.
 
 The one update a client makes today, filling in a scraped title, becomes a rewrite of `enc` and `searchTokens` on a `url` push (the url is re-encrypted with the title under a fresh nonce). A file push is never updated, as now.
 
@@ -123,7 +125,7 @@ chunk i (plaintext 1 MiB, the last 0..1 MiB):
 file   = header || out_0 || out_1 || ...
 ```
 
-Every chunk but the last is exactly 1 MiB of plaintext and the decryptor checks that, so a truncated, reordered or extended file fails rather than opening short. An empty file is a header and one empty final chunk. The overhead is 16 bytes per MiB plus 12, inside the rounding of the size limits, which the Storage rules keep measuring on the uploaded object.
+Every chunk but the last is exactly 1 MiB of plaintext and the decryptor checks that, so a truncated, reordered or extended file fails rather than opening short. A file of n > 0 bytes has ceil(n / 1 MiB) chunks, so the last holds 1 to 1 MiB and a file of exactly 2 MiB is two full chunks, the second marked final; the empty file is the one case with an empty final chunk, a header and a bare tag, 28 bytes. The decryptor needs no length field: with every sealed chunk but the last 1 MiB + 16 bytes, a body of L bytes is ceil(L / (1 MiB + 16)) chunks and the remainder is the last, which must be at least its 16-byte tag. It also checks the magic and that the header's prefix equals the envelope's `np`, so an object cannot be served for a push it does not belong to. Everything else a corrupt file can do (a changed byte, a chunk dropped, moved or appended, a prefix swapped, a cut at a chunk boundary) fails on a tag, because the index and the final flag are in the AAD. The overhead is 16 bytes per MiB plus 12, inside the rounding of the size limits, which the Storage rules keep measuring on the uploaded object.
 
 The object is `uploads/{uid}/{objectId}`, `objectId` 16 random bytes base64url, uploaded as `application/octet-stream`. The push records that path in `objectPath`; the download URL with its token is no longer stored or used, since every client reads through the SDK with its own auth and the Storage rules already limit reads to the owner. `onPushRecordDeleted` and the orphan sweep (`orphans.ts`) take the path from `objectPath` and fall back to the title-derived path only for documents without `enc`.
 
@@ -136,13 +138,15 @@ Streaming encryption on upload means a 100 MB file never needs to be in memory t
 
 ## Search
 
-Every client queries `searchTokens` with `array-contains` (the Links page, `MainActivity`'s list, `PushListViewModel`) and writes them with the same prefix generator (`SearchTokenGenerator.swift`, its Android and web twins). That stays, with every token replaced by its blind index:
+Every client queries `searchTokens` with `array-contains` (the Links page, `MainActivity`'s list, `PushListViewModel`) and writes them with a prefix generator (`SearchTokenGenerator.swift`, `generateSearchTokens` on Android and the web, which differ as described below). That stays, with every token replaced by its blind index:
 
 ```
 token' = base64url(HMAC-SHA256(searchKey, token))[0:16]     // 96 bits
 ```
 
-A search HMACs the lowercased term the same way and runs the same query, against the composite index the query uses today. What the server learns is that two documents share a token and how many tokens each has; because the generator emits every prefix, two titles that share a three-letter prefix share a token. That was weighed against client-side search over a decrypted local cache, which leaks nothing but needs a cache on every platform and loads the whole history on the web, and the blind index was chosen for the first version. It can be replaced per client later without a data change, since the tokens are derivable from the envelope.
+The token is HMACed as UTF-8, and 16 base64url characters are 96 bits exactly. A search HMACs the lowercased term the same way and runs the same query, against the composite index the query uses today.
+
+The three generators are not byte-identical today: the web app and Android drop punctuation and split on whitespace, where `\w` keeps underscores and only ASCII letters, and iOS splits on anything that is not a letter or a digit. Once the tokens are blinded, a title tokenized two ways gives two different indexes, so phase 4 has to settle on one rule before it ships. The reference tokenizes by the iOS rule with two things pinned that Swift leaves to its String: the text is NFC-normalized, then lowercased, then split on anything that is not a letter, a combining mark or a digit, and a prefix is a count of code points (Swift counts grapheme clusters, which only differs on a cluster that NFC cannot compose into one code point). A search term is normalized the same way before it is HMACed. The vector pins the HMAC per token, so a client checks the HMAC apart from its generator. What the server learns is that two documents share a token and how many tokens each has; because the generator emits every prefix, two titles that share a three-letter prefix share a token. That was weighed against client-side search over a decrypted local cache, which leaks nothing but needs a cache on every platform and loads the whole history on the web, and the blind index was chosen for the first version. It can be replaced per client later without a data change, since the tokens are derivable from the envelope.
 
 ## Notifications
 
@@ -227,14 +231,14 @@ Small, next to the clients:
 
 ## Test vectors
 
-`packages/push-test/vectors.json`, generated by a Node script there with WebCrypto, is the reference every client's unit tests check byte for byte:
+`packages/push-test/vectors.json`, generated by `vectors.mjs` there from `e2ee.mjs` (the reference implementation, on WebCrypto and nothing else), is the reference every client's unit tests check byte for byte. Every input is fixed and obviously made up, so running the script again reproduces the file; `npm test` there fails when the file is stale. Byte strings are hex, except where a client stores or shows a string (the Firebase password, `n`, `ct`, the blind tokens, the recovery key's display), which is given exactly as stored:
 
-1. `email`, `password` (with a non-ASCII character, to pin NFC) and the expected `salt`, `stretched`, `authKey`, `masterKey`, and the Firebase password string.
-2. A fixed `accountKey` with `metaKey`, `searchKey`, and a `password` wrap under a fixed nonce.
+1. `email` (untrimmed, mixed case) and `password` (with a decomposed "e" + U+0301, written as an escape so that the file stays ASCII, to pin NFC) and the expected `salt`, `stretched`, `authKey`, `masterKey`, and the Firebase password string.
+2. A fixed `accountKey` with `metaKey`, `searchKey`, a `password` wrap under vector 1's `masterKey` and a fixed nonce, and a fixed recovery key with its display form, its wrapping key and its `recovery` wrap.
 3. A `url` envelope: fixed nonce, `userId`, `pushId`, plaintext JSON bytes, expected `ct`.
-4. The blind index for "GitHub Repository".
-5. A file of 3 MiB + 1 byte of a fixed pattern with a fixed `fk` and `np`: the expected SHA-256 of the encrypted file, and the SHA-256 of a tampered copy that must fail to decrypt.
-6. The empty file.
+4. The blind index for "GitHub Repository": the tokens the generator emits, and the blind token for each.
+5. A file of 3 MiB + 1 byte where byte i is i mod 251 (prime, so the pattern never lines up with a chunk) with a fixed `fk` and `np`: the expected SHA-256 of the encrypted file, of a tampered copy (byte 2,000,000, inside chunk 1's ciphertext, XOR 0x01) and of a copy with sealed chunks 0 and 1 swapped, both of which must fail to decrypt.
+6. The empty file: its 28 bytes.
 
 ## Phases
 

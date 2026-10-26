@@ -21,3 +21,7 @@ ios:
 macos:
   - changed-files:
       - any-glob-to-any-file: 'apps/macos/**'
+
+push-test:
+  - changed-files:
+      - any-glob-to-any-file: 'packages/push-test/**'
