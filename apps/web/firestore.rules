@@ -251,6 +251,57 @@ service cloud.firestore {
         && tokens.join(',').size() <= 51200;
     }
 
+    // users/{uid}.e2ee (docs/e2ee.md, The user document): the account key, wrapped under
+    // the password and under the recovery key, which each client writes at registration,
+    // on a password change or reset, and when it marks the push migration done. The rules
+    // cannot check the wraps open, only that they have the shape the spec gives, and that
+    // shape is checked whole because the user document's size is what the token list's
+    // bound protects (isTokenList): a wrap is a 12-byte nonce and a 48-byte ciphertext in
+    // base64, and four of them cover a password change caught between its steps (old
+    // password, new password, recovery). Map values can only be reached by key, so the
+    // wraps are read by position, one to four.
+    function isE2ee(e2ee) {
+      return e2ee is map
+        && e2ee.keys().hasAll(['v', 'kdf', 'keyVersion', 'wraps'])
+        && e2ee.keys().hasOnly(['v', 'kdf', 'keyVersion', 'wraps', 'migratedAt'])
+        && e2ee.v is int
+        && isBoundedString(e2ee.kdf, 64)
+        && e2ee.keyVersion is int
+        && e2ee.keyVersion >= 1
+        && (!('migratedAt' in e2ee) || e2ee.migratedAt is timestamp)
+        && e2ee.wraps is map
+        && e2ee.wraps.size() <= 4
+        && isWrapAt(e2ee.wraps, 0)
+        && isWrapAt(e2ee.wraps, 1)
+        && isWrapAt(e2ee.wraps, 2)
+        && isWrapAt(e2ee.wraps, 3);
+    }
+
+    // A wrapId is 8 bytes in base64url, 11 characters.
+    function isWrapAt(wraps, i) {
+      return wraps.size() <= i
+        || (isBoundedString(wraps.keys()[i], 16) && isWrap(wraps[wraps.keys()[i]]));
+    }
+
+    function isWrap(wrap) {
+      return wrap is map
+        && wrap.keys().hasOnly(['by', 'n', 'ct'])
+        && wrap.by in ['password', 'recovery']
+        && wrap.n is string
+        && wrap.n.size() == 16
+        && wrap.ct is string
+        && wrap.ct.size() == 64;
+    }
+
+    // keyVersion counts account keys and only goes up, when a reset without the recovery
+    // key replaces the account key: a client holding an older key must not be able to
+    // write it back over the newer one, which would leave every push since unreadable.
+    function isE2eeUpdate() {
+      return isE2ee(request.resource.data.e2ee)
+        && (!('e2ee' in resource.data)
+          || request.resource.data.e2ee.keyVersion >= resource.data.e2ee.get('keyVersion', 0));
+    }
+
     // A client writes only these fields on its own user document. Everything else on it
     // (subscription, usageRecords, periodStart, billing ids) is written by Cloud Functions
     // through the Admin SDK, which these rules do not apply to. It is a list of what clients
@@ -260,19 +311,25 @@ service cloud.firestore {
       allow read: if isOwnUser(userId);
 
       // Every client's sign-up or first token write: email and createdAt from the apps and
-      // the web, fcmTokens from the apps and the Chrome extension.
+      // the web, fcmTokens from the apps and the Chrome extension, e2ee from a client that
+      // registers with a key (or the reset page, for an account with no document yet).
       allow create: if isOwnUser(userId)
-        && request.resource.data.keys().hasOnly(['email', 'createdAt', 'fcmTokens'])
+        && request.resource.data.keys().hasOnly(['email', 'createdAt', 'fcmTokens', 'e2ee'])
         && (!('email' in request.resource.data) || isBoundedString(request.resource.data.email, 320))
         && (!('createdAt' in request.resource.data) || request.resource.data.createdAt is timestamp)
-        && (!('fcmTokens' in request.resource.data) || isTokenList(request.resource.data.fcmTokens));
+        && (!('fcmTokens' in request.resource.data) || isTokenList(request.resource.data.fcmTokens))
+        && (!('e2ee' in request.resource.data) || isE2ee(request.resource.data.e2ee));
 
-      // After that, only a device token. createdAt anchors the monthly period the usage is
-      // counted in (getBillingPeriodKey), so moving it would move the count onto an emptier
-      // month.
+      // After that, only a device token and the wrapped keys. createdAt anchors the monthly
+      // period the usage is counted in (getBillingPeriodKey), so moving it would move the
+      // count onto an emptier month. Each field is checked only when it changes, since a
+      // web sign-up's document has no fcmTokens to keep valid; a field removed is changed,
+      // and fails its check.
       allow update: if isOwnUser(userId)
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['fcmTokens'])
-        && isTokenList(request.resource.data.fcmTokens);
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['fcmTokens', 'e2ee'])
+        && (!('fcmTokens' in request.resource.data.diff(resource.data).affectedKeys())
+          || isTokenList(request.resource.data.fcmTokens))
+        && (!('e2ee' in request.resource.data.diff(resource.data).affectedKeys()) || isE2eeUpdate());
 
       // No delete: it would take usageRecords with it and start the period's count again.
 

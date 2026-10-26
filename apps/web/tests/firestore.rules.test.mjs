@@ -131,6 +131,121 @@ describe('changing an existing user document', () => {
     assertFails(getDoc(doc(env.authenticatedContext('bob').firestore(), 'users/alice'))));
 });
 
+// users/{uid}.e2ee (docs/e2ee.md, The user document): the wrapped account key, which a
+// client writes at registration, on a password change or reset, and when the push
+// migration is done. keyVersion never goes back, and the map is bounded whole, since the
+// user document's size is what keeps the trigger's write to it working.
+describe('the wrapped keys on the user document', () => {
+  const wrap = (by = 'password') => ({ by, n: 'AAAAAAAAAAAAAAAA', ct: 'A'.repeat(64) });
+  const e2ee = (fields = {}) => ({
+    v: 1,
+    kdf: 'pbkdf2-sha256-600000',
+    keyVersion: 1,
+    wraps: { pwWrapId0001: wrap(), rcWrapId0001: wrap('recovery') },
+    ...fields,
+  });
+  const webUser = { email: 'a@x.com', createdAt: anchoredOnFirst };
+
+  test('a registration that writes them with the document', () =>
+    assertSucceeds(setDoc(aliceDoc(), { email: 'a@x.com', createdAt: serverTimestamp(), e2ee: e2ee() })));
+  test('the reset page, for an account with no document yet', () =>
+    assertSucceeds(setDoc(aliceDoc(), { email: 'a@x.com', createdAt: new Date(), e2ee: e2ee() })));
+  test('a registration with keys that are not a map', () =>
+    assertFails(setDoc(aliceDoc(), { email: 'a@x.com', e2ee: 'key' })));
+
+  test('added to a web sign-up, which has no device tokens', async () => {
+    await seed(webUser);
+    await assertSucceeds(updateDoc(aliceDoc(), { e2ee: e2ee() }));
+  });
+  test('added beside a device token', async () => {
+    await seed({ ...webUser, fcmTokens: ['t1'] });
+    await assertSucceeds(updateDoc(aliceDoc(), { e2ee: e2ee(), fcmTokens: arrayUnion('t2') }));
+  });
+  test('a device token added once they are there', async () => {
+    await seed({ ...webUser, fcmTokens: ['t1'], e2ee: e2ee() });
+    await assertSucceeds(updateDoc(aliceDoc(), { fcmTokens: arrayUnion('t2') }));
+  });
+  test('a password change caught between its steps, with three wraps', async () => {
+    await seed({ ...webUser, e2ee: e2ee() });
+    const wraps = { pwWrapId0001: wrap(), pwWrapId0002: wrap(), rcWrapId0001: wrap('recovery') };
+    await assertSucceeds(updateDoc(aliceDoc(), { e2ee: e2ee({ wraps }) }));
+  });
+  test('rewrapped under the same key version', async () => {
+    await seed({ ...webUser, e2ee: e2ee() });
+    await assertSucceeds(updateDoc(aliceDoc(), { e2ee: e2ee({ wraps: { pwWrapId0002: wrap() } }) }));
+  });
+  test('a new account key after a reset without the recovery key', async () => {
+    await seed({ ...webUser, e2ee: e2ee() });
+    await assertSucceeds(updateDoc(aliceDoc(), { e2ee: e2ee({ keyVersion: 2 }) }));
+  });
+  test('the push migration marked done', async () => {
+    await seed({ ...webUser, e2ee: e2ee() });
+    await assertSucceeds(updateDoc(aliceDoc(), { 'e2ee.migratedAt': serverTimestamp() }));
+  });
+
+  test('an older account key written back', async () => {
+    await seed({ ...webUser, e2ee: e2ee({ keyVersion: 2 }) });
+    await assertFails(updateDoc(aliceDoc(), { e2ee: e2ee({ keyVersion: 1 }) }));
+  });
+  test('removed', async () => {
+    await seed({ ...webUser, e2ee: e2ee() });
+    await assertFails(updateDoc(aliceDoc(), { e2ee: deleteField() }));
+  });
+  test('with a key version that is not a count', async () => {
+    await seed(webUser);
+    await assertFails(updateDoc(aliceDoc(), { e2ee: e2ee({ keyVersion: '1' }) }));
+    await assertFails(updateDoc(aliceDoc(), { e2ee: e2ee({ keyVersion: 0 }) }));
+  });
+  test('without a key version', async () => {
+    await seed(webUser);
+    const { keyVersion: _keyVersion, ...rest } = e2ee();
+    await assertFails(updateDoc(aliceDoc(), { e2ee: rest }));
+  });
+  test('without wraps', async () => {
+    await seed(webUser);
+    const { wraps: _wraps, ...rest } = e2ee();
+    await assertFails(updateDoc(aliceDoc(), { e2ee: rest }));
+  });
+  test('with a field of its own', async () => {
+    await seed(webUser);
+    await assertFails(updateDoc(aliceDoc(), { e2ee: e2ee({ subscription: { expiresAt: farFuture } }) }));
+  });
+  test('with five wraps', async () => {
+    await seed(webUser);
+    const wraps = Object.fromEntries(Array.from({ length: 5 }, (_, i) => [`wrapId000${i}`, wrap()]));
+    await assertFails(updateDoc(aliceDoc(), { e2ee: e2ee({ wraps }) }));
+  });
+  test('with a wrap by something else', async () => {
+    await seed(webUser);
+    await assertFails(updateDoc(aliceDoc(), { e2ee: e2ee({ wraps: { pwWrapId0001: wrap('email') } }) }));
+  });
+  test('with a wrap of the wrong size', async () => {
+    await seed(webUser);
+    await assertFails(
+      updateDoc(aliceDoc(), { e2ee: e2ee({ wraps: { pwWrapId0001: { ...wrap(), ct: 'A'.repeat(60_000) } } }) })
+    );
+  });
+  test('with a fourth wrap that is not one, after three that are', async () => {
+    await seed(webUser);
+    const wraps = { a: wrap(), b: wrap(), c: wrap('recovery'), d: { ...wrap(), padding: 'x'.repeat(60_000) } };
+    await assertFails(updateDoc(aliceDoc(), { e2ee: e2ee({ wraps }) }));
+  });
+  // Firestore itself refuses a field name past 1500 bytes, so four of these are the most
+  // the bound on the key saves; it is kept so the wraps stay what the spec makes them.
+  test('with a wrap id longer than one', async () => {
+    await seed(webUser);
+    await assertFails(updateDoc(aliceDoc(), { e2ee: e2ee({ wraps: { ['x'.repeat(1000)]: wrap() } }) }));
+  });
+  test('beside a subscription', async () => {
+    await seed(webUser);
+    await assertFails(updateDoc(aliceDoc(), { e2ee: e2ee(), subscription: { expiresAt: farFuture } }));
+  });
+  test("on someone else's document", async () => {
+    await env.withSecurityRulesDisabled((c) => setDoc(doc(c.firestore(), 'users/bob'), webUser));
+    await assertFails(updateDoc(doc(alice(), 'users/bob'), { e2ee: e2ee() }));
+  });
+});
+
 // The tiers' limits: Free 50 URL and 3 file pushes a month, Pro 10,000 and 100
 // (docs/billing.md at the repository root).
 describe('the push quota', () => {
