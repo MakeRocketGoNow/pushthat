@@ -269,15 +269,13 @@ export async function deleteLockedPushes(session: ResetSession): Promise<number>
   let last: QueryDocumentSnapshot<DocumentData> | undefined;
   for (;;) {
     const page = await getDocs(
-      last
-        ? query(
-            collection(db, 'pushes'),
-            where('userId', '==', uid),
-            orderBy(documentId()),
-            startAfter(last),
-            limit(DELETE_PAGE)
-          )
-        : query(collection(db, 'pushes'), where('userId', '==', uid), orderBy(documentId()), limit(DELETE_PAGE))
+      query(
+        collection(db, 'pushes'),
+        where('userId', '==', uid),
+        orderBy(documentId()),
+        ...(last ? [startAfter(last)] : []),
+        limit(DELETE_PAGE)
+      )
     );
     const locked = page.docs.filter((push) => {
       const data = push.data();
