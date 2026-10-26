@@ -13,7 +13,12 @@ import { onSchedule } from 'firebase-functions/v2/scheduler';
  * Once a day this lists the objects under `uploads/` and deletes those no file push
  * refers to. An object younger than the grace period is left alone: an upload in flight
  * has no push yet, and Android's `RetryPushWorker` makes the push for a file uploaded
- * just before the network dropped only once it is back, which can be days later.
+ * just before the network dropped only once it is back, which can be days later. But
+ * only so many of them per account (`ORPHAN_PENDING_PER_USER`): the rules cap the size
+ * of an upload and the number of file pushes a month, not the number of uploads, so
+ * without a cap here one account could keep any number of objects, each at the tier's
+ * size, for the length of the grace, and serve them through their download URLs
+ * meanwhile. Beyond the cap the rest go at once, whatever their age.
  *
  * A push refers to an object by its path, `uploads/${userId}/${title}`, the path
  * `onPushRecordDeleted` deletes, and also by the path in its download URL; either keeps
@@ -35,6 +40,13 @@ import { onSchedule } from 'firebase-functions/v2/scheduler';
  * uploaded before the device went offline for a weekend or a flight.
  */
 export const ORPHAN_GRACE_MS = 7 * 24 * 60 * 60 * 1000;
+/**
+ * How many uploads with no push yet one account may hold inside the grace. A push
+ * follows its upload within seconds, and Android's retry queue holds the few shares
+ * made while the network was down, so ten is past any real backlog, and it bounds what
+ * an account can keep this way to ten files of the tier's size.
+ */
+export const ORPHAN_PENDING_PER_USER = 10;
 export const ORPHAN_PAGE = 1000;
 /**
  * The most uploads one run deletes. Well above what a client's crash or failed cleanup
@@ -81,22 +93,36 @@ export function uploaderOf(name: string): string | undefined {
 }
 
 /**
- * The objects to delete: those at `uploads/{uid}/{name}`, older than the grace period,
- * whose path no push refers to. An object with no readable creation time is kept, as is
- * anything else under `uploads/` (a folder placeholder, say), since none was put there
- * by a push.
+ * The objects to delete: those at `uploads/{uid}/{name}` whose path no push refers to,
+ * when older than the grace period, or when inside it but past the account's share of
+ * pending uploads. `pending` counts the unreferenced uploads inside the grace seen so
+ * far per account; the sweep carries one map across the listing's pages, so an account
+ * whose objects straddle a page is counted whole. Which of them stay is the listing's
+ * order, by name: the cap is for an account with far more than any client leaves, and
+ * for a real one it is never reached. An object with no readable creation time is kept,
+ * as is anything else under `uploads/` (a folder placeholder, say), since none was put
+ * there by a push.
  */
 export function orphanedUploads(
   objects: StoredObject[],
   referenced: ReadonlySet<string>,
   now: Date,
-  graceMs = ORPHAN_GRACE_MS
+  {
+    graceMs = ORPHAN_GRACE_MS,
+    pendingMax = ORPHAN_PENDING_PER_USER,
+    pending = new Map<string, number>(),
+  }: { graceMs?: number; pendingMax?: number; pending?: Map<string, number> } = {}
 ): string[] {
   return objects
     .filter((object) => {
-      if (!uploaderOf(object.name) || referenced.has(object.name)) return false;
+      const uid = uploaderOf(object.name);
+      if (!uid || referenced.has(object.name)) return false;
       const createdAt = object.timeCreated ? Date.parse(object.timeCreated) : NaN;
-      return Number.isFinite(createdAt) && createdAt <= now.getTime() - graceMs;
+      if (!Number.isFinite(createdAt)) return false;
+      if (createdAt <= now.getTime() - graceMs) return true;
+      const held = (pending.get(uid) ?? 0) + 1;
+      pending.set(uid, held);
+      return held > pendingMax;
     })
     .map((object) => object.name);
 }
@@ -108,12 +134,19 @@ export function orphanedUploads(
  */
 export async function sweepOrphanedUploads(
   now: Date,
-  { max = ORPHAN_MAX_PER_RUN, graceMs = ORPHAN_GRACE_MS, pageSize = ORPHAN_PAGE } = {}
+  {
+    max = ORPHAN_MAX_PER_RUN,
+    graceMs = ORPHAN_GRACE_MS,
+    pendingMax = ORPHAN_PENDING_PER_USER,
+    pageSize = ORPHAN_PAGE,
+  } = {}
 ): Promise<string[]> {
   const db = getFirestore();
   const bucket = getStorage().bucket();
   // The paths each user's file pushes refer to, read once per run per user.
   const referencedBy = new Map<string, Set<string>>();
+  // Each user's unreferenced uploads inside the grace, counted across the pages.
+  const pending = new Map<string, number>();
   const deleted: string[] = [];
   let pageToken: string | undefined;
   do {
@@ -151,7 +184,10 @@ export async function sweepOrphanedUploads(
     }
 
     const objects = files.map((file) => ({ name: file.name, timeCreated: file.metadata.timeCreated }));
-    const orphans = orphanedUploads(objects, referenced, now, graceMs).slice(0, max - deleted.length);
+    const orphans = orphanedUploads(objects, referenced, now, { graceMs, pendingMax, pending }).slice(
+      0,
+      max - deleted.length
+    );
     // A handful at a time, so a page of orphans is not a thousand requests at once. Each
     // delete is logged as it lands and one that fails is logged and passed over, so a run
     // that is cut off or meets a GCS error still says which files it has removed.

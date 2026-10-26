@@ -74,6 +74,17 @@ test('an upload younger than the grace is kept', async () => {
   expect(await remaining()).toEqual(['uploads/u1/in-flight.pdf']);
 });
 
+test('inside the grace, an account keeps only so many uploads with no push, counted across pages', async () => {
+  const paths = ['uploads/u1/1', 'uploads/u1/2', 'uploads/u1/3', 'uploads/u1/4', 'uploads/u1/5', 'uploads/u2/1'];
+  await Promise.all(paths.map(upload));
+  // A push's upload is not pending, so it does not count against the account.
+  await push({ userId: 'u1', title: '1' });
+
+  const grace = { graceMs: 60 * 60 * 1000, pendingMax: 3, pageSize: 2 };
+  expect(await sweepOrphanedUploads(new Date(), grace)).toEqual(['uploads/u1/5']);
+  expect(await remaining()).toEqual(['uploads/u1/1', 'uploads/u1/2', 'uploads/u1/3', 'uploads/u1/4', 'uploads/u2/1']);
+});
+
 test('reads every page', async () => {
   const paths = ['uploads/u1/a', 'uploads/u1/b', 'uploads/u1/c', 'uploads/u2/a', 'uploads/u2/b'];
   await Promise.all(paths.map(upload));

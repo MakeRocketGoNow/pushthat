@@ -35,17 +35,38 @@ service cloud.firestore {
         : null;
     }
 
+    // Pro is a subscription whose expiresAt is ahead of the clock, which the Stripe webhook
+    // keeps in step and a comp sets by hand; nothing a client can write. The same test as
+    // subscriptionActive in functions/src/plan.ts. Each key is tested for before it is
+    // read, since reading a key a map lacks is an error, and an error refuses the write:
+    // a comp is written by hand as {type, expiresAt} alone (docs/billing.md), and reading
+    // its startedAt refused every push after the first, once usageRecords existed.
+    function isPro(user) {
+      return user != null
+        && "subscription" in user.data
+        && "expiresAt" in user.data.subscription
+        && user.data.subscription.expiresAt is timestamp
+        && user.data.subscription.expiresAt > request.time;
+    }
+
     // Helper to get the current billing period key
     function getBillingPeriodKey(userId) {
       let user = getCurrentUser(userId);
       let now = request.time;
 
-      let hasSub = user != null && "subscription" in user.data;
+      // The period is anchored on the day the subscription started while it runs, and on
+      // the day the account was made otherwise: what usageOf in functions/src/plan.ts
+      // does, so the count onNewPushCreated keeps and the check here land in the same
+      // month. Anchoring a lapsed subscription on startedAt, as this once did, put the
+      // two in different months for part of each month, and the check read a count the
+      // function was not adding to.
       // A document made without createdAt (the Chrome extension's first token write used to
       // make one) counts from today, as onNewPushCreated does before it fills the field in.
-      let start = hasSub && user.data.subscription.startedAt != null
+      let start = isPro(user)
+          && "startedAt" in user.data.subscription
+          && user.data.subscription.startedAt is timestamp
         ? user.data.subscription.startedAt
-        : user != null && "createdAt" in user.data
+        : user != null && "createdAt" in user.data && user.data.createdAt is timestamp
           ? user.data.createdAt
           : request.time;
 
@@ -61,13 +82,9 @@ service cloud.firestore {
     }
 
     // The pushes a month each tier allows (docs/billing.md; the same numbers are in
-    // functions/src/plan.ts, and the two are changed together). Pro is
-    // a subscription whose expiresAt is ahead of the clock, which the Stripe webhook keeps
-    // in step and a comp sets by hand; nothing a client can write.
+    // functions/src/plan.ts, and the two are changed together).
     function getUserLimit(user, type) {
-      let hasSub = user != null && "subscription" in user.data;
-      let isActive = hasSub
-        && user.data.subscription.expiresAt > request.time;
+      let isActive = isPro(user);
 
       return (isActive && type == 'url') ? 10000 : // url - pro tier
              (isActive && type == 'file') ? 100 : // file - pro tier
@@ -89,6 +106,9 @@ service cloud.firestore {
         : 0;
     }
 
+    // The count read here is written by onNewPushCreated seconds after each push, so a
+    // burst passes before any of it is counted; the function applies the limit again
+    // where the count is exact and deletes what landed over it (docs/billing.md).
     function isWithinUsageLimit(userId, type) {
       let user = getCurrentUser(userId);
 
@@ -97,6 +117,47 @@ service cloud.firestore {
 
     function isOwnUser(userId) {
       return request.auth != null && request.auth.uid == userId;
+    }
+
+    function isBoundedString(value, max) {
+      return value is string && value.size() <= max;
+    }
+
+    // The shape of a push as every client writes it: the web app, the Chrome extension,
+    // Android (whose retry omits searchTokens, and which writes ext as null for a name
+    // with no extension), iOS and macOS. A list of what a push holds, so a field a
+    // client never writes cannot be added to one, and bounds on each, so no push can be
+    // shaped to break what reads it: onNewPushCreated sends title, url and deviceName
+    // in the notification, whose payload FCM caps at 4 KB, and dropped every one of
+    // the account's device tokens as failed when it ran over. 1500 is Firestore's own
+    // limit on an indexed string, so no push a client could make before is refused
+    // now; the prefixes of 3000 characters of title and URL are at most 3000 tokens.
+    // expiresAt, when the sweep deletes a file push, is onNewPushCreated's alone.
+    function isPushShape(data) {
+      return data.keys().hasOnly(['url', 'userId', 'createdAt', 'title', 'type', 'deviceName', 'searchTokens', 'ext'])
+        && data.type in ['url', 'file']
+        && data.createdAt is timestamp
+        && isBoundedString(data.url, 1500)
+        && isBoundedString(data.title, 1500)
+        && isBoundedString(data.deviceName, 512)
+        && hasValidSearchTokens(data)
+        && (!('ext' in data) || data.ext == null || isBoundedString(data.ext, 64));
+    }
+
+    function hasValidSearchTokens(data) {
+      return !('searchTokens' in data)
+        || (data.searchTokens is list && data.searchTokens.size() <= 3000);
+    }
+
+    // The device tokens a user document may hold. A token is about 160 characters and
+    // the trigger removes the dead ones as sends fail, so a hundred is far past any
+    // real set. The bound on the joined length is what caps the document's size: a
+    // user document a client had grown to Firestore's megabyte would make the trigger's
+    // own write to it fail, and with it the count and the file's expiry, on every push.
+    function isTokenList(tokens) {
+      return tokens is list
+        && tokens.size() <= 100
+        && tokens.join(',').size() <= 51200;
     }
 
     // A client writes only these fields on its own user document. Everything else on it
@@ -111,16 +172,16 @@ service cloud.firestore {
       // the web, fcmTokens from the apps and the Chrome extension.
       allow create: if isOwnUser(userId)
         && request.resource.data.keys().hasOnly(['email', 'createdAt', 'fcmTokens'])
-        && (!('email' in request.resource.data) || request.resource.data.email is string)
+        && (!('email' in request.resource.data) || isBoundedString(request.resource.data.email, 320))
         && (!('createdAt' in request.resource.data) || request.resource.data.createdAt is timestamp)
-        && (!('fcmTokens' in request.resource.data) || request.resource.data.fcmTokens is list);
+        && (!('fcmTokens' in request.resource.data) || isTokenList(request.resource.data.fcmTokens));
 
       // After that, only a device token. createdAt anchors the monthly period the usage is
       // counted in (getBillingPeriodKey), so moving it would move the count onto an emptier
       // month.
       allow update: if isOwnUser(userId)
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['fcmTokens'])
-        && request.resource.data.fcmTokens is list;
+        && isTokenList(request.resource.data.fcmTokens);
 
       // No delete: it would take usageRecords with it and start the period's count again.
 
@@ -142,13 +203,14 @@ service cloud.firestore {
       allow update: if request.auth != null
         && resource.data.userId == request.auth.uid
         && resource.data.type == 'url'
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['title', 'searchTokens']);
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['title', 'searchTokens'])
+        && isBoundedString(request.resource.data.title, 1500)
+        && hasValidSearchTokens(request.resource.data);
 
       allow create: if
         request.auth != null
         && request.resource.data.userId == request.auth.uid
-        && (request.resource.data.type in ['url', 'file'])
-        && !('expiresAt' in request.resource.data)
+        && isPushShape(request.resource.data)
         && isWithinUsageLimit(request.auth.uid, request.resource.data.type);
     }
 
