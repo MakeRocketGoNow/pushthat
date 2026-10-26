@@ -5,19 +5,26 @@ import android.util.Log
 import androidx.annotation.StringRes
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.google.firebase.Firebase
+import com.google.firebase.auth.auth
+import com.makerocketgonow.pushthat.e2ee.AccountKeyStore
 import com.makerocketgonow.pushthat.e2ee.AccountKeys
 import com.makerocketgonow.pushthat.e2ee.KeysChangedException
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * The steps before the push list, kept outside `LoginActivity` so that turning the phone
  * mid-step neither cancels it nor loses where it got to. That matters more than it looks:
  * a registration cancelled after its keys are written and before the recovery key is on
- * screen leaves an account whose recovery key nobody ever saw.
+ * screen leaves an account whose recovery key nobody ever saw. A process that dies is the
+ * same case, which this cannot survive: AccountKeyStore keeps the recovery key until "I
+ * saved it" for that, and [showUnconfirmedRecoveryKey] puts it back on screen.
  */
 class LoginViewModel(application: Application) : AndroidViewModel(application) {
     private val keys = AccountKeys(application)
@@ -65,8 +72,38 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
         if (_state.value.working == null) _state.value = State(Screen.Form)
     }
 
+    /**
+     * The recovery key kept from before the process went (AccountKeyStore), on screen again.
+     * Read off the main thread, as every Keystore call; meanwhile the form is busy, so it
+     * cannot start a sign-in on top. Without one that opens, on as if there were none.
+     */
+    fun showUnconfirmedRecoveryKey(uid: String) {
+        if (_state.value.working != null || _state.value.screen != Screen.Form) return
+        _state.value = State(working = R.string.signing_in)
+        viewModelScope.launch {
+            val app = getApplication<Application>()
+            val recoveryKey = withContext(Dispatchers.IO) { AccountKeyStore.unconfirmedRecoveryKey(app, uid) }
+            _state.value = State(
+                when {
+                    recoveryKey != null -> Screen.RecoveryKey(recoveryKey)
+                    AccountKeyStore.hasKey(app, uid) -> Screen.Done
+                    else -> Screen.Form
+                }
+            )
+        }
+    }
+
+    /**
+     * "I saved it": the kept copy goes, and the list opens if the key is stored. It may not
+     * be: a recovery key is shown even when storing the account key failed (AccountKeys.keep),
+     * and then the form asks for the password, as for any session without a key.
+     */
     fun recoveryKeySaved() {
-        if (_state.value.screen is Screen.RecoveryKey) _state.value = State(Screen.Done)
+        if (_state.value.screen !is Screen.RecoveryKey) return
+        val app = getApplication<Application>()
+        AccountKeyStore.confirmRecoveryKey(app)
+        val uid = Firebase.auth.currentUser?.uid
+        _state.value = State(if (uid != null && AccountKeyStore.hasKey(app, uid)) Screen.Done else Screen.Form)
     }
 
     private fun run(@StringRes working: Int, step: suspend () -> AccountKeys.Outcome) {

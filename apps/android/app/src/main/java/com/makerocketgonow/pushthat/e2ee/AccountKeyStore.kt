@@ -34,6 +34,13 @@ import javax.crypto.spec.GCMParameterSpec
  * the version because a push records the version it was encrypted under and the settings
  * check it before rewrapping.
  *
+ * A recovery key that has been shown and not yet confirmed with "I saved it" is kept here
+ * too, under the same Keystore key, from the moment the account key is stored. The screen
+ * that shows it does not survive the process, and the account key does: without this, a
+ * process that died before "I saved it" would come back to a stored key, go straight to the
+ * list, and leave the account with a recovery wrap nobody ever saw. The app shows it again
+ * on the next launch while it is here, and "I saved it" removes it.
+ *
  * Plain SharedPreferences over Jetpack's EncryptedSharedPreferences, which is deprecated
  * and would add a Keystore-backed layer around a value that is already Keystore-encrypted.
  */
@@ -49,6 +56,8 @@ object AccountKeyStore {
     private const val KEY_UID = "uid"
     private const val KEY_VERSION = "keyVersion"
     private const val KEY_DEVICE_ID = "deviceId"
+    private const val KEY_RECOVERY = "unconfirmedRecoveryKey"
+    private const val KEY_RECOVERY_IV = "unconfirmedRecoveryKeyIv"
 
     /** The account key this install holds, for the account it belongs to. */
     class Stored(val uid: String, val accountKey: ByteArray, val keyVersion: Long)
@@ -57,23 +66,72 @@ object AccountKeyStore {
         context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
     /**
-     * Keeps [accountKey] for [uid]. `commit`, not `apply`: the caller shows the recovery key
-     * or the push list next, and both assume the key is on disk.
+     * Keeps [accountKey] for [uid], with [recoveryKey] (its display form) when one was just
+     * made and is about to be shown, in one write: a key on disk whose recovery key is not
+     * would be the case the class comment describes. A save without one drops any left from
+     * before, since it belonged to the account key this replaces. `commit`, not `apply`: the
+     * caller shows the recovery key or the push list next, and both assume the key is on disk.
      */
     @Synchronized
-    fun save(context: Context, uid: String, accountKey: ByteArray, keyVersion: Long) {
-        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-        // The Keystore picks the IV; it refuses one from the caller for an encrypting key.
-        cipher.init(Cipher.ENCRYPT_MODE, keystoreKey())
-        cipher.updateAAD(aad(uid))
-        val wrapped = cipher.doFinal(accountKey)
-        val saved = prefs(context).edit()
-            .putString(KEY_WRAPPED, E2ee.base64(wrapped))
-            .putString(KEY_IV, E2ee.base64(cipher.iv))
+    fun save(context: Context, uid: String, accountKey: ByteArray, keyVersion: Long, recoveryKey: String? = null) {
+        val (wrapped, iv) = seal(accountKey, aad(uid))
+        val edit = prefs(context).edit()
+            .putString(KEY_WRAPPED, wrapped)
+            .putString(KEY_IV, iv)
             .putString(KEY_UID, uid)
             .putLong(KEY_VERSION, keyVersion)
+        if (recoveryKey == null) {
+            edit.remove(KEY_RECOVERY).remove(KEY_RECOVERY_IV)
+        } else {
+            val (sealedRecovery, recoveryIv) = seal(E2ee.utf8(recoveryKey), recoveryAad(uid))
+            edit.putString(KEY_RECOVERY, sealedRecovery).putString(KEY_RECOVERY_IV, recoveryIv)
+        }
+        if (!edit.commit()) throw IllegalStateException("the account key could not be saved")
+    }
+
+    /**
+     * Keeps a recovery key made for the account key already stored here (Settings, "Show a
+     * new recovery key") until it is confirmed, as [save] does for one made with the key.
+     */
+    @Synchronized
+    fun saveUnconfirmedRecoveryKey(context: Context, uid: String, recoveryKey: String) {
+        val prefs = prefs(context)
+        check(prefs.getString(KEY_UID, null) == uid) { "this install holds no key for the account" }
+        val (sealedRecovery, recoveryIv) = seal(E2ee.utf8(recoveryKey), recoveryAad(uid))
+        val saved = prefs.edit()
+            .putString(KEY_RECOVERY, sealedRecovery)
+            .putString(KEY_RECOVERY_IV, recoveryIv)
             .commit()
-        if (!saved) throw IllegalStateException("the account key could not be saved")
+        if (!saved) throw IllegalStateException("the recovery key could not be saved")
+    }
+
+    /**
+     * Whether a recovery key for [uid] is waiting for "I saved it". From the file alone, as
+     * [hasKey], since the activities route on it in `onCreate`.
+     */
+    @Synchronized
+    fun hasUnconfirmedRecoveryKey(context: Context, uid: String): Boolean {
+        val prefs = prefs(context)
+        return prefs.getString(KEY_UID, null) == uid &&
+            prefs.contains(KEY_RECOVERY) &&
+            prefs.contains(KEY_RECOVERY_IV)
+    }
+
+    /** The recovery key waiting for "I saved it", in its display form, or null. Off the main thread. */
+    @Synchronized
+    fun unconfirmedRecoveryKey(context: Context, uid: String): String? {
+        val prefs = prefs(context)
+        if (prefs.getString(KEY_UID, null) != uid) return null
+        val sealedRecovery = prefs.getString(KEY_RECOVERY, null) ?: return null
+        val recoveryIv = prefs.getString(KEY_RECOVERY_IV, null) ?: return null
+        val bytes = open(sealedRecovery, recoveryIv, recoveryAad(uid)) { confirmRecoveryKey(context) } ?: return null
+        return String(bytes, Charsets.UTF_8)
+    }
+
+    /** "I saved it": the recovery key is the user's to keep now, not this install's. */
+    @Synchronized
+    fun confirmRecoveryKey(context: Context) {
+        prefs(context).edit().remove(KEY_RECOVERY).remove(KEY_RECOVERY_IV).commit()
     }
 
     /**
@@ -111,7 +169,7 @@ object AccountKeyStore {
             prefs.contains(KEY_IV)
     }
 
-    /** On sign-out: the key goes, the install's `deviceId` stays. */
+    /** On sign-out: the key (and any recovery key not yet confirmed) goes, the install's `deviceId` stays. */
     @Synchronized
     fun clear(context: Context) {
         prefs(context).edit()
@@ -119,6 +177,8 @@ object AccountKeyStore {
             .remove(KEY_IV)
             .remove(KEY_UID)
             .remove(KEY_VERSION)
+            .remove(KEY_RECOVERY)
+            .remove(KEY_RECOVERY_IV)
             .commit()
     }
 
@@ -130,6 +190,16 @@ object AccountKeyStore {
         val id = E2ee.newDeviceId()
         prefs.edit().putString(KEY_DEVICE_ID, id).commit()
         return id
+    }
+
+    /** [plain] encrypted under the Keystore key, and its IV, both base64. */
+    private fun seal(plain: ByteArray, aad: ByteArray): Pair<String, String> {
+        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+        // The Keystore picks the IV; it refuses one from the caller for an encrypting key.
+        cipher.init(Cipher.ENCRYPT_MODE, keystoreKey())
+        cipher.updateAAD(aad)
+        val sealed = cipher.doFinal(plain)
+        return E2ee.base64(sealed) to E2ee.base64(cipher.iv)
     }
 
     /**
@@ -165,6 +235,9 @@ object AccountKeyStore {
     // Binds the ciphertext to the account, so a blob and a uid swapped in the file fail on
     // the tag instead of handing one account's key to another.
     private fun aad(uid: String) = E2ee.utf8("pushthat/device/v1:$uid")
+
+    // Its own label, so the two blobs cannot be swapped in the file either.
+    private fun recoveryAad(uid: String) = E2ee.utf8("pushthat/device/v1/unconfirmed-recovery-key:$uid")
 
     private fun existingKeystoreKey(): SecretKey? {
         val keyStore = KeyStore.getInstance(KEYSTORE).apply { load(null) }

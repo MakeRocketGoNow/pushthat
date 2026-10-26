@@ -145,7 +145,7 @@ class AccountKeys(
                         null
                     }
                     if (legacy) updatePassword(firebasePassword)
-                    keep(uid, accountKey, stored.keyVersion)
+                    keep(uid, accountKey, stored.keyVersion, recoveryKey)
                     Outcome.Ready(recoveryKey)
                 }
                 stored != null && stored.hasRecoveryWrap() ->
@@ -295,7 +295,18 @@ class AccountKeys(
             val password = stored.wrapsBy(E2ee.BY_PASSWORD).entries.take(StoredKeys.MAX_WRAPS - 1)
             stored.with(password.associate { it.toPair() } + (E2ee.newWrapId() to recoveryWrap))
         }
-        return E2ee.encodeRecoveryKey(recoveryBytes)
+        val recoveryKey = E2ee.encodeRecoveryKey(recoveryBytes)
+        // Kept until "I saved it", as at sign-up (AccountKeyStore). A failure here is only
+        // logged: the old recovery key has stopped working already, so the new one is shown
+        // either way, and only a process that dies before it is saved would lose it.
+        withContext(Dispatchers.IO) {
+            try {
+                AccountKeyStore.saveUnconfirmedRecoveryKey(appContext, user.uid, recoveryKey)
+            } catch (e: Exception) {
+                Log.w(TAG, "The new recovery key could not be kept until it is confirmed", e)
+            }
+        }
+        return recoveryKey
     }
 
     // -------------------------------------------------------------------------------------
@@ -333,8 +344,9 @@ class AccountKeys(
         // still signs in with the old password and finds its wrap (the legacy + opened case).
         if (legacy) updatePassword(firebasePassword)
         val keyVersion = (written?.get("keyVersion") as? Number)?.toLong() ?: 1L
-        keep(uid, accountKey, keyVersion)
-        return Outcome.Ready(E2ee.encodeRecoveryKey(recoveryBytes))
+        val recoveryKey = E2ee.encodeRecoveryKey(recoveryBytes)
+        keep(uid, accountKey, keyVersion, recoveryKey)
+        return Outcome.Ready(recoveryKey)
     }
 
     /** A new recovery key in place of every recovery wrap, returned in its display form. */
@@ -374,10 +386,26 @@ class AccountKeys(
         user.updatePassword(firebasePassword).await()
     }
 
-    private suspend fun keep(uid: String, accountKey: ByteArray, keyVersion: Long) = withContext(Dispatchers.IO) {
-        AccountKeyStore.save(appContext, uid, accountKey, keyVersion)
-        AccountKeyStore.deviceId(appContext)
-    }
+    /**
+     * Stores the account key, with the [recoveryKey] about to be shown if one was made, which
+     * stays until "I saved it" (AccountKeyStore says why).
+     *
+     * With a recovery key, a failed save is logged and the step goes on: the account's
+     * recovery wrap is written by now, and this is the only time the key exists in a form
+     * the user can save, so it is shown from memory anyway. After "I saved it" the sign-in
+     * screen finds no key here and asks for the password, which opens the wraps just
+     * written. Without one, the failure is the step's, and the user tries again.
+     */
+    private suspend fun keep(uid: String, accountKey: ByteArray, keyVersion: Long, recoveryKey: String? = null) =
+        withContext(Dispatchers.IO) {
+            try {
+                AccountKeyStore.save(appContext, uid, accountKey, keyVersion, recoveryKey)
+            } catch (e: Exception) {
+                if (recoveryKey == null) throw e
+                Log.w(TAG, "The account key could not be stored; its recovery key is shown anyway", e)
+            }
+            AccountKeyStore.deviceId(appContext)
+        }
 
     private suspend fun derive(email: String, password: String): E2ee.Keys =
         withContext(Dispatchers.Default) { E2ee.deriveKeys(email, password) }

@@ -61,9 +61,6 @@ class LoginActivity : AppCompatActivity() {
         auth = Firebase.auth
         viewModel = ViewModelProvider(this)[LoginViewModel::class.java]
 
-        // Signed in with the key here: straight to the list. Signed in without it (an install
-        // that updated while signed in, or a sign-in that stopped partway), the form asks
-        // for the password once instead; see unlockEmail.
         val user = auth.currentUser
         // No session, though the key may still be here: Logout clears it, but a session can
         // also end without it (the password changed on another device revokes the tokens, an
@@ -71,9 +68,21 @@ class LoginActivity : AppCompatActivity() {
         // session comes through here (MainActivity and ShareActivity send it), so the key
         // goes here rather than waiting for the next sign-in to overwrite it.
         if (user == null) AccountKeyStore.clear(this)
-        if (user != null && viewModel.state.value.screen == Screen.Form && AccountKeyStore.hasKey(this, user.uid)) {
-            startMainActivity()
-            return
+
+        // Signed in with the key here: straight to the list. Signed in without it (an install
+        // that updated while signed in, or a sign-in that stopped partway), the form asks
+        // for the password once instead; see unlockEmail. Signed in with a recovery key not
+        // yet confirmed (the process went while it was on screen, here or in Settings): that
+        // first, since nothing else will ever show it again. Only from an idle form: after a
+        // rotation the view model is mid-step or already past it.
+        val idle = viewModel.state.value.let { it.screen == Screen.Form && it.working == null }
+        if (user != null && idle) {
+            if (AccountKeyStore.hasUnconfirmedRecoveryKey(this, user.uid)) {
+                viewModel.showUnconfirmedRecoveryKey(user.uid)
+            } else if (AccountKeyStore.hasKey(this, user.uid)) {
+                startMainActivity()
+                return
+            }
         }
 
         titleText = findViewById(R.id.titleText)

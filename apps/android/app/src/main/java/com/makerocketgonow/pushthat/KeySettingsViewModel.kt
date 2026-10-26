@@ -5,6 +5,7 @@ import android.util.Log
 import androidx.annotation.StringRes
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.makerocketgonow.pushthat.e2ee.AccountKeyStore
 import com.makerocketgonow.pushthat.e2ee.AccountKeys
 import com.makerocketgonow.pushthat.e2ee.KeysChangedException
 import kotlinx.coroutines.CancellationException
@@ -42,9 +43,16 @@ class KeySettingsViewModel(application: Application) : AndroidViewModel(applicat
         State.RecoveryKey(keys.replaceRecoveryKey())
     }
 
-    /** The result has been seen (or the recovery key saved). */
+    /** The result has been seen. */
     fun acknowledge() {
         if (_state.value !is State.Working) _state.value = State.Idle
+    }
+
+    /** "I saved it": the copy kept in case the process went (AccountKeyStore) goes too. */
+    fun recoveryKeySaved() {
+        if (_state.value !is State.RecoveryKey) return
+        AccountKeyStore.confirmRecoveryKey(getApplication())
+        _state.value = State.Idle
     }
 
     private fun run(@StringRes working: Int, step: suspend () -> State) {

@@ -140,9 +140,19 @@ class MainActivity : AppCompatActivity() {
         }
 
         // Signed in, and holding the account key. A session without the key (an install that
-        // updated while signed in) goes to LoginActivity's password prompt before the list.
+        // updated while signed in) goes to LoginActivity's password prompt before the list,
+        // and one with a recovery key not yet confirmed to its recovery key screen, unless
+        // Settings is showing that key here (this is a rotation, not a new process).
+        keySettings = ViewModelProvider(this)[KeySettingsViewModel::class.java]
+        val settingsShowKey = keySettings.state.value.let {
+            it is KeySettingsViewModel.State.RecoveryKey || it is KeySettingsViewModel.State.Working
+        }
         val user = auth.currentUser
-        if (user == null || !AccountKeyStore.hasKey(this, user.uid)) {
+        if (
+            user == null ||
+            !AccountKeyStore.hasKey(this, user.uid) ||
+            (!settingsShowKey && AccountKeyStore.hasUnconfirmedRecoveryKey(this, user.uid))
+        ) {
             startActivity(Intent(this, LoginActivity::class.java))
             finish()
             return
@@ -221,7 +231,6 @@ class MainActivity : AppCompatActivity() {
         val toolbar = findViewById<Toolbar>(R.id.toolbar)
         setSupportActionBar(toolbar)
 
-        keySettings = ViewModelProvider(this)[KeySettingsViewModel::class.java]
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 keySettings.state.collect { renderKeySettings(it) }
@@ -547,7 +556,7 @@ class MainActivity : AppCompatActivity() {
                 val dialog = builder.setView(scroll).setCancelable(false).show()
                 RecoveryKeyView.bind(view, state.recoveryKey) {
                     dialog.dismiss()
-                    keySettings.acknowledge()
+                    keySettings.recoveryKeySaved()
                 }
                 dialog
             }
