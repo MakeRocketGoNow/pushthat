@@ -40,6 +40,7 @@ class LoginActivity : AppCompatActivity() {
     private lateinit var accountEmailText: TextView
     private lateinit var emailInput: EditText
     private lateinit var passwordInput: EditText
+    private lateinit var passwordRuleText: TextView
     private lateinit var forgotPasswordText: TextView
     private lateinit var recoveryInput: EditText
     private lateinit var recoveryKeyView: View
@@ -73,6 +74,8 @@ class LoginActivity : AppCompatActivity() {
         accountEmailText = findViewById(R.id.accountEmailText)
         emailInput = findViewById(R.id.emailInput)
         passwordInput = findViewById(R.id.passwordInput)
+        passwordRuleText = findViewById(R.id.passwordRuleText)
+        passwordRuleText.text = getString(R.string.password_rule, MIN_NEW_PASSWORD_LENGTH)
         forgotPasswordText = findViewById(R.id.forgotPasswordText)
         recoveryInput = findViewById(R.id.recoveryInput)
         recoveryKeyView = findViewById(R.id.recoveryKeyView)
@@ -134,6 +137,7 @@ class LoginActivity : AppCompatActivity() {
 
         emailInput.isVisible = form && !unlocking
         passwordInput.isVisible = form
+        passwordRuleText.isVisible = form && !unlocking
         forgotPasswordText.isVisible = form && !unlocking
         recoveryInput.isVisible = recovery
 

@@ -77,6 +77,18 @@
       android:inputType="textPassword"
       android:autofillHints="password" />
 
+    <!-- The sign-up rule, said before Register rather than only when it fails, as the web
+         and iOS do. Shown on the sign-in form too, which is also the registration form;
+         LoginActivity fills in the number and hides it on the unlock prompt, where the
+         password already exists. -->
+    <TextView
+      android:id="@+id/passwordRuleText"
+      style="@style/Widget.LinkShare.Body"
+      android:layout_width="match_parent"
+      android:layout_height="wrap_content"
+      android:layout_marginTop="8dp"
+      android:textSize="14sp" />
+
     <TextView
       android:id="@+id/forgotPasswordText"
       android:layout_width="wrap_content"
