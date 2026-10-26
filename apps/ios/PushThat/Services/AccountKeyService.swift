@@ -88,8 +88,10 @@ enum AccountKeyService {
     ///
     /// `build` may run more than once, as Firestore retries a transaction that raced
     /// another write, so it must not keep state between runs. Its error is carried out
-    /// beside the transaction rather than through Firestore's error pointer, so that the
-    /// caller gets the `KeyError` it threw and not a bridged `NSError`.
+    /// beside the transaction as well as through Firestore's error pointer: setting the
+    /// pointer is what stops Firestore committing, but it makes `runTransaction` throw a
+    /// bridged `NSError`, so the catch below swaps the `KeyError` the closure threw back in.
+    /// Without that, a caller matching `KeyError.keysChanged` would never see it.
     @discardableResult
     static func write(uid: String, email: String, build: @escaping (StoredE2ee?) throws -> [String: Any]) async throws -> StoredE2ee {
         final class Outcome: @unchecked Sendable {
@@ -98,28 +100,31 @@ enum AccountKeyService {
         }
         let outcome = Outcome()
         let ref = userRef(uid)
-        _ = try await db.runTransaction { transaction, errorPointer in
-            outcome.error = nil
-            do {
-                let snapshot = try transaction.getDocument(ref)
-                let e2ee = try build(StoredE2ee(snapshot.data()?["e2ee"]))
-                if let wraps = e2ee["wraps"] as? [String: Any], wraps.count > maxWraps {
-                    throw KeyError.tooManyWraps
+        do {
+            _ = try await db.runTransaction { transaction, errorPointer in
+                outcome.error = nil
+                do {
+                    let snapshot = try transaction.getDocument(ref)
+                    let e2ee = try build(StoredE2ee(snapshot.data()?["e2ee"]))
+                    if let wraps = e2ee["wraps"] as? [String: Any], wraps.count > maxWraps {
+                        throw KeyError.tooManyWraps
+                    }
+                    if snapshot.exists {
+                        transaction.updateData(["e2ee": e2ee], forDocument: ref)
+                    } else {
+                        transaction.setData(UserDocument.newUserData(email: email, e2ee: e2ee), forDocument: ref)
+                    }
+                    outcome.written = e2ee
+                    return nil
+                } catch {
+                    outcome.error = error
+                    errorPointer?.pointee = error as NSError
+                    return nil
                 }
-                if snapshot.exists {
-                    transaction.updateData(["e2ee": e2ee], forDocument: ref)
-                } else {
-                    transaction.setData(UserDocument.newUserData(email: email, e2ee: e2ee), forDocument: ref)
-                }
-                outcome.written = e2ee
-                return nil
-            } catch {
-                outcome.error = error
-                errorPointer?.pointee = error as NSError
-                return nil
             }
+        } catch {
+            throw outcome.error ?? error
         }
-        if let error = outcome.error { throw error }
         guard let written = StoredE2ee(outcome.written) else { throw KeyError.noKeys }
         return written
     }
