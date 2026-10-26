@@ -112,10 +112,10 @@ functions' suites deliver signed events to the webhook over HTTP and point
 `STRIPE_API_URL` at a stand-in for Stripe's API, so nothing reaches Stripe.
 
 CI (`.github/workflows/ci.yml`) runs the functions' unit tests, the web app's lint and
-builds, the Android unit tests and the encryption reference's tests on every pull request. The emulator suites run only in
-the deploy that follows a merge, and the Xcode builds not at all, so run them yourself when
-a change reaches the rules, the functions or the Apple apps: by the time CI runs them, the
-change is on `main`.
+builds, the Android unit tests and the encryption reference's tests on every pull request.
+The emulator suites run only in the deploy that follows a merge, and the Xcode builds not
+at all, so run them yourself when a change reaches the rules, the functions or the Apple
+apps: by the time CI runs them, the change is on `main`.
 
 **Merging to `main` deploys.** A merge that touches `functions/` or `apps/web/` goes to
 production once its checks pass ([docs/deploying.md](docs/deploying.md)), so a pull request

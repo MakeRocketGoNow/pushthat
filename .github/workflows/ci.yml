@@ -1,10 +1,11 @@
 name: CI
 
 # The checks that need nothing but the repository (the functions' unit tests, the web app's
-# lint and builds, the Android unit tests, the encryption reference's tests) run on every pull request and every push to
-# `main`. A push to `main` then deploys whatever it changed to the `push-that` Firebase
-# project, once the check for that folder has passed: see docs/deploying.md for the jobs,
-# the Google Cloud setup they need, and how to deploy by hand.
+# lint and builds, the Android unit tests, the encryption reference's tests) run on every
+# pull request and every push to `main`. A push to `main` then deploys whatever it changed
+# to the `push-that` Firebase project, once the check for that folder has passed: see
+# docs/deploying.md for the jobs, the Google Cloud setup they need, and how to deploy by
+# hand.
 #
 # The emulator suites (`npm run test:emulator` in functions, `npm run test:rules` in
 # apps/web) need a Java runtime and the Firebase CLI with the emulators downloaded, so they
