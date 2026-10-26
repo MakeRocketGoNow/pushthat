@@ -79,16 +79,6 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
      * Read off the main thread, as every Keystore call; meanwhile the form is busy, so it
      * cannot start a sign-in on top. Without one that opens, on as if there were none.
      */
-    /**
-     * Set when a recovery key is waiting but the Keystore could not open it this time (the
-     * key store keeps it for a passing failure). The list opens anyway and is told not to
-     * send the user straight back here: that check finds the key still waiting, and the two
-     * activities would hand the user back and forth for as long as the Keystore kept failing,
-     * with neither on screen long enough to sign out. The next launch tries again.
-     */
-    var recoveryKeyUnavailable = false
-        private set
-
     fun showUnconfirmedRecoveryKey(uid: String) {
         if (_state.value.working != null || _state.value.screen != Screen.Form) return
         _state.value = State(working = R.string.signing_in)
@@ -97,7 +87,7 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
             val recoveryKey = withContext(Dispatchers.IO) { AccountKeyStore.unconfirmedRecoveryKey(app, uid) }
             _state.value = State(
                 when {
-                    recoveryKey != null -> Screen.RecoveryKey(recoveryKey)
+                    recoveryKey != null -> Screen.RecoveryKey(recoveryKey).also { recoveryKeyUnavailable = false }
                     AccountKeyStore.hasKey(app, uid) -> Screen.Done.also {
                         recoveryKeyUnavailable = AccountKeyStore.hasUnconfirmedRecoveryKey(app, uid)
                     }
@@ -171,7 +161,23 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    private companion object {
-        const val TAG = "LoginViewModel"
+    companion object {
+        private const val TAG = "LoginViewModel"
+
+        /**
+         * Set when a recovery key is waiting but the Keystore could not open it this time (the
+         * key store keeps it for a passing failure). The list opens anyway and does not send
+         * the user straight back here: that check finds the key still waiting, and the two
+         * activities would hand the user back and forth for as long as the Keystore kept
+         * failing, with neither on screen long enough to sign out.
+         *
+         * In memory for the process, not on the intent: Android restores an activity with its
+         * original intent after the process is killed, and a flag carried there would hide
+         * the waiting key (the user's only copy) for as long as the task lived. A new process
+         * tries the Keystore again, and a key that opens clears it.
+         */
+        @Volatile
+        var recoveryKeyUnavailable = false
+            private set
     }
 }
