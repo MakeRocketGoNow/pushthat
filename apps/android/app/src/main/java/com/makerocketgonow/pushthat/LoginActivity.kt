@@ -199,7 +199,7 @@ class LoginActivity : AppCompatActivity() {
             is Screen.Recovery -> {
                 val text = recoveryInput.text.toString()
                 if (text.isBlank()) {
-                    recoveryInput.error = getString(R.string.wrong_recovery_key)
+                    recoveryInput.error = getString(R.string.recovery_key_required)
                     return
                 }
                 viewModel.recover(text)
