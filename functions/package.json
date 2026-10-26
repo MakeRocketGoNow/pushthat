@@ -1,0 +1,39 @@
+{
+  "name": "functions",
+  "scripts": {
+    "lint": "eslint .",
+    "build": "tsc",
+    "build:watch": "tsc --watch",
+    "serve": "npm run build && firebase emulators:start --only functions",
+    "shell": "npm run build && firebase functions:shell",
+    "start": "npm run shell",
+    "deploy": "npm run build && firebase deploy --only functions",
+    "logs": "firebase functions:log",
+    "test": "jest",
+    "pretest:emulator": "node test/emulator/check-ports.mjs",
+    "test:emulator": "firebase emulators:exec --only firestore,storage --project demo-pushthat 'jest --config jest.emulator.config.js --silent'",
+    "test:watch": "jest --watch"
+  },
+  "engines": {
+    "node": "22"
+  },
+  "main": "lib/index.js",
+  "dependencies": {
+    "firebase-admin": "^13.0.2",
+    "firebase-functions": "^6.0.1",
+    "whatwg-fetch": "^3.6.20"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.19.0",
+    "@trivago/prettier-plugin-sort-imports": "^5.2.2",
+    "@types/jest": "^29.5.12",
+    "eslint": "^9.19.0",
+    "firebase-functions-test": "^3.1.0",
+    "globals": "^15.14.0",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.1.2",
+    "typescript": "^5.7.3",
+    "typescript-eslint": "^8.23.0"
+  },
+  "private": true
+}

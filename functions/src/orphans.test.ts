@@ -1,0 +1,76 @@
+import { ORPHAN_GRACE_MS, orphanedUploads, uploadPathsOf, uploaderOf } from './orphans';
+
+const NOW = new Date('2026-10-25T12:00:00Z');
+const HOUR = 60 * 60 * 1000;
+const ago = (ms: number) => new Date(NOW.getTime() - ms).toISOString();
+const OLD = ago(ORPHAN_GRACE_MS + HOUR);
+
+describe('the paths a push refers to', () => {
+  test('its title under the uploader, as onPushRecordDeleted deletes it', () =>
+    expect(uploadPathsOf({ userId: 'u1', title: 'photo.jpg' })).toEqual(['uploads/u1/photo.jpg']));
+  test('and the path in its download URL, decoded', () =>
+    expect(
+      uploadPathsOf({
+        userId: 'u1',
+        title: 'photo.jpg',
+        url: 'https://firebasestorage.googleapis.com/v0/b/push-that.appspot.com/o/uploads%2Fu1%2Fmy%20photo%20(1).jpg?alt=media&token=abc',
+      })
+    ).toEqual(['uploads/u1/photo.jpg', 'uploads/u1/my photo (1).jpg']));
+  test('a URL that is not a Storage download URL adds nothing', () =>
+    expect(uploadPathsOf({ userId: 'u1', title: 'a.txt', url: 'https://example.com/a.txt' })).toEqual([
+      'uploads/u1/a.txt',
+    ]));
+  test('a malformed escape in the URL adds nothing', () =>
+    expect(uploadPathsOf({ url: 'https://firebasestorage.googleapis.com/v0/b/x/o/uploads%2Fu1%2F%E0' })).toEqual([]));
+  test('no title or user adds nothing from them', () => expect(uploadPathsOf({ userId: 'u1' })).toEqual([]));
+});
+
+describe('the uploader', () => {
+  test('is the folder under uploads/', () => expect(uploaderOf('uploads/u1/a.txt')).toBe('u1'));
+  test('is none for the folder itself, deeper paths or other prefixes', () => {
+    expect(uploaderOf('uploads/u1/')).toBeUndefined();
+    expect(uploaderOf('uploads/u1')).toBeUndefined();
+    expect(uploaderOf('uploads/u1/a/b.txt')).toBeUndefined();
+    expect(uploaderOf('other/u1/a.txt')).toBeUndefined();
+  });
+});
+
+describe('the orphans', () => {
+  const referenced = new Set(['uploads/u1/kept.jpg']);
+
+  test('an old upload no push names is one', () =>
+    expect(orphanedUploads([{ name: 'uploads/u1/lost.jpg', timeCreated: OLD }], referenced, NOW)).toEqual([
+      'uploads/u1/lost.jpg',
+    ]));
+  test('an upload a push names is not', () =>
+    expect(orphanedUploads([{ name: 'uploads/u1/kept.jpg', timeCreated: OLD }], referenced, NOW)).toEqual([]));
+  test('an upload inside the grace period is not, since its push may yet come', () =>
+    expect(orphanedUploads([{ name: 'uploads/u1/new.jpg', timeCreated: ago(HOUR) }], referenced, NOW)).toEqual([]));
+  test('an upload exactly at the grace period is one', () =>
+    expect(
+      orphanedUploads([{ name: 'uploads/u1/edge.jpg', timeCreated: ago(ORPHAN_GRACE_MS) }], referenced, NOW)
+    ).toEqual(['uploads/u1/edge.jpg']));
+  test('the grace can be given', () =>
+    expect(
+      orphanedUploads([{ name: 'uploads/u1/new.jpg', timeCreated: ago(2 * HOUR) }], referenced, NOW, HOUR)
+    ).toEqual(['uploads/u1/new.jpg']));
+  test('an upload with no readable creation time is kept', () => {
+    expect(orphanedUploads([{ name: 'uploads/u1/a.jpg' }], referenced, NOW)).toEqual([]);
+    expect(orphanedUploads([{ name: 'uploads/u1/a.jpg', timeCreated: 'soon' }], referenced, NOW)).toEqual([]);
+  });
+  test('a name pushed by another user does not keep this one', () =>
+    expect(orphanedUploads([{ name: 'uploads/u2/kept.jpg', timeCreated: OLD }], referenced, NOW)).toEqual([
+      'uploads/u2/kept.jpg',
+    ]));
+  test('anything not at uploads/{uid}/{name} is left alone', () =>
+    expect(
+      orphanedUploads(
+        [
+          { name: 'uploads/u1/', timeCreated: OLD },
+          { name: 'uploads/u1/a/b.jpg', timeCreated: OLD },
+        ],
+        referenced,
+        NOW
+      )
+    ).toEqual([]));
+});
