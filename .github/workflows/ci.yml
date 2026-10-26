@@ -70,6 +70,8 @@ jobs:
           cache-dependency-path: apps/web/package-lock.json
       - run: npm ci
       - run: npm run lint
+      # The encryption keys against the reference's vectors (docs/e2ee.md); plain Node.
+      - run: npm run test:vectors
       - run: npm run build
       # The extension builds without VITE_AXIOM_TOKEN and then logs to the console only,
       # which is what a fork gets. Its bundle is not uploaded from here.
