@@ -29,6 +29,7 @@ import com.makerocketgonow.pushthat.e2ee.E2ee
 import com.makerocketgonow.pushthat.e2ee.PushContent
 import com.makerocketgonow.pushthat.e2ee.PushDocument
 import com.makerocketgonow.pushthat.e2ee.PushKeys
+import com.makerocketgonow.pushthat.e2ee.PushMigration
 import android.content.ClipboardManager
 import android.content.ClipData
 import android.widget.Toast
@@ -155,6 +156,9 @@ class MainActivity : AppCompatActivity() {
             return
         }
         keys = pushKeys
+        // The account's plaintext pushes, encrypted in place in the background. Here, since
+        // this is where every start with a key and every sign-in or unlock arrives.
+        PushMigration.startOnce(pushKeys)
 
         pushRecyclerView = findViewById(R.id.pushRecyclerView)
         swipeRefreshLayout = findViewById(R.id.swipeRefreshLayout)
