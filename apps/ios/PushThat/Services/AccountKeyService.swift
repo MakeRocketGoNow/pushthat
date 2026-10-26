@@ -84,7 +84,7 @@ enum AccountKeyService {
     /// version. If the user document does not exist yet it is created here with `email`,
     /// `createdAt` and the keys: another client (the extension, a token write) can create
     /// it first, which is why this is a transaction and not a blind set. The web app's
-    /// `writeKeys` in apps/web/src/services/passwordReset.ts does the same.
+    /// `writeKeys` in apps/web/src/services/accountKeys.ts does the same.
     ///
     /// `build` may run more than once, as Firestore retries a transaction that raced
     /// another write, so it must not keep state between runs. Its error is carried out
