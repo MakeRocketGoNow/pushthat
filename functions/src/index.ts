@@ -16,6 +16,7 @@ import { HttpsError, onCall } from 'firebase-functions/v2/https';
 import 'whatwg-fetch';
 
 import { deadTokens } from './notifications';
+import { storagePathOf } from './orphans';
 import { pageTitleOf } from './title';
 import { recordPush } from './usage';
 
@@ -66,10 +67,17 @@ export const onPushRecordDeleted = onDocumentDeleted('pushes/{pushId}', async (e
       return;
     }
 
+    // `objectPath` on an encrypted push, the title on a plaintext one (orphans.ts).
+    const path = storagePathOf(deletedPush);
+    if (!path) {
+      logger.warn(`Deleted file push ${event.params.pushId} names no stored object`);
+      return;
+    }
+    storagePath = path;
+
     // Get storage reference
     const storage = getStorage();
     const bucket = storage.bucket();
-    storagePath = `uploads/${deletedPush.userId}/${deletedPush.title}`;
     const file = bucket.file(storagePath);
 
     // Check if file exists before attempting to delete

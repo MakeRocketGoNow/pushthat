@@ -1,4 +1,11 @@
-import { ORPHAN_GRACE_MS, ORPHAN_PENDING_PER_USER, orphanedUploads, uploadPathsOf, uploaderOf } from './orphans';
+import {
+  ORPHAN_GRACE_MS,
+  ORPHAN_PENDING_PER_USER,
+  orphanedUploads,
+  storagePathOf,
+  uploadPathsOf,
+  uploaderOf,
+} from './orphans';
 
 const NOW = new Date('2026-10-25T12:00:00Z');
 const HOUR = 60 * 60 * 1000;
@@ -23,6 +30,38 @@ describe('the paths a push refers to', () => {
   test('a malformed escape in the URL adds nothing', () =>
     expect(uploadPathsOf({ url: 'https://firebasestorage.googleapis.com/v0/b/x/o/uploads%2Fu1%2F%E0' })).toEqual([]));
   test('no title or user adds nothing from them', () => expect(uploadPathsOf({ userId: 'u1' })).toEqual([]));
+  test("an encrypted push's objectPath", () =>
+    expect(uploadPathsOf({ userId: 'u1', objectPath: 'uploads/u1/AAAA', enc: { v: 1 } })).toEqual(['uploads/u1/AAAA']));
+  test('an encrypted push holds nothing by a title or URL it should not have', () =>
+    expect(
+      uploadPathsOf({
+        userId: 'u1',
+        title: 'a.pdf',
+        url: 'https://firebasestorage.googleapis.com/v0/b/x/o/uploads%2Fu1%2Fa.pdf',
+        enc: { v: 1 },
+      })
+    ).toEqual([]));
+  test("a migrated push's objectPath, which is its old title's path", () =>
+    expect(uploadPathsOf({ userId: 'u1', objectPath: 'uploads/u1/a.pdf', enc: { v: 1 } })).toEqual([
+      'uploads/u1/a.pdf',
+    ]));
+  test("an objectPath under another account's folder is not the push's", () =>
+    expect(uploadPathsOf({ userId: 'u1', objectPath: 'uploads/u2/AAAA', enc: { v: 1 } })).toEqual([]));
+});
+
+describe('the object a deleted file push takes with it', () => {
+  test("an encrypted push's objectPath", () =>
+    expect(storagePathOf({ userId: 'u1', objectPath: 'uploads/u1/AAAA', enc: { v: 1 } })).toBe('uploads/u1/AAAA'));
+  test("a plaintext push's title under its uploader", () =>
+    expect(storagePathOf({ userId: 'u1', title: 'photo.jpg' })).toBe('uploads/u1/photo.jpg'));
+  test('an encrypted push with no objectPath names nothing, title or not', () =>
+    expect(storagePathOf({ userId: 'u1', title: 'photo.jpg', enc: { v: 1 } })).toBeUndefined());
+  test("an objectPath outside the push's own folder names nothing", () => {
+    expect(storagePathOf({ userId: 'u1', objectPath: 'uploads/u2/AAAA', enc: { v: 1 } })).toBeUndefined();
+    expect(storagePathOf({ userId: 'u1', objectPath: 'uploads/u1/a/b', enc: { v: 1 } })).toBeUndefined();
+    expect(storagePathOf({ userId: 'u1', objectPath: 'other/u1/AAAA', enc: { v: 1 } })).toBeUndefined();
+  });
+  test('a push with no user names nothing', () => expect(storagePathOf({ title: 'photo.jpg' })).toBeUndefined());
 });
 
 describe('the uploader', () => {

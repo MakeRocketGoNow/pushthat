@@ -20,9 +20,11 @@ import { onSchedule } from 'firebase-functions/v2/scheduler';
  * size, for the length of the grace, and serve them through their download URLs
  * meanwhile. Beyond the cap the rest go at once, whatever their age.
  *
- * A push refers to an object by its path, `uploads/${userId}/${title}`, the path
- * `onPushRecordDeleted` deletes, and also by the path in its download URL; either keeps
- * the object, so a push whose title and URL disagree never loses its file. The pushes
+ * An encrypted push (docs/e2ee.md) refers to its object by `objectPath`, since the object
+ * has a random name and the push has no plaintext title or URL. A plaintext push refers
+ * to it by its path, `uploads/${userId}/${title}`, the path `onPushRecordDeleted`
+ * deletes, and also by the path in its download URL; either keeps the object, so a push
+ * whose title and URL disagree never loses its file. The pushes
  * are read once per user with objects, by `userId` and `type`, two equality filters
  * that need no composite index. A file push with no `userId` (none is made now) holds no
  * object, since neither `onPushRecordDeleted` nor this can say whose it is, and its file
@@ -66,9 +68,53 @@ export interface StoredObject {
   timeCreated?: string;
 }
 
-/** The upload paths a push refers to: from its title, and from its download URL. */
-export function uploadPathsOf(push: { userId?: unknown; title?: unknown; url?: unknown }): string[] {
+/** A push as far as its stored object goes: the fields that say where the object is. */
+export interface FilePush {
+  userId?: unknown;
+  title?: unknown;
+  url?: unknown;
+  objectPath?: unknown;
+  enc?: unknown;
+}
+
+/**
+ * The object an encrypted push names in `objectPath`, when it is one of its owner's
+ * uploads. The rules allow nothing else, and this checks again so that a document written
+ * past them (by hand, or by a rule that regressed) cannot point the delete trigger at
+ * another account's file.
+ */
+function objectPathOf(push: FilePush): string | undefined {
+  return typeof push.objectPath === 'string' &&
+    typeof push.userId === 'string' &&
+    uploaderOf(push.objectPath) === push.userId
+    ? push.objectPath
+    : undefined;
+}
+
+/**
+ * The object `onPushRecordDeleted` deletes with a file push: `objectPath` when the push
+ * has one, and otherwise, for a plaintext push only, the path its title names. A push with
+ * `enc` and no usable `objectPath` names nothing; its title, if one were there, is not
+ * where its object is.
+ */
+export function storagePathOf(push: FilePush): string | undefined {
+  const objectPath = objectPathOf(push);
+  if (objectPath) return objectPath;
+  if (push.enc !== undefined) return undefined;
+  return typeof push.userId === 'string' && typeof push.title === 'string'
+    ? `uploads/${push.userId}/${push.title}`
+    : undefined;
+}
+
+/**
+ * The upload paths a push refers to: `objectPath` when it has one, and for a plaintext
+ * push also the path from its title and the path in its download URL.
+ */
+export function uploadPathsOf(push: FilePush): string[] {
   const paths: string[] = [];
+  const objectPath = objectPathOf(push);
+  if (objectPath) paths.push(objectPath);
+  if (push.enc !== undefined) return paths;
   if (typeof push.userId === 'string' && typeof push.title === 'string') {
     paths.push(`uploads/${push.userId}/${push.title}`);
   }
@@ -171,7 +217,9 @@ export async function sweepOrphanedUploads(
             .collection('pushes')
             .where('userId', '==', uid)
             .where('type', '==', 'file')
-            .select('userId', 'title', 'url')
+            // `enc.v` rather than `enc`, which is all a push needs to show it is
+            // encrypted, without reading its ciphertext.
+            .select('userId', 'title', 'url', 'objectPath', 'enc.v')
             .get();
           referencedBy.set(uid, new Set(pushes.docs.flatMap((doc) => uploadPathsOf(doc.data()))));
         })
