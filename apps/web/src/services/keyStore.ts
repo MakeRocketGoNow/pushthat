@@ -44,7 +44,22 @@ function database(): Promise<IDBDatabase> {
   opening ??= new Promise<IDBDatabase>((resolve, reject) => {
     const request = indexedDB.open(DB_NAME, 1);
     request.onupgradeneeded = () => request.result.createObjectStore(STORE);
-    request.onsuccess = () => resolve(request.result);
+    request.onsuccess = () => {
+      const db = request.result;
+      // The connection is kept for the page's life, so it has to let go when asked: a
+      // later build opening a new version in another tab waits until every open
+      // connection closes, and a tab left open for days would hold it up.
+      db.onversionchange = () => {
+        db.close();
+        opening = undefined;
+      };
+      // The browser can close it under us (site data cleared); the next call opens anew
+      // rather than failing on a dead connection until the page is reloaded.
+      db.onclose = () => {
+        opening = undefined;
+      };
+      resolve(db);
+    };
     request.onerror = () => reject(request.error);
   }).catch((error) => {
     // A failed open is not cached, so the next call tries again.
