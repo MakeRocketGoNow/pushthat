@@ -40,6 +40,22 @@ export interface LoadedAccountKey {
 
 let opening: Promise<IDBDatabase> | undefined;
 
+// IndexedDB says nothing to other tabs when a record changes, so a tab that looked before
+// another tab's sign-in stored the key would keep asking for a password. Every write is
+// announced here instead. One channel for sending and listening, since a channel does not
+// hear its own messages; missing where the browser has no BroadcastChannel.
+const channel = typeof BroadcastChannel === 'undefined' ? undefined : new BroadcastChannel(DB_NAME);
+
+function announce() {
+  channel?.postMessage('changed');
+}
+
+/** Calls `listener` when another tab (or the extension's worker) changes the stored key. */
+export function onAccountKeyChanged(listener: () => void): () => void {
+  channel?.addEventListener('message', listener);
+  return () => channel?.removeEventListener('message', listener);
+}
+
 function database(): Promise<IDBDatabase> {
   opening ??= new Promise<IDBDatabase>((resolve, reject) => {
     const request = indexedDB.open(DB_NAME, 1);
@@ -88,6 +104,7 @@ async function run<T>(mode: IDBTransactionMode, use: (store: IDBObjectStore) => 
 export async function saveAccountKey(uid: string, accountKey: Uint8Array, recoveryKey?: string): Promise<void> {
   const stored: StoredAccountKey = { uid, key: await accountBaseKey(accountKey), ...(recoveryKey && { recoveryKey }) };
   await run('readwrite', (store) => store.put(stored, ACCOUNT));
+  announce();
 }
 
 /** The stored account key, if there is one and it is `uid`'s, with an unconfirmed recovery key. */
@@ -112,11 +129,13 @@ export async function confirmRecoveryKey(uid: string): Promise<void> {
     transaction.onerror = () => reject(transaction.error);
     transaction.onabort = () => reject(transaction.error);
   });
+  announce();
 }
 
 /** At sign-out. The device id stays: it belongs to the install, not the account. */
 export async function clearAccountKey(): Promise<void> {
   await run('readwrite', (store) => store.delete(ACCOUNT));
+  announce();
 }
 
 /** This install's device id, made on first use. */

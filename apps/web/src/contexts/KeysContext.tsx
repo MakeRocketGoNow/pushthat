@@ -4,7 +4,13 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState } f
 import { auth } from '@/config/firebase';
 import { useAuth } from '@/contexts/AuthContext';
 import { KeysChangedError, WrongRecoveryKeyError } from '@/services/accountKeys';
-import { type LoadedAccountKey, clearAccountKey, confirmRecoveryKey, loadAccountKey } from '@/services/keyStore';
+import {
+  type LoadedAccountKey,
+  clearAccountKey,
+  confirmRecoveryKey,
+  loadAccountKey,
+  onAccountKeyChanged,
+} from '@/services/keyStore';
 import * as signInService from '@/services/signIn';
 import { type KeySession, type KeysResult } from '@/services/signIn';
 
@@ -99,6 +105,22 @@ export function KeysProvider({ children }: { children: React.ReactNode }) {
       current = false;
     };
   }, [uid]);
+
+  // Another tab stored the key this tab is asking the password for: take it. Only from
+  // the password prompt; the other steps are in the middle of something of their own,
+  // and a sign-out reaches every tab through the auth state.
+  useEffect(() => {
+    if (!uid || step.name !== 'unlock') return;
+    return onAccountKeyChanged(() => {
+      if (flowing.current) return;
+      loadAccountKey(uid).then(
+        (stored) => {
+          if (stored && !flowing.current) setStep(stepFor(stored));
+        },
+        (error) => console.error('Could not read the account key:', error)
+      );
+    });
+  }, [uid, step.name]);
 
   // A sign-in, a registration or an unlock: anything that may sign in partway through.
   const flow = useCallback(async (action: () => Promise<KeysResult>, signedInAlready: boolean) => {
