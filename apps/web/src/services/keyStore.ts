@@ -22,6 +22,20 @@ interface StoredAccountKey {
   /** The account the key belongs to, so another account signing in never picks it up. */
   uid: string;
   key: CryptoKey;
+  /**
+   * The account's `e2ee.keyVersion` the key was opened at, which every push records. Kept
+   * here rather than read from the user document at push time: after a reset elsewhere the
+   * document has moved on and this key has not, and a push labelled with the new version
+   * but sealed under the old key is one no device could open. With the stored version the
+   * rules refuse it instead. A key saved before phase 4 has none (see pushes.ts).
+   */
+  keyVersion?: number;
+}
+
+/** The stored key with the version it belongs to. */
+export interface AccountKey {
+  key: CryptoKey;
+  keyVersion?: number;
 }
 
 let opening: Promise<IDBDatabase> | undefined;
@@ -53,15 +67,22 @@ async function run<T>(mode: IDBTransactionMode, use: (store: IDBObjectStore) => 
 }
 
 /** Keeps `accountKey` for `uid` as a key that cannot be exported. The caller drops the bytes. */
-export async function saveAccountKey(uid: string, accountKey: Uint8Array): Promise<void> {
-  const stored: StoredAccountKey = { uid, key: await accountBaseKey(accountKey) };
+export async function saveAccountKey(uid: string, accountKey: Uint8Array, keyVersion: number): Promise<void> {
+  const stored: StoredAccountKey = { uid, key: await accountBaseKey(accountKey), keyVersion };
   await run('readwrite', (store) => store.put(stored, ACCOUNT));
 }
 
-/** The stored account key, if there is one and it is `uid`'s. */
-export async function loadAccountKey(uid: string): Promise<CryptoKey | undefined> {
+/** The stored account key and its version, if there is one and it is `uid`'s. */
+export async function loadAccountKey(uid: string): Promise<AccountKey | undefined> {
   const stored = await run<StoredAccountKey | undefined>('readonly', (store) => store.get(ACCOUNT));
-  return stored?.uid === uid ? stored.key : undefined;
+  return stored?.uid === uid ? { key: stored.key, keyVersion: stored.keyVersion } : undefined;
+}
+
+/** Records the version of a key saved before versions were kept, once it has been read. */
+export async function rememberKeyVersion(uid: string, keyVersion: number): Promise<void> {
+  const stored = await run<StoredAccountKey | undefined>('readonly', (store) => store.get(ACCOUNT));
+  if (stored?.uid !== uid || stored.keyVersion !== undefined) return;
+  await run('readwrite', (store) => store.put({ ...stored, keyVersion }, ACCOUNT));
 }
 
 /** At sign-out. The device id stays: it belongs to the install, not the account. */
