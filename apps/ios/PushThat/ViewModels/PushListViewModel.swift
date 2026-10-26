@@ -43,6 +43,13 @@ class PushListViewModel: ObservableObject {
 
     init() {
         Task { await loadPushes() }
+        // The list is what opens once the account key is on this device, at start and right
+        // after a sign-in or unlock, so it is where the plaintext pushes start moving.
+        if let uid = Auth.auth().currentUser?.uid {
+            Task.detached(priority: .background) {
+                await PushMigration.shared.runIfNeeded(uid: uid)
+            }
+        }
         setupPushNotificationListener()
     }
 
