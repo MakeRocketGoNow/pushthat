@@ -245,7 +245,7 @@ Small, next to the clients:
 Each phase is shippable on its own; the rules do not require `enc` until the last.
 
 1. **Reference and vectors.** The Node implementation and `vectors.json` in `packages/push-test`.
-2. **Server, both shapes.** The function changes above with legacy fallbacks; rules that accept both shapes; the reset action URL and the `/reset` page.
+2. **Server, both shapes.** The function changes above with legacy fallbacks; rules that accept both shapes; the reset action URL and the `/reset` page. The page ships here, but the action URL is pointed at it by hand only once phase 3's clients are out ([deploying](deploying.md), What stays manual), since a reset through it sets a Firebase password that a client from before phase 3 cannot sign in with.
 3. **Keys.** Sign-in, registration, the legacy fallback and the password migration on all five clients, each with a vector test. Users see no change yet beyond the recovery key at sign-up.
 4. **Pushes.** The envelope, files, the blind index, the receive paths and the push migration on all five clients; the iOS notification service extension.
 5. **Require it.** Rules refuse plaintext pushes; `getPageTitle` and the plaintext FCM fields are removed; the "Encrypted" copy and the security page go up.
