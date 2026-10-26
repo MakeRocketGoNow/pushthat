@@ -37,6 +37,20 @@ const alice = () => env.authenticatedContext('alice').firestore();
 const aliceDoc = () => doc(alice(), 'users/alice');
 const seed = (data) => env.withSecurityRulesDisabled((c) => setDoc(doc(c.firestore(), 'users/alice'), data));
 
+// A push as the web app writes it (apps/web/src/pages/Push.tsx); the other clients'
+// shapes are in 'the shape of a push' below.
+const webPush = (fields = {}) => ({
+  url: 'https://example.com/a',
+  userId: 'alice',
+  createdAt: serverTimestamp(),
+  title: 'A page',
+  type: 'url',
+  deviceName: 'Mozilla/5.0',
+  searchTokens: ['a', 'p', 'pa', 'pag', 'page'],
+  ...fields,
+});
+const tokens = (count) => Array.from({ length: count }, (_, i) => `token-${i}`);
+
 describe('creating the user document, as each client does', () => {
   test('Android sign-up', () => assertSucceeds(setDoc(aliceDoc(), { email: 'a@x.com', createdAt: serverTimestamp() })));
   test('Android first token', () =>
@@ -54,6 +68,11 @@ describe('creating the user document, as each client does', () => {
   test('with a billing id', () =>
     assertFails(setDoc(aliceDoc(), { email: 'a@x.com', billing: { customerId: 'cus_1' } })));
   test('with a createdAt that is not a timestamp', () => assertFails(setDoc(aliceDoc(), { createdAt: 'yesterday' })));
+  test('with a hundred tokens', () => assertSucceeds(setDoc(aliceDoc(), { fcmTokens: tokens(100) })));
+  test('with more tokens than that', () => assertFails(setDoc(aliceDoc(), { fcmTokens: tokens(101) })));
+  test('with a token the size of the document', () =>
+    assertFails(setDoc(aliceDoc(), { fcmTokens: ['x'.repeat(60_000)] })));
+  test('with an email that is not one', () => assertFails(setDoc(aliceDoc(), { email: 'a'.repeat(321) })));
   test("someone else's", () => assertFails(setDoc(doc(alice(), 'users/bob'), { email: 'a@x.com' })));
   test('signed out', () =>
     assertFails(setDoc(doc(env.unauthenticatedContext().firestore(), 'users/alice'), { email: 'a@x.com' })));
@@ -72,6 +91,11 @@ describe('changing an existing user document', () => {
   );
 
   test('add a device token', () => assertSucceeds(updateDoc(aliceDoc(), { fcmTokens: arrayUnion('t2') })));
+  test('grow the token list past a hundred', () =>
+    assertFails(updateDoc(aliceDoc(), { fcmTokens: arrayUnion(...tokens(100)) })));
+  test('grow the token list to the size of the document', () =>
+    assertFails(updateDoc(aliceDoc(), { fcmTokens: arrayUnion('x'.repeat(60_000)) })));
+  test('make the token list something else', () => assertFails(updateDoc(aliceDoc(), { fcmTokens: 't2' })));
 
   test('add a subscription', () => assertFails(updateDoc(aliceDoc(), { subscription: { expiresAt: farFuture } })));
   test('reset usageRecords', () => assertFails(updateDoc(aliceDoc(), { usageRecords: {} })));
@@ -92,7 +116,7 @@ describe('changing an existing user document', () => {
 // The tiers' limits: Free 50 URL and 3 file pushes a month, Pro 10,000 and 100
 // (docs/billing.md at the repository root).
 describe('the push quota', () => {
-  const push = (type = 'url') => addDoc(collection(alice(), 'pushes'), { userId: 'alice', type, url: 'https://x.com' });
+  const push = (type = 'url') => addDoc(collection(alice(), 'pushes'), webPush({ type }));
   const pro = { startedAt: anchoredOnFirst, expiresAt: farFuture };
 
   test('free, under the URL limit', async () => {
@@ -194,6 +218,54 @@ describe('the push quota', () => {
   });
 });
 
+// What each client writes is accepted as it is, and nothing beyond it: a field no
+// client writes, a value of the wrong type, or one past the bound. The bounds keep the
+// push inside what onNewPushCreated sends in the notification.
+describe('the shape of a push', () => {
+  const create = (data) => addDoc(collection(alice(), 'pushes'), data);
+  const storageUrl = 'https://firebasestorage.googleapis.com/v0/b/b/o/uploads%2Falice%2Fa.pdf?alt=media&token=t';
+
+  test('the web app, a URL', () => assertSucceeds(create(webPush())));
+  test('the web app, a file', () =>
+    assertSucceeds(create(webPush({ url: storageUrl, title: 'a.pdf', type: 'file', ext: 'pdf' }))));
+  test('Android, a URL with no extension', () =>
+    assertSucceeds(create(webPush({ deviceName: 'Pixel', ext: null }))));
+  test('Android, a file', () =>
+    assertSucceeds(create(webPush({ url: storageUrl, title: 'a.pdf', type: 'file', deviceName: 'Pixel', ext: 'pdf' }))));
+  test('Android, a retried push, which has no search tokens', () =>
+    assertSucceeds(create({ url: 'https://example.com/a', userId: 'alice', createdAt: serverTimestamp(), title: 'A', type: 'url', deviceName: 'Pixel' })));
+  test('iOS, a queued push with the time it was queued', () =>
+    assertSucceeds(create(webPush({ createdAt: new Date(Date.now() - 86_400_000), deviceName: 'iPhone' }))));
+
+  test('with a field no client writes', () => assertFails(create(webPush({ pinned: true }))));
+  test('with an expiresAt', () => assertFails(create(webPush({ type: 'file', expiresAt: farFuture }))));
+  test('with a type of its own', () => assertFails(create(webPush({ type: 'note' }))));
+  test('without createdAt', async () => {
+    const { createdAt: _createdAt, ...rest } = webPush();
+    await assertFails(create(rest));
+  });
+  test('with a createdAt that is not a timestamp', () => assertFails(create(webPush({ createdAt: 'now' }))));
+  test('without a URL', async () => {
+    const { url: _url, ...rest } = webPush();
+    await assertFails(create(rest));
+  });
+  test('with a URL that is not a string', () => assertFails(create(webPush({ url: 42 }))));
+  test('with a URL past the bound', () => assertFails(create(webPush({ url: `https://example.com/${'a'.repeat(1500)}` }))));
+  test('with a URL at the bound', () => assertSucceeds(create(webPush({ url: `https://example.com/${'a'.repeat(1480)}` }))));
+  test('without a title', async () => {
+    const { title: _title, ...rest } = webPush();
+    await assertFails(create(rest));
+  });
+  test('with a title past the bound', () => assertFails(create(webPush({ title: 'a'.repeat(1501) }))));
+  test('with a device name past the bound', () => assertFails(create(webPush({ deviceName: 'a'.repeat(513) }))));
+  test('with a device name that is not a string', () => assertFails(create(webPush({ deviceName: ['Pixel'] }))));
+  test('with search tokens that are not a list', () => assertFails(create(webPush({ searchTokens: 'a' }))));
+  test('with more search tokens than the title and URL could give', () =>
+    assertFails(create(webPush({ searchTokens: Array.from({ length: 3001 }, (_, i) => `t${i}`) }))));
+  test('with an extension past the bound', () => assertFails(create(webPush({ ext: 'a'.repeat(65) }))));
+  test('with an extension that is not a string', () => assertFails(create(webPush({ ext: 7 }))));
+});
+
 // expiresAt is when the sweep deletes a file push; only onNewPushCreated sets it.
 describe('a push document', () => {
   const pushRef = () => doc(alice(), 'pushes/p1');
@@ -207,6 +279,18 @@ describe('a push document', () => {
   test('a URL push retitled by the title scraper', async () => {
     await seedPush({ type: 'url' });
     await assertSucceeds(updateDoc(pushRef(), { title: 'The page', searchTokens: ['the', 'page'] }));
+  });
+  test('a URL push retitled past the bound', async () => {
+    await seedPush({ type: 'url' });
+    await assertFails(updateDoc(pushRef(), { title: 'a'.repeat(1501) }));
+  });
+  test('a URL push retitled with something that is not a title', async () => {
+    await seedPush({ type: 'url' });
+    await assertFails(updateDoc(pushRef(), { title: { text: 'The page' } }));
+  });
+  test('a URL push given search tokens that are not a list', async () => {
+    await seedPush({ type: 'url' });
+    await assertFails(updateDoc(pushRef(), { searchTokens: 'the page' }));
   });
   test('a file push retitled, which would strand its stored object', async () => {
     await seedPush({ expiresAt: farFuture });
