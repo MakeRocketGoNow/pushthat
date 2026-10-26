@@ -14,6 +14,7 @@ import {
   blindToken,
   CHUNK_SIZE,
   chunkLayout,
+  FILE_HEADER_LENGTH,
   decodeRecoveryKey,
   decryptFile,
   deriveKeys,
@@ -42,11 +43,12 @@ import {
   sealPush,
   searchTokens,
   sha256,
+  TAG_LENGTH,
   unwrapAccountKey,
   utf8,
   wrapAccountKey,
 } from "./e2ee.mjs";
-import { filePattern, generate, inputs, render, TAMPER_OFFSET, VECTORS_PATH } from "./vectors.mjs";
+import { filePattern, generate, inputs, render, swapChunks01, tamper, VECTORS_PATH } from "./vectors.mjs";
 
 const vectors = JSON.parse(readFileSync(VECTORS_PATH, "utf8"));
 
@@ -275,15 +277,16 @@ test("blind tokens are 16 base64url characters of the HMAC and match the vector"
 // ---------------------------------------------------------------------------------------
 // Files
 
-const sealedSize = CHUNK_SIZE + 16;
+const HEADER = FILE_HEADER_LENGTH;
+const sealedSize = CHUNK_SIZE + TAG_LENGTH;
 
 test("the 3 MiB + 1 file matches the vector and round-trips", async () => {
   const plain = filePattern(inputs.fileLength);
   assert.equal(hex(await sha256(plain)), vectors.file.plaintextSha256);
   const file = await encryptFile(inputs.fk, inputs.np, plain);
   assert.equal(file.length, vectors.file.encryptedLength);
-  assert.equal(file.length, 12 + 3 * sealedSize + 1 + 16);
-  assert.equal(hex(file.subarray(0, 12)), vectors.file.header);
+  assert.equal(file.length, HEADER + 3 * sealedSize + 1 + TAG_LENGTH);
+  assert.equal(hex(file.subarray(0, HEADER)), vectors.file.header);
   assert.equal(hex(file.subarray(0, 4)), hex(utf8("PTE1")));
   assert.equal(hex(await sha256(file)), vectors.file.encryptedSha256);
   const back = await decryptFile(inputs.fk, file, inputs.np);
@@ -292,17 +295,14 @@ test("the 3 MiB + 1 file matches the vector and round-trips", async () => {
 
 test("the tampered copy has the vector's hash and fails to decrypt", async () => {
   const file = await encryptFile(inputs.fk, inputs.np, filePattern(inputs.fileLength));
-  const tampered = Uint8Array.from(file);
-  tampered[TAMPER_OFFSET] ^= 0x01;
+  const tampered = tamper(file);
   assert.equal(hex(await sha256(tampered)), vectors.file.tamperedSha256);
   await assert.rejects(decryptFile(inputs.fk, tampered, inputs.np), /decryption failed/);
 });
 
 test("a reordered chunk has the vector's hash and fails to decrypt", async () => {
   const file = await encryptFile(inputs.fk, inputs.np, filePattern(inputs.fileLength));
-  const reordered = Uint8Array.from(file);
-  reordered.set(file.subarray(12, 12 + sealedSize), 12 + sealedSize);
-  reordered.set(file.subarray(12 + sealedSize, 12 + 2 * sealedSize), 12);
+  const reordered = swapChunks01(file);
   assert.equal(hex(await sha256(reordered)), vectors.file.reorderedSha256);
   await assert.rejects(decryptFile(inputs.fk, reordered, inputs.np), /decryption failed/);
 });
@@ -310,18 +310,18 @@ test("a reordered chunk has the vector's hash and fails to decrypt", async () =>
 test("a truncated, extended or shortened-by-a-chunk file fails to decrypt", async () => {
   const file = await encryptFile(inputs.fk, inputs.np, filePattern(inputs.fileLength));
   // Cut at a chunk boundary: the last chunk left was sealed as non-final.
-  await assert.rejects(decryptFile(inputs.fk, file.subarray(0, 12 + 2 * sealedSize), inputs.np), /decryption failed/);
+  await assert.rejects(decryptFile(inputs.fk, file.subarray(0, HEADER + 2 * sealedSize), inputs.np), /decryption failed/);
   // Cut inside a chunk.
   await assert.rejects(decryptFile(inputs.fk, file.subarray(0, file.length - 1), inputs.np), /decryption failed/);
   // A whole sealed chunk appended: the old final chunk is now read as non-final.
   const extended = new Uint8Array(file.length + sealedSize);
   extended.set(file);
-  extended.set(file.subarray(12, 12 + sealedSize), file.length);
+  extended.set(file.subarray(HEADER, HEADER + sealedSize), file.length);
   await assert.rejects(decryptFile(inputs.fk, extended, inputs.np), /bytes|decryption failed/);
   // Chunk 1 removed.
   const dropped = new Uint8Array(file.length - sealedSize);
-  dropped.set(file.subarray(0, 12 + sealedSize));
-  dropped.set(file.subarray(12 + 2 * sealedSize), 12 + sealedSize);
+  dropped.set(file.subarray(0, HEADER + sealedSize));
+  dropped.set(file.subarray(HEADER + 2 * sealedSize), HEADER + sealedSize);
   await assert.rejects(decryptFile(inputs.fk, dropped, inputs.np), /decryption failed/);
   // Too short to hold a header and a tag.
   await assert.rejects(decryptFile(inputs.fk, file.subarray(0, 20), inputs.np), /too short/);
@@ -347,13 +347,13 @@ test("the wrong key, a wrong prefix or a wrong magic fails to decrypt", async ()
 
 test("the empty file is the header and one empty final chunk, and matches the vector", async () => {
   const empty = await encryptFile(inputs.fk, inputs.np, new Uint8Array(0));
-  assert.equal(empty.length, 28);
+  assert.equal(empty.length, HEADER + TAG_LENGTH);
   assert.equal(hex(empty), vectors.emptyFile.encrypted);
   assert.equal(hex(await sha256(empty)), vectors.emptyFile.encryptedSha256);
   assert.equal((await decryptFile(inputs.fk, empty, inputs.np)).length, 0);
   // Without the final flag it would be a non-final chunk of the wrong size.
   const sealed = await sealChunk(inputs.fk, inputs.np, 0, new Uint8Array(0), true);
-  assert.equal(hex(sealed), hex(empty.subarray(12)));
+  assert.equal(hex(sealed), hex(empty.subarray(HEADER)));
   await assert.rejects(openChunk(inputs.fk, inputs.np, 0, sealed, false), /bytes/);
 });
 
@@ -363,7 +363,7 @@ test("files of 1 byte, exactly 1 MiB, 1 MiB + 1 and exactly 2 MiB round-trip wit
   for (const [length, chunks] of [[1, 1], [CHUNK_SIZE, 1], [CHUNK_SIZE + 1, 2], [2 * CHUNK_SIZE, 2]]) {
     const plain = filePattern(length);
     const file = await encryptFile(fk, np, plain);
-    assert.equal(file.length, 12 + length + 16 * chunks, `${length} bytes`);
+    assert.equal(file.length, HEADER + length + TAG_LENGTH * chunks, `${length} bytes`);
     assert.equal(hex(await decryptFile(fk, file, np)), hex(plain), `${length} bytes`);
   }
 });

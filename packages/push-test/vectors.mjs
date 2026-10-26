@@ -15,7 +15,7 @@ import {
   deriveKeys,
   encodeRecoveryKey,
   encryptFile,
-  fromHex,
+  FILE_HEADER_LENGTH,
   hex,
   KDF,
   normalizeEmail,
@@ -24,6 +24,7 @@ import {
   searchTokens,
   sealPush,
   sha256,
+  TAG_LENGTH,
   utf8,
   wrapAccountKey,
 } from "./e2ee.mjs";
@@ -41,6 +42,25 @@ export const filePattern = (length) => Uint8Array.from({ length }, (_, i) => i %
 // The 3 MiB + 1 file, tampered: one bit flipped at this offset, which falls inside the
 // ciphertext of chunk 1 (chunk 0 ends at 12 + 1 MiB + 16).
 export const TAMPER_OFFSET = 2000000;
+
+export const tamper = (file) => {
+  const out = Uint8Array.from(file);
+  out[TAMPER_OFFSET] ^= 0x01;
+  return out;
+};
+
+// The same file with sealed chunks 0 and 1 swapped. The tests build the vectors' failing
+// files with these two rather than their own copy of the construction, so the hash a
+// client checks and the bytes the test feeds the decryptor cannot drift apart.
+export const swapChunks01 = (file) => {
+  const sealedSize = CHUNK_SIZE + TAG_LENGTH;
+  const first = FILE_HEADER_LENGTH;
+  const second = first + sealedSize;
+  const out = Uint8Array.from(file);
+  out.set(file.subarray(first, second), second);
+  out.set(file.subarray(second, second + sealedSize), first);
+  return out;
+};
 
 export const inputs = {
   // Untrimmed, mixed case, so the salt pins the normalization. The password holds "e"
@@ -75,12 +95,8 @@ export const generate = async () => {
 
   const pattern = filePattern(inputs.fileLength);
   const file = await encryptFile(inputs.fk, inputs.np, pattern);
-  const tampered = Uint8Array.from(file);
-  tampered[TAMPER_OFFSET] ^= 0x01;
-  const sealedSize = CHUNK_SIZE + 16;
-  const reordered = Uint8Array.from(file);
-  reordered.set(file.subarray(12, 12 + sealedSize), 12 + sealedSize);
-  reordered.set(file.subarray(12 + sealedSize, 12 + 2 * sealedSize), 12);
+  const tampered = tamper(file);
+  const reordered = swapChunks01(file);
   const empty = await encryptFile(inputs.fk, inputs.np, new Uint8Array(0));
 
   return {
@@ -137,7 +153,7 @@ export const generate = async () => {
       np: hex(inputs.np),
       fkBase64: base64(inputs.fk),
       npBase64: base64(inputs.np),
-      header: hex(file.subarray(0, 12)),
+      header: hex(file.subarray(0, FILE_HEADER_LENGTH)),
       length: inputs.fileLength,
       pattern: "byte i is i mod 251",
       plaintextSha256: hex(await sha256(pattern)),
