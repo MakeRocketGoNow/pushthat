@@ -1,0 +1,33 @@
+name: Label PRs
+
+on:
+  # `pull_request_target`, because a label is a write and a `pull_request` run from a fork
+  # gets a read-only token. That event runs this file as it is on `main` with a token that
+  # can write, which is safe only because nothing here checks out or runs the pull
+  # request's code: the labeler reads the list of changed paths from the API.
+  #
+  # No `synchronize`. Nearly every pull request has its labels from the `opened` run, and a
+  # run per push would re-apply labels that are already right. A pull request that grows
+  # into a new folder after it is opened keeps the labels it had until someone adds one.
+  pull_request_target:
+    types: [opened, reopened]
+
+# One run per pull request; a reopen supersedes an `opened` run still in flight.
+concurrency:
+  group: labeler-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  label:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/labeler@bf12e9b00b37c5c0ca2b87b79b2daf7891dbda13 # v7.0.0
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          configuration-path: .github/labeler.yml
