@@ -1,6 +1,7 @@
 import {
   type DocumentData,
   type DocumentSnapshot,
+  FieldPath,
   type Firestore,
   type QueryDocumentSnapshot,
   collection,
@@ -314,48 +315,57 @@ const ENCRYPTED_KEYS = new Set([
 ]);
 
 /**
- * The single update that encrypts a plaintext push in place (docs/e2ee.md, Migration), or
- * undefined for one that cannot be migrated: a file push with no title names no object.
- * In place rather than recreated, because a create would notify every device and count
- * against the month.
+ * The single update that encrypts a plaintext push in place (docs/e2ee.md, Migration), as
+ * field paths and values, or undefined for one the rules could never take: a type they do
+ * not know, or a file push whose title does not name one object in the owner's folder
+ * (none, or one with a "/"). In place rather than recreated, because a create would notify
+ * every device and count against the month.
  */
 async function migrationOf(
   keys: PushKeys,
   snapshot: QueryDocumentSnapshot<DocumentData>
-): Promise<DocumentData | undefined> {
+): Promise<Map<FieldPath, unknown> | undefined> {
   const data = snapshot.data();
   const title = stringOr(data.title);
   const ext = stringOr(data.ext);
-  const update: DocumentData = {};
+  if (data.type !== 'url' && data.type !== 'file') return undefined;
+  if (data.type === 'file' && (!title || title.includes('/'))) return undefined;
+
+  // Field paths rather than an object, whose keys an update reads as dotted paths: a field
+  // an old client named with a dot would otherwise never be deleted, and its push never
+  // migrate.
+  const update = new Map<FieldPath, unknown>();
+  const set = (key: string, value: unknown) => update.set(new FieldPath(key), value);
   for (const key of Object.keys(data)) {
-    if (!ENCRYPTED_KEYS.has(key)) update[key] = deleteField();
+    if (!ENCRYPTED_KEYS.has(key)) set(key, deleteField());
   }
 
   if (data.type === 'file') {
-    if (typeof data.title !== 'string' || !data.title) return undefined;
     // The bytes are in Storage as they were uploaded and expire within 30 days; re-encrypting
     // them would need a download and an upload, so the push says to read them as they are.
     const envelope: FileEnvelope = { name: title, mime: '', size: 0, ext, legacyPlain: true };
-    update.enc = await sealPush(keys.metaKey, keys.uid, snapshot.id, envelope);
-    update.searchTokens = await blind(keys, title);
+    set('enc', await sealPush(keys.metaKey, keys.uid, snapshot.id, envelope));
+    set('searchTokens', await blind(keys, title));
     // The path the title named, which onPushRecordDeleted has been deleting with the push;
     // the rules hold the migration to exactly this.
-    update.objectPath = `uploads/${keys.uid}/${title}`;
+    set('objectPath', `uploads/${keys.uid}/${title}`);
   } else {
     const envelope: UrlEnvelope = { url: stringOr(data.url), title, ext };
-    update.enc = await sealPush(keys.metaKey, keys.uid, snapshot.id, envelope);
-    update.searchTokens = await blind(keys, urlSearchText(envelope));
+    set('enc', await sealPush(keys.metaKey, keys.uid, snapshot.id, envelope));
+    set('searchTokens', await blind(keys, urlSearchText(envelope)));
   }
-  update.keyVersion = keys.keyVersion;
-  update.deviceId = keys.deviceId;
+  set('keyVersion', keys.keyVersion);
+  set('deviceId', keys.deviceId);
   return update;
 }
 
 /**
  * Encrypts the account's plaintext pushes, newest first, a page of 50 at a time, and marks
  * `e2ee.migratedAt` once a pass has seen every push and left none behind. Any device that
- * finds the mark skips the pass; a pass that could not migrate a push leaves the mark off,
- * and the next start tries again. Each push is its own update, so one refused does not
+ * finds the mark skips the pass; a pass in which an update failed leaves the mark off,
+ * and the next start tries again. A push the rules could never take is left as it is and
+ * does not hold the mark back, or one such push would keep every start paging through the
+ * whole history. Each push is its own update, so one refused does not
  * stop the page, and two devices migrating at once cost one refused update each: the
  * rules take the migration only from a push that has no `enc` yet.
  *
@@ -381,8 +391,9 @@ export async function migratePushes(db: Firestore, keys: PushKeys): Promise<void
         .map(async (snapshot) => {
           try {
             const update = await migrationOf(keys, snapshot);
-            if (!update) return false;
-            await updateDoc(snapshot.ref, update);
+            if (!update) return true;
+            const [[firstPath, firstValue], ...rest] = Array.from(update);
+            await updateDoc(snapshot.ref, firstPath, firstValue, ...rest.flat());
             return true;
           } catch (error) {
             console.error('Could not encrypt push', snapshot.id, error);
