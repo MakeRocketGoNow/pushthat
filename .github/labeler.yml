@@ -1,0 +1,23 @@
+# Which area label a pull request gets, from the folders it touches (.github/workflows/labeler.yml).
+# One label per app or service, matching the folders in the README's layout. The labels are
+# informational: no workflow reads them.
+
+web:
+  - changed-files:
+      - any-glob-to-any-file: 'apps/web/**'
+
+functions:
+  - changed-files:
+      - any-glob-to-any-file: 'functions/**'
+
+android:
+  - changed-files:
+      - any-glob-to-any-file: 'apps/android/**'
+
+ios:
+  - changed-files:
+      - any-glob-to-any-file: 'apps/ios/**'
+
+macos:
+  - changed-files:
+      - any-glob-to-any-file: 'apps/macos/**'
