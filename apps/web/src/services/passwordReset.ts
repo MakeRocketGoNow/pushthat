@@ -136,6 +136,15 @@ export async function setNewPassword(oobCode: string, email: string, password: s
   });
 }
 
+// At most three, so that with a new password wrap the map stays inside the rules' four.
+function recoveryWrapsOf(e2ee: E2ee): Record<string, Wrap> {
+  return Object.fromEntries(
+    Object.entries(e2ee.wraps)
+      .filter(([, wrap]) => wrap.by === 'recovery')
+      .slice(0, 3)
+  );
+}
+
 /** Whether the stored keys can be rewrapped: there is a recovery wrap to open. */
 export function hasRecoveryWrap(session: ResetSession): boolean {
   return Object.values(session.e2ee?.wraps ?? {}).some((wrap) => wrap.by === 'recovery');
@@ -157,15 +166,18 @@ export async function rewrapWithRecoveryKey(session: ResetSession, recoveryText:
   }
   const recoveryWraps = Object.entries(e2ee.wraps).filter(([, wrap]) => wrap.by === 'recovery');
   let accountKey: Uint8Array | undefined;
-  for (const [, wrap] of recoveryWraps) {
+  let openedId: string | undefined;
+  for (const [id, wrap] of recoveryWraps) {
     try {
       accountKey = await unwrapAccountKey(wrappingKey, wrap, session.uid);
+      openedId = id;
       break;
     } catch {
       // Another recovery wrap may be the one; a key that opens none is wrong.
     }
   }
-  if (!accountKey) throw new WrongRecoveryKeyError('the recovery key opens no wrap');
+  if (!accountKey || !openedId) throw new WrongRecoveryKeyError('the recovery key opens no wrap');
+  const opened = openedId;
 
   const passwordWrap = await wrapAccountKey(session.masterKey, accountKey, session.uid, 'password');
   await writeKeys(session, (stored) => {
@@ -175,8 +187,12 @@ export async function rewrapWithRecoveryKey(session: ResetSession, recoveryText:
     if (!stored || stored.keyVersion !== e2ee.keyVersion) {
       throw new Error('the account key changed while the page was open');
     }
-    const recoveryWraps = Object.entries(stored.wraps).filter(([, wrap]) => wrap.by === 'recovery');
-    const wraps: Record<string, Wrap> = { [newWrapId()]: passwordWrap, ...Object.fromEntries(recoveryWraps) };
+    // The recovery wrap the user's key opened, which they have just shown they can use.
+    // Only that one: the rules take four wraps at most, and carrying every stored one
+    // beside the new password wrap could ask for five, a write refused every time. If it
+    // has gone meanwhile (a new recovery key made on another device), the stored ones stay.
+    const kept = stored.wraps[opened]?.by === 'recovery' ? { [opened]: stored.wraps[opened] } : recoveryWrapsOf(stored);
+    const wraps: Record<string, Wrap> = { [newWrapId()]: passwordWrap, ...kept };
     return { ...stored, wraps };
   });
 }
