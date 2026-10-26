@@ -26,9 +26,10 @@ class AuthViewModel: ObservableObject {
     @Published var isAuthenticated = false
     @Published var keyGate: KeyGate = .ready
 
-    /// Sign-up's rule and its reason, word for word as every client has it.
-    static let newPasswordRule = "Use at least 10 characters. Your password is the key to your pushes, so it has to be hard to guess."
+    /// Sign-up's rule and its reason, word for word as every client has it. The sentence
+    /// is built from the number so that changing one cannot leave the other behind.
     static let minimumNewPasswordLength = 10
+    static let newPasswordRule = "Use at least \(minimumNewPasswordLength) characters. Your password is the key to your pushes, so it has to be hard to guess."
 
     private let auth = Auth.auth()
     private let db = Firestore.firestore()
