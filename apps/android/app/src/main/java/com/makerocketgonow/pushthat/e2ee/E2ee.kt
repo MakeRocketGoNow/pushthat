@@ -11,9 +11,10 @@ import javax.crypto.spec.SecretKeySpec
 import kotlin.io.encoding.Base64
 
 /**
- * The key constructions of docs/e2ee.md ("Keys" and "The recovery key"), in the order the
- * specification gives them, checked byte for byte against packages/push-test/vectors.json
- * by `E2eeVectorsTest`.
+ * The constructions of docs/e2ee.md (keys, the recovery key, the push envelope, the blind
+ * index and the file chunks), in the order the specification gives them, checked byte for
+ * byte against packages/push-test/vectors.json by `E2eeVectorsTest`. Streaming a whole file
+ * through the chunks is `FileCipher`.
  *
  * Pure JVM on purpose: nothing here touches an Android class, so the unit test runs the
  * exact code the phone runs rather than a copy of it. The one thing that differs between
@@ -289,5 +290,211 @@ object E2ee {
     fun recoveryWrappingKey(recoveryBytes: ByteArray): ByteArray {
         require(recoveryBytes.size == RECOVERY_KEY_LENGTH) { "recovery key must be $RECOVERY_KEY_LENGTH bytes" }
         return hkdfOneBlock(recoveryBytes, "pushthat/recovery/v1")
+    }
+
+    // -------------------------------------------------------------------------------------
+    // The push envelope
+
+    /** `pushes/{id}.enc` as stored: `n` and `ct` are padded base64. */
+    data class Envelope(val v: Long, val n: String, val ct: String) {
+        fun toMap(): Map<String, Any> = mapOf("v" to v, "n" to n, "ct" to ct)
+
+        companion object {
+            /** The stored map, or null when it is not one (a locked row, not a crash). */
+            fun parse(value: Any?): Envelope? {
+                val map = value as? Map<*, *> ?: return null
+                val v = (map["v"] as? Number)?.toLong() ?: return null
+                val n = map["n"] as? String ?: return null
+                val ct = map["ct"] as? String ?: return null
+                return Envelope(v, n, ct)
+            }
+        }
+    }
+
+    const val ENVELOPE_VERSION = 1L
+
+    fun pushAad(userId: String, pushId: String): ByteArray = utf8("pushthat/push/v1:$userId:$pushId")
+
+    /**
+     * [plaintext] is the envelope's JSON as bytes (`PushContent.toJson`). The AAD binds it
+     * to its document, which is why the id is picked before the push is encrypted. The
+     * nonce parameter exists for the vectors; callers never pass one.
+     */
+    fun sealPush(
+        metaKey: ByteArray,
+        userId: String,
+        pushId: String,
+        plaintext: ByteArray,
+        nonce: ByteArray = randomBytes(NONCE_LENGTH),
+    ): Envelope {
+        val ct = aesGcmSeal(metaKey, nonce, plaintext, pushAad(userId, pushId))
+        return Envelope(ENVELOPE_VERSION, base64(nonce), base64(ct))
+    }
+
+    /** Throws `GeneralSecurityException` for a wrong key, another push's envelope, or a malformed one. */
+    fun openPush(metaKey: ByteArray, userId: String, pushId: String, enc: Envelope): ByteArray {
+        if (enc.v != ENVELOPE_VERSION) throw GeneralSecurityException("unknown envelope version ${enc.v}")
+        val nonce: ByteArray
+        val ct: ByteArray
+        try {
+            nonce = fromBase64(enc.n)
+            ct = fromBase64(enc.ct)
+        } catch (e: IllegalArgumentException) {
+            throw GeneralSecurityException("not an envelope", e)
+        }
+        if (nonce.size != NONCE_LENGTH) throw GeneralSecurityException("not an envelope")
+        return aesGcmOpen(metaKey, nonce, ct, pushAad(userId, pushId))
+    }
+
+    // -------------------------------------------------------------------------------------
+    // The blind index
+    //
+    // The one tokenizer every client runs (docs/e2ee.md, Search): NFC, then the
+    // locale-independent full lowercase mapping (Kotlin's `lowercase()` is `Locale.ROOT`, so a
+    // Turkish phone lowers "I" the way every other device does), split on anything that is
+    // not a letter, a combining mark or a number, and every prefix of every word counted in
+    // code points. Code points rather than chars so that an emoji or a CJK extension
+    // character is never cut in half into a lone surrogate, which would hash as U+FFFD and
+    // match nothing another client wrote. This replaced Android's own generator, which
+    // dropped every non-ASCII letter through `\w` and kept `_`: once the tokens are blinded,
+    // two generators mean two indexes that never find each other's pushes.
+
+    /** The rules' bound on `searchTokens`. */
+    const val MAX_SEARCH_TOKENS = 3000
+
+    private val NOT_A_WORD = Regex("[^\\p{L}\\p{M}\\p{N}]+")
+
+    /** The words of [text], normalized as the tokens are: what a search term is split into too. */
+    fun searchWords(text: String): List<String> =
+        nfc(text).lowercase().split(NOT_A_WORD).filter { it.isNotEmpty() }
+
+    /**
+     * Every prefix of every word, first-seen order, no repeats, at most [MAX_SEARCH_TOKENS]
+     * (which only a title and URL of thousands of characters reach).
+     */
+    fun searchTokens(text: String): List<String> {
+        val tokens = LinkedHashSet<String>()
+        for (word in searchWords(text)) {
+            var end = 0
+            while (end < word.length) {
+                if (tokens.size == MAX_SEARCH_TOKENS) return tokens.toList()
+                end += Character.charCount(word.codePointAt(end))
+                tokens.add(word.substring(0, end))
+            }
+        }
+        return tokens.toList()
+    }
+
+    /** 16 base64url characters are 96 bits exactly, so nothing is cut mid-character. */
+    fun blindToken(searchKey: ByteArray, token: String): String =
+        base64url(hmacSha256(searchKey, utf8(token))).substring(0, 16)
+
+    /** One `Mac` for the whole list: a title and URL make a few hundred tokens. */
+    fun blindIndex(searchKey: ByteArray, tokens: List<String>): List<String> {
+        val mac = mac(searchKey)
+        return tokens.map { base64url(mac.doFinal(utf8(it))).substring(0, 16) }
+    }
+
+    /**
+     * The blind token a search for [term] looks up: its first word, whole. A term with no
+     * word in it (empty, or only punctuation) is no search at all, so null. "github repo"
+     * searches "github": `array-contains` takes one value, and the first word is what the
+     * user typed first.
+     */
+    fun searchTermToken(searchKey: ByteArray, term: String): String? =
+        searchWords(term).firstOrNull()?.let { blindToken(searchKey, it) }
+
+    // -------------------------------------------------------------------------------------
+    // Files: the chunk format (docs/e2ee.md, Files)
+
+    const val CHUNK_SIZE = 1024 * 1024
+    const val FILE_MAGIC = "PTE1"
+    const val FILE_PREFIX_LENGTH = 8
+    const val FILE_HEADER_LENGTH = 12
+    const val SEALED_CHUNK_SIZE = CHUNK_SIZE + TAG_LENGTH
+
+    fun newFileKey(): ByteArray = randomBytes(KEY_LENGTH)
+    fun newFilePrefix(): ByteArray = randomBytes(FILE_PREFIX_LENGTH)
+    fun newObjectId(): String = base64url(randomBytes(16))
+
+    fun fileHeader(prefix: ByteArray): ByteArray {
+        require(prefix.size == FILE_PREFIX_LENGTH) { "prefix must be $FILE_PREFIX_LENGTH bytes" }
+        return utf8(FILE_MAGIC) + prefix
+    }
+
+    private fun be32(n: Int): ByteArray {
+        require(n >= 0) { "not a chunk index: $n" }
+        return byteArrayOf((n ushr 24).toByte(), (n ushr 16).toByte(), (n ushr 8).toByte(), n.toByte())
+    }
+
+    private fun chunkNonce(prefix: ByteArray, index: Int) = prefix + be32(index)
+
+    private fun chunkAad(index: Int, final: Boolean) =
+        utf8("pushthat/file/v1") + be32(index) + byteArrayOf(if (final) 1 else 0)
+
+    /**
+     * Seals the first [length] bytes of [chunk]. Every chunk but the last is exactly
+     * [CHUNK_SIZE]; only the empty file has an empty final chunk (see [chunkLayout] for why
+     * the other encoding is refused).
+     */
+    fun sealChunk(
+        fk: ByteArray,
+        prefix: ByteArray,
+        index: Int,
+        chunk: ByteArray,
+        final: Boolean,
+        length: Int = chunk.size,
+    ): ByteArray {
+        require(if (final) length <= CHUNK_SIZE else length == CHUNK_SIZE) { "chunk $index is $length bytes" }
+        require(!(final && index > 0 && length == 0)) { "only the empty file has an empty final chunk" }
+        val cipher = gcm(Cipher.ENCRYPT_MODE, fk, chunkNonce(prefix, index), chunkAad(index, final))
+        return cipher.doFinal(chunk, 0, length)
+    }
+
+    /** Throws `GeneralSecurityException` for a chunk of the wrong size, place or file. */
+    fun openChunk(
+        fk: ByteArray,
+        prefix: ByteArray,
+        index: Int,
+        sealed: ByteArray,
+        final: Boolean,
+        length: Int = sealed.size,
+    ): ByteArray {
+        val plain = length - TAG_LENGTH
+        if (plain < 0 || (if (final) plain > CHUNK_SIZE else plain != CHUNK_SIZE)) {
+            throw GeneralSecurityException("chunk $index is $length bytes")
+        }
+        val cipher = gcm(Cipher.DECRYPT_MODE, fk, chunkNonce(prefix, index), chunkAad(index, final))
+        return cipher.doFinal(sealed, 0, length)
+    }
+
+    /** Where sealed chunk [index] sits in an encrypted object, `[start, end)`. */
+    data class ChunkSpan(val index: Int, val start: Long, val end: Long, val final: Boolean) {
+        val length: Int get() = (end - start).toInt()
+    }
+
+    /**
+     * The chunks of an encrypted object of [length] bytes, from the length alone: every
+     * chunk but the last is exactly [SEALED_CHUNK_SIZE], so the count is the body over that,
+     * rounded up, and the remainder is the last. The last holds at least its tag, and only
+     * the empty file has an empty one: a full chunk followed by a bare tag is what an
+     * encryptor that did not hold a chunk back would write, and it is refused so that no
+     * client accepts a second encoding of the same bytes that another refuses. Throws
+     * `GeneralSecurityException` for a length no file has.
+     */
+    fun chunkLayout(length: Long): List<ChunkSpan> {
+        if (length < FILE_HEADER_LENGTH + TAG_LENGTH) throw GeneralSecurityException("file too short")
+        val body = length - FILE_HEADER_LENGTH
+        val count = (body + SEALED_CHUNK_SIZE - 1) / SEALED_CHUNK_SIZE
+        if (count > Int.MAX_VALUE) throw GeneralSecurityException("file too long")
+        val last = body - (count - 1) * SEALED_CHUNK_SIZE
+        if (last < TAG_LENGTH || (count > 1 && last == TAG_LENGTH.toLong())) {
+            throw GeneralSecurityException("not a file: bad last chunk")
+        }
+        return List(count.toInt()) { index ->
+            val start = FILE_HEADER_LENGTH + index.toLong() * SEALED_CHUNK_SIZE
+            val final = index.toLong() == count - 1
+            ChunkSpan(index, start, if (final) length else start + SEALED_CHUNK_SIZE, final)
+        }
     }
 }
