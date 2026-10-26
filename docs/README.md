@@ -9,6 +9,8 @@ house style ([AGENTS.md](../AGENTS.md)).
 - [Android app](android.md): building, running on an emulator, release signing.
 - [iOS app](ios.md): building, signing, notifications, and how it matches Android.
 - [macOS app](macos.md): the fork of the iOS app, and how it differs.
+- [Deploying](deploying.md): what a push to `main` deploys, how CI signs in to Google Cloud,
+  and what stays manual.
 - [Billing](billing.md): the plan, the Stripe accounts, and how the functions and the rules
   enforce it.
 - [End-to-end encryption](e2ee.md): the specification for encrypting pushes. A design; none

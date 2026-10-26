@@ -49,3 +49,6 @@ Java runtime and the Firebase CLI needed; ports 8080 and 9199 must be free).
 rules and the Storage rules (`--only hosting,firestore,storage`). The functions are not
 part of it: they deploy from `functions/` with their own `npm run deploy`, since the two
 change on different schedules and a site deploy should never ship a function by accident.
+
+A push to `main` runs this deploy from CI when it changes `apps/web/`; see
+[deploying](deploying.md). Running it by hand still works, for a deploy from a branch.
