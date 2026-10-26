@@ -4,6 +4,7 @@ import { Link, useSearchParams } from 'react-router';
 
 import Button from '@/components/Button';
 import GlowButton from '@/components/GlowButton';
+import styles from '@/components/KeyStep.module.css';
 import { RecoveryKey } from '@/components/RecoveryKey';
 import {
   KeysChangedError,
@@ -19,8 +20,6 @@ import {
   startNewKeys,
 } from '@/services/passwordReset';
 import { MIN_PASSWORD_LENGTH } from '@/services/signIn';
-
-import styles from './ResetPassword.module.css';
 
 // Deleting the pushes the old key locked, which runs after the new recovery key is shown.
 type Deletion = { state: 'none' } | { state: 'running' } | { state: 'done'; deleted: number } | { state: 'failed' };
