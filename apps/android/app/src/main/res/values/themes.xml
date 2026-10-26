@@ -55,6 +55,59 @@
         <item name="android:padding">16dp</item>
     </style>
 
+    <!-- The sign-in screen's buttons, for views shared with screens on the MaterialComponents
+         theme: parented on AppCompat's button so they look as the sign-in screen's own
+         buttons do, whichever theme inflates them. -->
+    <style name="Widget.LinkShare.PrimaryButton" parent="Widget.AppCompat.Button">
+        <item name="android:background">@drawable/button_background</item>
+        <item name="android:textColor">@color/color_on_primary</item>
+        <item name="android:padding">16dp</item>
+    </style>
+
+    <style name="Widget.LinkShare.OutlineButton" parent="Widget.AppCompat.Button">
+        <item name="android:background">@drawable/button_outline_background</item>
+        <item name="android:textColor">@color/color_action</item>
+        <item name="android:padding">16dp</item>
+    </style>
+
+    <!-- Text on the sign-in, recovery key and settings screens. -->
+    <style name="Widget.LinkShare.Title" parent="">
+        <item name="android:textColor">@color/color_text</item>
+        <item name="android:textSize">24sp</item>
+        <item name="android:textStyle">bold</item>
+    </style>
+
+    <style name="Widget.LinkShare.Body" parent="">
+        <item name="android:textColor">@color/color_text_secondary</item>
+        <item name="android:textSize">16sp</item>
+        <item name="android:lineSpacingMultiplier">1.2</item>
+    </style>
+
+    <style name="Widget.LinkShare.ErrorText" parent="">
+        <item name="android:textColor">@color/color_error</item>
+        <item name="android:textSize">14sp</item>
+    </style>
+
+    <!-- Monospaced so that 0 and O, 1 and I cannot be mistaken while it is copied out by
+         hand, and selectable so it can be copied in pieces too. -->
+    <style name="Widget.LinkShare.RecoveryKey" parent="">
+        <item name="android:background">@drawable/input_background</item>
+        <item name="android:fontFamily">monospace</item>
+        <item name="android:gravity">center</item>
+        <item name="android:padding">16dp</item>
+        <item name="android:textColor">@color/color_text</item>
+        <item name="android:textIsSelectable">true</item>
+        <item name="android:textSize">20sp</item>
+    </style>
+
+    <!-- A text field on the sign-in screen and in the settings dialogs. -->
+    <style name="Widget.LinkShare.Input" parent="">
+        <item name="android:background">@drawable/input_background</item>
+        <item name="android:padding">16dp</item>
+        <item name="android:textColor">@color/color_text</item>
+        <item name="android:textColorHint">@color/input_hint</item>
+    </style>
+
     <style name="PopupMenuStyle" parent="Widget.MaterialComponents.PopupMenu">
         <item name="android:textColor">@color/color_action</item>
         <item name="android:itemBackground">@color/color_surface</item>
