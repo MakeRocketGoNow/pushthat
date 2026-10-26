@@ -1,0 +1,5 @@
+node_modules/
+
+# The service account key signs as the whole Firebase project. It lives beside the
+# script only on a machine that sends test pushes, and never in the repository.
+serviceAccountKey.json
