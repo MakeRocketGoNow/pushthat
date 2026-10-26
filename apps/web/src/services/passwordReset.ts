@@ -12,15 +12,12 @@ import {
   type Firestore,
   type QueryDocumentSnapshot,
   collection,
-  doc,
   documentId,
-  getDoc,
   getDocs,
   getFirestore,
   limit,
   orderBy,
   query,
-  runTransaction,
   startAfter,
   where,
   writeBatch,
@@ -29,19 +26,15 @@ import {
 import { app } from '@/config/firebase';
 
 import {
-  type E2ee,
-  KDF,
-  type Wrap,
-  decodeRecoveryKey,
-  deriveKeys,
-  encodeRecoveryKey,
-  newAccountKey,
-  newRecoveryKey,
-  newWrapId,
-  recoveryWrappingKey,
-  unwrapAccountKey,
-  wrapAccountKey,
-} from './e2ee';
+  type KeyOwner,
+  hasRecoveryWrap as hasRecoveryWrapIn,
+  readKeys,
+  rewrapWithRecoveryKey as rewrap,
+  startNewKeys as startNew,
+} from './accountKeys';
+import { type E2ee, deriveKeys } from './e2ee';
+
+export { KeysChangedError, WrongRecoveryKeyError } from './accountKeys';
 
 /**
  * The password reset (docs/e2ee.md, Password reset), which the reset email's action URL
@@ -90,16 +83,6 @@ export interface ResetSession {
   e2ee: E2ee | undefined;
 }
 
-/** The recovery key the user typed opens none of the account's recovery wraps. */
-export class WrongRecoveryKeyError extends Error {}
-
-/**
- * The account key was replaced elsewhere (another reset) while this page waited for the
- * recovery key. The key it opened is no longer the account's, and the stored keys are not
- * read again, so a retry here fails the same way every time.
- */
-export class KeysChangedError extends Error {}
-
 /**
  * A step after Firebase took the new password failed. The link is used up by then, so
  * the page must not tell the user to try it again: the password is changed, and the keys
@@ -132,76 +115,34 @@ export async function setNewPassword(oobCode: string, email: string, password: s
   await confirmPasswordReset(reset().auth, oobCode, keys.firebasePassword);
   return afterPasswordChanged(async () => {
     const { user } = await signInWithEmailAndPassword(reset().auth, email, keys.firebasePassword);
-    const snapshot = await getDoc(doc(reset().db, 'users', user.uid));
-    const stored = snapshot.data()?.e2ee;
     return {
       uid: user.uid,
       email,
       masterKey: keys.masterKey,
-      e2ee: isE2ee(stored) ? stored : undefined,
+      e2ee: await readKeys({ db: reset().db, uid: user.uid, email }),
     };
   });
 }
 
-// At most three, so that with a new password wrap the map stays inside the rules' four.
-function recoveryWrapsOf(e2ee: E2ee): Record<string, Wrap> {
-  return Object.fromEntries(
-    Object.entries(e2ee.wraps)
-      .filter(([, wrap]) => wrap.by === 'recovery')
-      .slice(0, 3)
-  );
+function ownerOf(session: ResetSession): KeyOwner {
+  return { db: reset().db, uid: session.uid, email: session.email };
 }
 
 /** Whether the stored keys can be rewrapped: there is a recovery wrap to open. */
 export function hasRecoveryWrap(session: ResetSession): boolean {
-  return Object.values(session.e2ee?.wraps ?? {}).some((wrap) => wrap.by === 'recovery');
+  return hasRecoveryWrapIn(session.e2ee);
 }
 
 /**
  * With the recovery key: opens the account key, wraps it under the new password, and
  * replaces the old password's wraps, which nothing can open any more. The recovery wraps
- * and the key version stay, so every push stays readable.
+ * and the key version stay, so every push stays readable. The stored keys are not read
+ * again before the recovery key is tried, so a `KeysChangedError` here fails the same way
+ * on every retry, and the page says so rather than "try again".
  */
 export async function rewrapWithRecoveryKey(session: ResetSession, recoveryText: string): Promise<void> {
-  const e2ee = session.e2ee;
-  if (!e2ee) throw new Error('this account has no keys to rewrap');
-  let wrappingKey: Uint8Array;
-  try {
-    wrappingKey = await recoveryWrappingKey(decodeRecoveryKey(recoveryText));
-  } catch {
-    throw new WrongRecoveryKeyError('not a recovery key');
-  }
-  const recoveryWraps = Object.entries(e2ee.wraps).filter(([, wrap]) => wrap.by === 'recovery');
-  let accountKey: Uint8Array | undefined;
-  let openedId: string | undefined;
-  for (const [id, wrap] of recoveryWraps) {
-    try {
-      accountKey = await unwrapAccountKey(wrappingKey, wrap, session.uid);
-      openedId = id;
-      break;
-    } catch {
-      // Another recovery wrap may be the one; a key that opens none is wrong.
-    }
-  }
-  if (!accountKey || !openedId) throw new WrongRecoveryKeyError('the recovery key opens no wrap');
-  const opened = openedId;
-
-  const passwordWrap = await wrapAccountKey(session.masterKey, accountKey, session.uid, 'password');
-  await writeKeys(session, (stored) => {
-    // The account key opened above is the one at the version read when the password was
-    // set; if a reset elsewhere has replaced it since, its wrap would sit under the new
-    // version and open the wrong key, so this stops instead.
-    if (!stored || stored.keyVersion !== e2ee.keyVersion) {
-      throw new KeysChangedError('the account key changed while the page was open');
-    }
-    // The recovery wrap the user's key opened, which they have just shown they can use.
-    // Only that one: the rules take four wraps at most, and carrying every stored one
-    // beside the new password wrap could ask for five, a write refused every time. If it
-    // has gone meanwhile (a new recovery key made on another device), the stored ones stay.
-    const kept = stored.wraps[opened]?.by === 'recovery' ? { [opened]: stored.wraps[opened] } : recoveryWrapsOf(stored);
-    const wraps: Record<string, Wrap> = { [newWrapId()]: passwordWrap, ...kept };
-    return { ...stored, wraps };
-  });
+  if (!session.e2ee) throw new Error('this account has no keys to rewrap');
+  session.e2ee = (await rewrap(ownerOf(session), session.e2ee, session.masterKey, recoveryText)).e2ee;
 }
 
 /**
@@ -212,47 +153,9 @@ export async function rewrapWithRecoveryKey(session: ResetSession, recoveryText:
  * screen. An account with no keys loses nothing: its pushes are not encrypted yet.
  */
 export async function startNewKeys(session: ResetSession): Promise<string> {
-  const accountKey = newAccountKey();
-  const recoveryBytes = newRecoveryKey();
-  const wraps = {
-    [newWrapId()]: await wrapAccountKey(session.masterKey, accountKey, session.uid, 'password'),
-    [newWrapId()]: await wrapAccountKey(await recoveryWrappingKey(recoveryBytes), accountKey, session.uid, 'recovery'),
-  };
-  // One past the stored version, read again as it is written, so a reset elsewhere in
-  // the meantime is passed rather than repeated.
-  await writeKeys(session, (stored) => ({
-    ...stored,
-    v: 1,
-    kdf: KDF,
-    keyVersion: (stored?.keyVersion ?? 0) + 1,
-    wraps,
-  }));
-  return encodeRecoveryKey(recoveryBytes);
-}
-
-/**
- * Writes the keys `build` makes from the stored ones, read again in the same transaction.
- * The session's copy was read when the password was set, and the user may take minutes
- * to find a recovery key; a whole map written from that copy would undo whatever changed
- * `e2ee` meanwhile (`migratedAt` set, a wrap written by another device), which the rules'
- * "keyVersion only goes up" cannot see at an equal version. The new map replaces the old
- * one rather than merging into it, so the old password's wraps go.
- */
-async function writeKeys(session: ResetSession, build: (stored: E2ee | undefined) => E2ee): Promise<void> {
-  const { db } = reset();
-  const ref = doc(db, 'users', session.uid);
-  session.e2ee = await runTransaction(db, async (transaction) => {
-    const snapshot = await transaction.get(ref);
-    const stored = snapshot.data()?.e2ee;
-    const e2ee = build(isE2ee(stored) ? stored : undefined);
-    if (snapshot.exists()) {
-      transaction.update(ref, { e2ee });
-    } else {
-      // As the web sign-up makes the document, with the keys.
-      transaction.set(ref, { email: session.email, createdAt: new Date(), e2ee });
-    }
-    return e2ee;
-  });
+  const { recoveryKey, e2ee } = await startNew(ownerOf(session), session.masterKey);
+  session.e2ee = e2ee;
+  return recoveryKey;
 }
 
 const DELETE_PAGE = 300;
@@ -297,11 +200,4 @@ export async function deleteLockedPushes(session: ResetSession): Promise<number>
     if (page.docs.length < DELETE_PAGE) return deleted;
     last = page.docs[page.docs.length - 1];
   }
-}
-
-// Enough of the stored map to rewrap it; the rules have already held it to the spec's shape.
-function isE2ee(value: unknown): value is E2ee {
-  if (typeof value !== 'object' || value === null) return false;
-  const { keyVersion, wraps } = value as Partial<E2ee>;
-  return typeof keyVersion === 'number' && typeof wraps === 'object' && wraps !== null;
 }
