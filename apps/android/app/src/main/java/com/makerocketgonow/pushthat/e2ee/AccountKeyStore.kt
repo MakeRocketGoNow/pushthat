@@ -96,7 +96,20 @@ object AccountKeyStore {
         return Stored(uid, accountKey, prefs.getLong(KEY_VERSION, 1L))
     }
 
-    fun hasKey(context: Context, uid: String): Boolean = load(context, uid) != null
+    /**
+     * Whether this install holds a key for [uid], from the file alone: for the activities,
+     * which decide on it in `onCreate` on the main thread, where a Keystore call (a binder
+     * call to a system service) does not belong. It does not open the key; whoever uses it
+     * calls [load], off the main thread, and a key that turns out not to open is cleared
+     * there, so the next launch asks for the password.
+     */
+    @Synchronized
+    fun hasKey(context: Context, uid: String): Boolean {
+        val prefs = prefs(context)
+        return prefs.getString(KEY_UID, null) == uid &&
+            prefs.contains(KEY_WRAPPED) &&
+            prefs.contains(KEY_IV)
+    }
 
     /** On sign-out: the key goes, the install's `deviceId` stays. */
     @Synchronized
