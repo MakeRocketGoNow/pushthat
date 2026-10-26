@@ -50,6 +50,14 @@ A run from any other branch runs the checks and deploys nothing.
 - **Deleting a function.** CI deploys with `--non-interactive`, and the Firebase CLI then
   refuses to delete a function that has gone from the source rather than asking. Delete it
   with `firebase functions:delete <name>` from the repository root, then rerun the deploy.
+  A failed functions deploy also stops the site and rules deploy in the same run, so a
+  removal is best done by hand just before the merge that drops the function, once no live
+  client still depends on it.
+  - `getPageTitle` went with the encrypted pushes (phase 5 of
+    [end-to-end encryption](e2ee.md), Titles): `firebase functions:delete getPageTitle
+    --region us-central1`. The web app only ever called it for a title and pushes without
+    one when the call fails, so deleting it before the merge costs the site's pushes
+    their titles for a few minutes and nothing else.
 - **A new secret.** The deploy account can read secrets but not change who can read them,
   so the first deploy of a function that uses a new secret is made by hand
   (`npm run deploy` in `functions/`), which grants the functions' account access to it.

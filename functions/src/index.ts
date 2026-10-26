@@ -11,13 +11,11 @@ import { SendResponse, getMessaging } from 'firebase-admin/messaging';
 import { getStorage } from 'firebase-admin/storage';
 import * as logger from 'firebase-functions/logger';
 import { onDocumentCreated, onDocumentDeleted } from 'firebase-functions/v2/firestore';
-import { HttpsError, onCall } from 'firebase-functions/v2/https';
 // import { beforeUserCreated } from 'firebase-functions/v2/identity';
 import 'whatwg-fetch';
 
 import { deadTokens, pushMessageOf } from './notifications';
 import { storagePathOf } from './orphans';
-import { pageTitleOf } from './title';
 import { recordPush } from './usage';
 
 // The user document's plan fields are described in plan.ts (`PlanUser`); the count a
@@ -39,20 +37,11 @@ export { deleteOrphanedUploads } from './orphans';
 // Start writing functions
 // https://firebase.google.com/docs/functions/typescript
 
-// Signed in only: the function fetches whatever URL it is given, from inside the
-// project, and without the check anyone on the internet could use it as a fetch oracle
-// at the project's expense (title.ts has the rest of what bounds it). The web app calls
-// it from the Push page, which is behind sign-in.
-export const getPageTitle = onCall({ cors: true }, async (request) => {
-  if (!request.auth) throw new HttpsError('unauthenticated', 'Sign in first.');
-  try {
-    return { title: await pageTitleOf(request.data?.url) };
-  } catch (error) {
-    if (error instanceof HttpsError) throw error;
-    logger.error('Error in getPageTitle:', error);
-    throw new HttpsError('internal', 'Failed to fetch page title.');
-  }
-});
+// No `getPageTitle`: the web app once asked it for a page's title, which a browser cannot
+// read cross-origin, but a server that fetches the URL knows the URL, and that is what an
+// encrypted push keeps from it (docs/e2ee.md, Titles). A web push goes out with an empty
+// title and the first phone or Mac to receive it writes the title back. Removing it from
+// the source does not remove it from the project; docs/deploying.md says how.
 
 export const onPushRecordDeleted = onDocumentDeleted('pushes/{pushId}', async (event) => {
   let storagePath = '';
@@ -140,7 +129,7 @@ export const onNewPushCreated = onDocumentCreated('pushes/{pushId}', async (even
       return;
     }
 
-    // Encrypted or plaintext, by whether the push has `enc` (notifications.ts).
+    // The push's id and what a device needs to fetch it, nothing it holds (notifications.ts).
     const message = pushMessageOf(event.params.pushId, pushData);
 
     // Send messages in batches (FCM allows up to 500 tokens per request)
