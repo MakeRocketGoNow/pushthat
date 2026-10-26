@@ -59,7 +59,10 @@ enum AccountKeyService {
 
         var errorDescription: String? {
             switch self {
-            case .keysChanged: return "Your encryption keys were changed on another device. Sign out and sign in again."
+            // Where a sign-in or the recovery prompt meets it, the app goes to the password
+            // prompt, which reads the keys again; Settings says to sign out instead
+            // (AuthViewModel.fromSettings), since there the device's key is the stale one.
+            case .keysChanged: return "Your encryption keys were changed on another device. Enter your password again."
             case .tooManyWraps: return "Your encryption keys could not be updated. Try again."
             case .noKeys: return "This account has no encryption keys yet. Sign out and sign in again."
             }

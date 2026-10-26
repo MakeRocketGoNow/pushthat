@@ -404,10 +404,12 @@ class AuthViewModel: ObservableObject {
             throw Problem("That is not your current password.")
         }
         let newKeys = try await Self.derive(email: email, password: new)
-        let oldWrapIds = try await AccountKeyService.addPasswordWrap(
-            uid: user.uid, email: email, device: device,
-            currentMasterKey: currentKeys.masterKey, newMasterKey: newKeys.masterKey
-        )
+        let oldWrapIds = try await Self.fromSettings {
+            try await AccountKeyService.addPasswordWrap(
+                uid: user.uid, email: email, device: device,
+                currentMasterKey: currentKeys.masterKey, newMasterKey: newKeys.masterKey
+            )
+        }
         try await user.updatePassword(to: newKeys.firebasePassword)
         do {
             try await AccountKeyService.removeWraps(uid: user.uid, email: email, ids: oldWrapIds)
@@ -427,7 +429,9 @@ class AuthViewModel: ObservableObject {
         guard let user = auth.currentUser, let email = user.email,
               var device = AccountKeyStore.accountKey(for: user.uid)
         else { throw AccountKeyService.KeyError.noKeys }
-        let recoveryKey = try await AccountKeyService.replaceRecoveryKey(uid: user.uid, email: email, accountKey: device.key, keyVersion: device.keyVersion)
+        let recoveryKey = try await Self.fromSettings {
+            try await AccountKeyService.replaceRecoveryKey(uid: user.uid, email: email, accountKey: device.key, keyVersion: device.keyVersion)
+        }
         device.unsavedRecoveryKey = recoveryKey
         do {
             try AccountKeyStore.save(device)
@@ -437,6 +441,18 @@ class AuthViewModel: ObservableObject {
             print("The new recovery key could not be kept until it is confirmed: \(error)")
         }
         return recoveryKey
+    }
+
+    /// A key write from Settings, which wraps the key this device holds. If another device
+    /// has replaced the account key since, this device's key is the stale one, and only a
+    /// fresh sign-in (which opens the new keys) brings it up to date; the password prompt's
+    /// "Enter your password again" would not, since Settings has no such prompt.
+    private static func fromSettings<T>(_ write: () async throws -> T) async throws -> T {
+        do {
+            return try await write()
+        } catch AccountKeyService.KeyError.keysChanged {
+            throw Problem("Your encryption keys were changed on another device. Sign out and sign in again.")
+        }
     }
 
     // MARK: - Sign out
