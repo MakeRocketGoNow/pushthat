@@ -38,8 +38,9 @@ const alice = () => env.authenticatedContext('alice').firestore();
 const aliceDoc = () => doc(alice(), 'users/alice');
 const seed = (data) => env.withSecurityRulesDisabled((c) => setDoc(doc(c.firestore(), 'users/alice'), data));
 
-// A push as the web app writes it (apps/web/src/pages/Push.tsx); the other clients'
-// shapes are in 'the shape of a push' below.
+// A push as the web app wrote it before encryption, which the rules now refuse to create
+// and still let its owner retitle and migrate; the other clients' old shapes are in 'a
+// plaintext push' below.
 const webPush = (fields = {}) => ({
   url: 'https://example.com/a',
   userId: 'alice',
@@ -249,7 +250,8 @@ describe('the wrapped keys on the user document', () => {
 // The tiers' limits: Free 50 URL and 3 file pushes a month, Pro 10,000 and 100
 // (docs/billing.md at the repository root).
 describe('the push quota', () => {
-  const push = (type = 'url') => addDoc(collection(alice(), 'pushes'), webPush({ type }));
+  const push = (type = 'url') =>
+    addDoc(collection(alice(), 'pushes'), type === 'file' ? encryptedFile() : encryptedPush());
   const pro = { startedAt: anchoredOnFirst, expiresAt: farFuture };
 
   test('free, under the URL limit', async () => {
@@ -292,19 +294,6 @@ describe('the push quota', () => {
     await assertSucceeds(push());
   });
   test('no document yet', () => assertSucceeds(push()));
-
-  const encrypted = (type = 'url') =>
-    addDoc(collection(alice(), 'pushes'), type === 'file' ? encryptedFile() : encryptedPush());
-  test('an encrypted push, under the limits', async () => {
-    await seed({ createdAt: anchoredOnFirst, usageRecords: { [periodKey]: { url: 49, file: 2 } } });
-    await assertSucceeds(encrypted());
-    await assertSucceeds(encrypted('file'));
-  });
-  test('an encrypted push, at the limits', async () => {
-    await seed({ createdAt: anchoredOnFirst, usageRecords: { [periodKey]: { url: 50, file: 3 } } });
-    await assertFails(encrypted());
-    await assertFails(encrypted('file'));
-  });
 
   // A comp is written by hand as {type, expiresAt} alone (docs/billing.md). Reading its
   // startedAt was an error once usageRecords existed, which refused every push after
@@ -364,58 +353,43 @@ describe('the push quota', () => {
   });
 });
 
-// What each client writes is accepted as it is, and nothing beyond it: a field no
-// client writes, a value of the wrong type, or one past the bound. The bounds keep the
-// push inside what onNewPushCreated sends in the notification.
-describe('the shape of a push', () => {
+// Every app from before encryption writes a plaintext push, and each one's exact keys are
+// refused now (docs/e2ee.md, Old app versions), even where the account is far inside its
+// limits and has no keys yet: the shape alone is the refusal. The old apps show it as the
+// permission error they show for any refused push.
+describe('a plaintext push, as an app from before encryption writes it', () => {
   const create = (data) => addDoc(collection(alice(), 'pushes'), data);
   const storageUrl = 'https://firebasestorage.googleapis.com/v0/b/b/o/uploads%2Falice%2Fa.pdf?alt=media&token=t';
 
-  test('the web app, a URL', () => assertSucceeds(create(webPush())));
+  test('the web app, a URL', () => assertFails(create(webPush())));
+  test('the web app, a URL with no title, as it pushed once the title lookup was gone', () =>
+    assertFails(create(webPush({ title: '' }))));
   test('the web app, a file', () =>
-    assertSucceeds(create(webPush({ url: storageUrl, title: 'a.pdf', type: 'file', ext: 'pdf' }))));
-  test('Android, a URL with no extension', () =>
-    assertSucceeds(create(webPush({ deviceName: 'Pixel', ext: null }))));
+    assertFails(create(webPush({ url: storageUrl, title: 'a.pdf', type: 'file', ext: 'pdf' }))));
+  test('Android, a URL with no extension', () => assertFails(create(webPush({ deviceName: 'Pixel', ext: null }))));
   test('Android, a file', () =>
-    assertSucceeds(create(webPush({ url: storageUrl, title: 'a.pdf', type: 'file', deviceName: 'Pixel', ext: 'pdf' }))));
+    assertFails(create(webPush({ url: storageUrl, title: 'a.pdf', type: 'file', deviceName: 'Pixel', ext: 'pdf' }))));
   test('Android, a retried push, which has no search tokens', () =>
-    assertSucceeds(create({ url: 'https://example.com/a', userId: 'alice', createdAt: serverTimestamp(), title: 'A', type: 'url', deviceName: 'Pixel' })));
+    assertFails(create({ url: 'https://example.com/a', userId: 'alice', createdAt: serverTimestamp(), title: 'A', type: 'url', deviceName: 'Pixel' })));
   test('iOS, a queued push with the time it was queued', () =>
-    assertSucceeds(create(webPush({ createdAt: new Date(Date.now() - 86_400_000), deviceName: 'iPhone' }))));
-
-  test('with a field no client writes', () => assertFails(create(webPush({ pinned: true }))));
-  test('with an expiresAt', () => assertFails(create(webPush({ type: 'file', expiresAt: farFuture }))));
-  test('with a type of its own', () => assertFails(create(webPush({ type: 'note' }))));
-  test('without createdAt', async () => {
-    const { createdAt: _createdAt, ...rest } = webPush();
-    await assertFails(create(rest));
+    assertFails(create(webPush({ createdAt: new Date(Date.now() - 86_400_000), deviceName: 'iPhone' }))));
+  test('on an account with keys, far inside its limits', async () => {
+    await seed({
+      createdAt: anchoredOnFirst,
+      e2ee: { v: 1, kdf: 'pbkdf2-sha256-600000', keyVersion: 1, wraps: {} },
+      usageRecords: { [periodKey]: { url: 0 } },
+    });
+    await assertFails(create(webPush()));
   });
-  test('with a createdAt that is not a timestamp', () => assertFails(create(webPush({ createdAt: 'now' }))));
-  test('without a URL', async () => {
-    const { url: _url, ...rest } = webPush();
-    await assertFails(create(rest));
-  });
-  test('with a URL that is not a string', () => assertFails(create(webPush({ url: 42 }))));
-  test('with a URL past the bound', () => assertFails(create(webPush({ url: `https://example.com/${'a'.repeat(1500)}` }))));
-  test('with a URL at the bound', () => assertSucceeds(create(webPush({ url: `https://example.com/${'a'.repeat(1480)}` }))));
-  test('without a title', async () => {
-    const { title: _title, ...rest } = webPush();
-    await assertFails(create(rest));
-  });
-  test('with a title past the bound', () => assertFails(create(webPush({ title: 'a'.repeat(1501) }))));
-  test('with a device name past the bound', () => assertFails(create(webPush({ deviceName: 'a'.repeat(513) }))));
-  test('with a device name that is not a string', () => assertFails(create(webPush({ deviceName: ['Pixel'] }))));
-  test('with search tokens that are not a list', () => assertFails(create(webPush({ searchTokens: 'a' }))));
-  test('with more search tokens than the title and URL could give', () =>
-    assertFails(create(webPush({ searchTokens: Array.from({ length: 3001 }, (_, i) => `t${i}`) }))));
-  test('with an extension past the bound', () => assertFails(create(webPush({ ext: 'a'.repeat(65) }))));
-  test('with an extension that is not a string', () => assertFails(create(webPush({ ext: 7 }))));
+  test('with the plaintext fields and an envelope beside them', () =>
+    assertFails(create({ ...webPush(), deviceId: 'ZGV2aWNlLWlkLTAwMDAwMA', keyVersion: 1, enc: envelope })));
 });
 
-// The encrypted shape (docs/e2ee.md, Rules) is accepted beside the plaintext one until
-// phase 5 of that plan. Nothing a downgraded client could leak in plaintext sits beside
-// enc, and a file push names an object its owner uploaded, since onPushRecordDeleted
-// deletes whatever it names.
+// The encrypted shape (docs/e2ee.md, Rules), the only one a push is created in. What each
+// client writes is accepted as it is, and nothing beyond it: a field no client writes, a
+// value of the wrong type, or one past the bound. Nothing a downgraded client could leak in
+// plaintext sits beside enc, and a file push names an object its owner uploaded, since
+// onPushRecordDeleted deletes whatever it names.
 describe('the shape of an encrypted push', () => {
   const create = (data) => addDoc(collection(alice(), 'pushes'), data);
   const without = (key, data) => {
@@ -438,6 +412,8 @@ describe('the shape of an encrypted push', () => {
   ]) {
     test(`with a plaintext ${key} beside enc`, () => assertFails(create(encryptedPush({ [key]: value }))));
   }
+  test('without an envelope', () => assertFails(create(without('enc', encryptedPush()))));
+  test('a file without an envelope', () => assertFails(create(without('enc', encryptedFile()))));
   test('with an expiresAt', () => assertFails(create(encryptedFile({ expiresAt: farFuture }))));
   test('with a field no client writes', () => assertFails(create(encryptedPush({ pinned: true }))));
   test('with a type of its own', () => assertFails(create(encryptedPush({ type: 'note' }))));
@@ -455,6 +431,8 @@ describe('the shape of an encrypted push', () => {
   test('with a device id past the bound', () => assertFails(create(encryptedPush({ deviceId: 'a'.repeat(65) }))));
   test('with search tokens that are not a list', () => assertFails(create(encryptedPush({ searchTokens: 'a' }))));
   test('for someone else', () => assertFails(create(encryptedPush({ userId: 'bob' }))));
+  test('signed out', () =>
+    assertFails(addDoc(collection(env.unauthenticatedContext().firestore(), 'pushes'), encryptedPush())));
 
   // The account's current key: a device left holding the key a reset replaced must not
   // keep adding pushes nobody can open.
@@ -509,8 +487,6 @@ describe('a push document', () => {
       setDoc(doc(c.firestore(), 'pushes/p1'), { userId: 'alice', type: 'file', url: 'https://x.com', ...data })
     );
 
-  test('created with an expiresAt', () =>
-    assertFails(addDoc(collection(alice(), 'pushes'), { userId: 'alice', type: 'file', url: 'https://x.com', expiresAt: farFuture })));
   test('a URL push retitled by the title scraper', async () => {
     await seedPush({ type: 'url' });
     await assertSucceeds(updateDoc(pushRef(), { title: 'The page', searchTokens: ['the', 'page'] }));
