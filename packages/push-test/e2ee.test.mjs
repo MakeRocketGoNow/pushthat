@@ -232,6 +232,16 @@ test("the token generator matches the spec's example", () => {
   assert.deepEqual(searchTokens(""), []);
 });
 
+test("the token generator keeps accents, composes them, and counts code points", () => {
+  // A decomposed "e" + U+0301 composes to U+00E9 and stays inside the word.
+  assert.deepEqual(searchTokens("Cafe\u0301"), ["c", "ca", "caf", "caf\u00e9"]);
+  assert.deepEqual(searchTokens("Caf\u00e9"), searchTokens("Cafe\u0301"));
+  // A mark with no precomposed form stays in the word too, as it does on iOS.
+  assert.deepEqual(searchTokens("\u0939\u093f"), ["\u0939", "\u0939\u093f"]);
+  // An astral letter is one code point, never half a surrogate pair.
+  assert.deepEqual(searchTokens("\u{20000}x"), ["\u{20000}", "\u{20000}x"]);
+});
+
 test("blind tokens are 16 base64url characters of the HMAC and match the vector", async () => {
   const { searchKey } = await accountSubkeys(inputs.accountKey);
   const tokens = searchTokens(inputs.searchText);
