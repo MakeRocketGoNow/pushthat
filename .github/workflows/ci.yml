@@ -1,7 +1,7 @@
 name: CI
 
 # The checks that need nothing but the repository (the functions' unit tests, the web app's
-# lint and builds, the Android unit tests) run on every pull request and every push to
+# lint and builds, the Android unit tests, the encryption reference's tests) run on every pull request and every push to
 # `main`. A push to `main` then deploys whatever it changed to the `push-that` Firebase
 # project, once the check for that folder has passed: see docs/deploying.md for the jobs,
 # the Google Cloud setup they need, and how to deploy by hand.
@@ -89,6 +89,25 @@ jobs:
           java-version: 25
       - uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
       - run: ./gradlew test
+
+  # The end-to-end encryption reference (docs/e2ee.md): the round trips, and that
+  # vectors.json is what the generator produces, so a change to the bytes cannot land
+  # without the vectors the clients check against.
+  push-test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/push-test
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: packages/push-test/.nvmrc
+          cache: npm
+          cache-dependency-path: packages/push-test/package-lock.json
+      - run: npm ci
+      - run: node --check index.js
+      - run: npm test
 
   # Which of the two deploys this run makes. A push deploys a folder when it changed since
   # the last push to `main` whose run succeeded: that commit is known to be live, and a run

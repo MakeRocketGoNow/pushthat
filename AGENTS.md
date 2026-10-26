@@ -100,8 +100,8 @@ xcodebuild -project PushThat.xcodeproj -scheme PushThat -destination 'generic/pl
 # apps/macos (fails today on its deployment target: see docs/macos.md)
 xcodebuild -project PushThat.xcodeproj -scheme PushThat -destination 'platform=macOS' CODE_SIGNING_ALLOWED=NO build
 
-# packages/push-test (sending needs a real key, so this only parses it)
-npm ci && node --check index.js
+# packages/push-test (sending needs a real key, so the send script is only parsed)
+npm ci && node --check index.js && npm test
 ```
 
 `npm run test:rules` and `npm run test:emulator` run against the Firestore and Storage
@@ -112,7 +112,7 @@ functions' suites deliver signed events to the webhook over HTTP and point
 `STRIPE_API_URL` at a stand-in for Stripe's API, so nothing reaches Stripe.
 
 CI (`.github/workflows/ci.yml`) runs the functions' unit tests, the web app's lint and
-builds, and the Android unit tests on every pull request. The emulator suites run only in
+builds, the Android unit tests and the encryption reference's tests on every pull request. The emulator suites run only in
 the deploy that follows a merge, and the Xcode builds not at all, so run them yourself when
 a change reaches the rules, the functions or the Apple apps: by the time CI runs them, the
 change is on `main`.
