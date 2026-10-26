@@ -109,12 +109,15 @@
       android:layout_marginTop="24dp"
       android:visibility="gone" />
 
+    <!-- A live region, so TalkBack reads a failed step out: the error appears away from the
+         button that was pressed, and nothing else on the screen changes to say it failed. -->
     <TextView
       android:id="@+id/errorText"
       style="@style/Widget.LinkShare.ErrorText"
       android:layout_width="match_parent"
       android:layout_height="wrap_content"
       android:layout_marginTop="16dp"
+      android:accessibilityLiveRegion="polite"
       android:visibility="gone" />
 
     <ProgressBar
