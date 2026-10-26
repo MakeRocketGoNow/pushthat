@@ -25,6 +25,7 @@ import android.view.MenuItem
 import androidx.appcompat.widget.Toolbar
 import com.makerocketgonow.pushthat.workers.RetryPushWorker
 import com.makerocketgonow.pushthat.e2ee.AccountKeyStore
+import com.makerocketgonow.pushthat.e2ee.MIN_NEW_PASSWORD_LENGTH
 import android.content.ClipboardManager
 import android.content.ClipData
 import android.widget.Toast
@@ -489,6 +490,7 @@ class MainActivity : AppCompatActivity() {
         val current = view.findViewById<EditText>(R.id.currentPasswordInput)
         val new = view.findViewById<EditText>(R.id.newPasswordInput)
         val again = view.findViewById<EditText>(R.id.newPasswordAgainInput)
+        view.findViewById<TextView>(R.id.passwordRuleText).text = getString(R.string.password_rule, MIN_NEW_PASSWORD_LENGTH)
         val dialog = AlertDialog.Builder(this, R.style.DeleteDialogStyle)
             .setTitle(R.string.change_password)
             .setView(view)
@@ -501,7 +503,7 @@ class MainActivity : AppCompatActivity() {
             val newPassword = new.text.toString()
             when {
                 currentPassword.isEmpty() -> current.error = getString(R.string.password_required)
-                newPassword.length < LoginActivity.MIN_NEW_PASSWORD_LENGTH -> new.error = getString(R.string.password_rule)
+                newPassword.length < MIN_NEW_PASSWORD_LENGTH -> new.error = getString(R.string.password_rule, MIN_NEW_PASSWORD_LENGTH)
                 newPassword != again.text.toString() -> again.error = getString(R.string.passwords_differ)
                 else -> {
                     dialog.dismiss()

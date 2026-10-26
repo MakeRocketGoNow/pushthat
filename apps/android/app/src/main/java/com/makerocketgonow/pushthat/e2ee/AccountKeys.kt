@@ -13,6 +13,14 @@ import kotlinx.coroutines.withContext
 import java.security.GeneralSecurityException
 
 /**
+ * docs/e2ee.md: a new password (at sign-up and when it is changed) has at least 10
+ * characters, and the screen says why. Sign-in takes what it is given, since accounts from
+ * before the rule have shorter passwords. Here rather than on a screen, because the sign-in
+ * screen and the change password dialog both check it and both say it.
+ */
+const val MIN_NEW_PASSWORD_LENGTH = 10
+
+/**
  * Signing in, registering and recovering with the end-to-end keys: docs/e2ee.md, "Keys"
  * and "Migration", for what the keys are and how an account moves to them, and the web's
  * apps/web/src/services/signIn.ts for the same flow in the app the others follow.

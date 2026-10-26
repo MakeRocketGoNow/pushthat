@@ -23,6 +23,7 @@ import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.auth
 import com.makerocketgonow.pushthat.LoginViewModel.Screen
 import com.makerocketgonow.pushthat.e2ee.AccountKeyStore
+import com.makerocketgonow.pushthat.e2ee.MIN_NEW_PASSWORD_LENGTH
 import kotlinx.coroutines.launch
 
 /**
@@ -249,7 +250,7 @@ class LoginActivity : AppCompatActivity() {
             return null
         }
         if (registering && password.length < MIN_NEW_PASSWORD_LENGTH) {
-            passwordInput.error = getString(R.string.password_rule)
+            passwordInput.error = getString(R.string.password_rule, MIN_NEW_PASSWORD_LENGTH)
             return null
         }
         return email to password
@@ -281,10 +282,5 @@ class LoginActivity : AppCompatActivity() {
         if (isFinishing) return
         startActivity(Intent(this, MainActivity::class.java))
         finish()
-    }
-
-    companion object {
-        /** docs/e2ee.md: the sign-up screen asks for at least 10 characters and says why. */
-        const val MIN_NEW_PASSWORD_LENGTH = 10
     }
 }

@@ -59,7 +59,8 @@
 
     <!-- End-to-end encryption keys (docs/e2ee.md). The copy is shared word for word with the
          other apps, so a change here is a change there too. -->
-    <string name="password_rule">Use at least 10 characters. Your password is the key to your pushes, so it has to be hard to guess.</string>
+    <!-- %1$d is MIN_NEW_PASSWORD_LENGTH (e2ee/AccountKeys.kt), so the number is written once. -->
+    <string name="password_rule">Use at least %1$d characters. Your password is the key to your pushes, so it has to be hard to guess.</string>
     <string name="recovery_key_title">Your recovery key</string>
     <string name="recovery_key_body">Your password is the key to your pushes. We never see it and cannot reset it for you. Save your recovery key.</string>
     <string name="recovery_key_shown_once">It is shown only once. If you forget your password, it is the only way to keep your pushes.</string>
