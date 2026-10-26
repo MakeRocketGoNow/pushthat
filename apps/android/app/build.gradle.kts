@@ -53,6 +53,16 @@ android {
             )
         }
     }
+    testOptions {
+        unitTests.all { test ->
+            // E2eeVectorsTest checks the crypto against the reference's vectors where the
+            // reference writes them, so they cannot go stale in a copy. Declared as an
+            // input so that a change to the vectors reruns the tests.
+            val vectors = rootProject.file("../../packages/push-test/vectors.json")
+            test.inputs.file(vectors).withPropertyName("e2eeVectors")
+            test.systemProperty("pushthat.e2eeVectors", vectors.absolutePath)
+        }
+    }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
@@ -92,6 +102,7 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
 
     testImplementation(libs.junit)
+    testImplementation(libs.org.json)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
 
