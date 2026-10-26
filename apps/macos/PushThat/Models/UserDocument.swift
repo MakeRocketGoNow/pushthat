@@ -28,4 +28,16 @@ struct UserDocument: Codable {
             "fcmTokens": []
         ]
     }
+
+    /// A new user document, made with the account's keys in the same transaction that
+    /// writes them (`AccountKeyService.write`): `email`, `createdAt` and `e2ee`, as the web
+    /// sign-up and the reset page make it. `fcmTokens` is left to the token write that
+    /// follows a sign-in, which adds the field with `arrayUnion`.
+    static func newUserData(email: String, e2ee: [String: Any]) -> [String: Any] {
+        return [
+            "email": email,
+            "createdAt": FieldValue.serverTimestamp(),
+            "e2ee": e2ee
+        ]
+    }
 }
