@@ -8,6 +8,7 @@ import {
   arrayUnion,
   collection,
   deleteDoc,
+  deleteField,
   doc,
   getDoc,
   serverTimestamp,
@@ -50,6 +51,23 @@ const webPush = (fields = {}) => ({
   ...fields,
 });
 const tokens = (count) => Array.from({ length: count }, (_, i) => `token-${i}`);
+
+// An encrypted push (docs/e2ee.md): what the server needs in plaintext, and enc. The
+// values are the right lengths and obviously made up: a 12-byte nonce in base64, a
+// deviceId and an objectId of 16 bytes in base64url, blind tokens of 16 characters.
+const envelope = { v: 1, n: 'AAECAwQFBgcICQoL', ct: 'bm90IHJlYWxseSBjaXBoZXJ0ZXh0' };
+const encryptedPush = (fields = {}) => ({
+  userId: 'alice',
+  type: 'url',
+  createdAt: serverTimestamp(),
+  deviceId: 'ZGV2aWNlLWlkLTAwMDAwMA',
+  keyVersion: 1,
+  enc: envelope,
+  searchTokens: ['AAAAAAAAAAAAAAAA', 'BBBBBBBBBBBBBBBB'],
+  ...fields,
+});
+const objectPath = 'uploads/alice/b2JqZWN0LWlkLTAwMDAwMA';
+const encryptedFile = (fields = {}) => encryptedPush({ type: 'file', objectPath, ...fields });
 
 describe('creating the user document, as each client does', () => {
   test('Android sign-up', () => assertSucceeds(setDoc(aliceDoc(), { email: 'a@x.com', createdAt: serverTimestamp() })));
@@ -160,6 +178,19 @@ describe('the push quota', () => {
   });
   test('no document yet', () => assertSucceeds(push()));
 
+  const encrypted = (type = 'url') =>
+    addDoc(collection(alice(), 'pushes'), type === 'file' ? encryptedFile() : encryptedPush());
+  test('an encrypted push, under the limits', async () => {
+    await seed({ createdAt: anchoredOnFirst, usageRecords: { [periodKey]: { url: 49, file: 2 } } });
+    await assertSucceeds(encrypted());
+    await assertSucceeds(encrypted('file'));
+  });
+  test('an encrypted push, at the limits', async () => {
+    await seed({ createdAt: anchoredOnFirst, usageRecords: { [periodKey]: { url: 50, file: 3 } } });
+    await assertFails(encrypted());
+    await assertFails(encrypted('file'));
+  });
+
   // A comp is written by hand as {type, expiresAt} alone (docs/billing.md). Reading its
   // startedAt was an error once usageRecords existed, which refused every push after
   // the first.
@@ -266,6 +297,77 @@ describe('the shape of a push', () => {
   test('with an extension that is not a string', () => assertFails(create(webPush({ ext: 7 }))));
 });
 
+// The encrypted shape (docs/e2ee.md, Rules) is accepted beside the plaintext one until
+// phase 5 of that plan. Nothing a downgraded client could leak in plaintext sits beside
+// enc, and a file push names an object its owner uploaded, since onPushRecordDeleted
+// deletes whatever it names.
+describe('the shape of an encrypted push', () => {
+  const create = (data) => addDoc(collection(alice(), 'pushes'), data);
+  const without = (key, data) => {
+    const { [key]: _omitted, ...rest } = data;
+    return rest;
+  };
+
+  test('a URL', () => assertSucceeds(create(encryptedPush())));
+  test('a file', () => assertSucceeds(create(encryptedFile())));
+  test('a retried push, with no search tokens', () => assertSucceeds(create(without('searchTokens', encryptedPush()))));
+  test('a queued push with the time it was queued', () =>
+    assertSucceeds(create(encryptedPush({ createdAt: new Date(Date.now() - 86_400_000) }))));
+  test('under a later key version', () => assertSucceeds(create(encryptedPush({ keyVersion: 2 }))));
+
+  for (const [key, value] of [
+    ['url', 'https://example.com/a'],
+    ['title', 'A page'],
+    ['deviceName', 'Pixel'],
+    ['ext', 'pdf'],
+  ]) {
+    test(`with a plaintext ${key} beside enc`, () => assertFails(create(encryptedPush({ [key]: value }))));
+  }
+  test('with an expiresAt', () => assertFails(create(encryptedFile({ expiresAt: farFuture }))));
+  test('with a field no client writes', () => assertFails(create(encryptedPush({ pinned: true }))));
+  test('with a type of its own', () => assertFails(create(encryptedPush({ type: 'note' }))));
+  test('without createdAt', () => assertFails(create(without('createdAt', encryptedPush()))));
+  test('with a createdAt that is not a timestamp', () => assertFails(create(encryptedPush({ createdAt: 'now' }))));
+  test('without a key version', () => assertFails(create(without('keyVersion', encryptedPush()))));
+  test('with a key version that is not a count', () => {
+    return Promise.all([
+      assertFails(create(encryptedPush({ keyVersion: '1' }))),
+      assertFails(create(encryptedPush({ keyVersion: 0 }))),
+      assertFails(create(encryptedPush({ keyVersion: 1.5 }))),
+    ]);
+  });
+  test('without a device id', () => assertFails(create(without('deviceId', encryptedPush()))));
+  test('with a device id past the bound', () => assertFails(create(encryptedPush({ deviceId: 'a'.repeat(65) }))));
+  test('with search tokens that are not a list', () => assertFails(create(encryptedPush({ searchTokens: 'a' }))));
+  test('for someone else', () => assertFails(create(encryptedPush({ userId: 'bob' }))));
+
+  test('with an envelope of version 1, as a number', () => assertSucceeds(create(encryptedPush({ enc: envelope }))));
+  test('with a version that is a string', () => assertFails(create(encryptedPush({ enc: { ...envelope, v: '1' } }))));
+  test('with an envelope that is not a map', () => assertFails(create(encryptedPush({ enc: 'ciphertext' }))));
+  test('with an envelope missing its nonce', () => assertFails(create(encryptedPush({ enc: without('n', envelope) }))));
+  test('with an envelope missing its ciphertext', () =>
+    assertFails(create(encryptedPush({ enc: without('ct', envelope) }))));
+  test('with a field in the envelope', () =>
+    assertFails(create(encryptedPush({ enc: { ...envelope, title: 'A page' } }))));
+  test('with a nonce that is not 12 bytes', () =>
+    assertFails(create(encryptedPush({ enc: { ...envelope, n: 'AAECAwQFBgcICQoLDA==' } }))));
+  test('with a ciphertext at the bound', () =>
+    assertSucceeds(create(encryptedPush({ enc: { ...envelope, ct: 'A'.repeat(16384) } }))));
+  test('with a ciphertext past the bound', () =>
+    assertFails(create(encryptedPush({ enc: { ...envelope, ct: 'A'.repeat(16385) } }))));
+
+  test('a file without an objectPath', () => assertFails(create(without('objectPath', encryptedFile()))));
+  test("a file naming someone else's object", () =>
+    assertFails(create(encryptedFile({ objectPath: 'uploads/bob/b2JqZWN0LWlkLTAwMDAwMA' }))));
+  test('a file naming something outside uploads', () =>
+    assertFails(create(encryptedFile({ objectPath: 'other/alice/b2JqZWN0LWlkLTAwMDAwMA' }))));
+  test('a file naming a nested path', () => assertFails(create(encryptedFile({ objectPath: `${objectPath}/x` }))));
+  test('a file naming the folder itself', () => assertFails(create(encryptedFile({ objectPath: 'uploads/alice/' }))));
+  test('a file naming an objectPath that is not a string', () =>
+    assertFails(create(encryptedFile({ objectPath: ['uploads', 'alice', 'x'] }))));
+  test('a URL with an objectPath', () => assertFails(create(encryptedPush({ objectPath }))));
+});
+
 // expiresAt is when the sweep deletes a file push; only onNewPushCreated sets it.
 describe('a push document', () => {
   const pushRef = () => doc(alice(), 'pushes/p1');
@@ -315,5 +417,174 @@ describe('a push document', () => {
   test('deleted by its owner', async () => {
     await seedPush({ expiresAt: farFuture });
     await assertSucceeds(deleteDoc(pushRef()));
+  });
+});
+
+// The update a client makes to an encrypted push: the scraped title re-encrypted with the
+// URL, which rewrites enc and the blind index and nothing else.
+describe('an encrypted push document', () => {
+  const pushRef = () => doc(alice(), 'pushes/p1');
+  const seedPush = (data) =>
+    env.withSecurityRulesDisabled((c) => setDoc(doc(c.firestore(), 'pushes/p1'), encryptedPush(data)));
+  const retitled = { enc: { ...envelope, n: 'CwoJCAcGBQQDAgEA' }, searchTokens: ['CCCCCCCCCCCCCCCC'] };
+
+  test('a URL push retitled', async () => {
+    await seedPush({});
+    await assertSucceeds(updateDoc(pushRef(), retitled));
+  });
+  test('a URL push given a plaintext title, as an old scraper would', async () => {
+    await seedPush({});
+    await assertFails(updateDoc(pushRef(), { title: 'The page', searchTokens: ['the', 'page'] }));
+  });
+  test('a URL push given a bad envelope', async () => {
+    await seedPush({});
+    await assertFails(updateDoc(pushRef(), { enc: { ...envelope, n: 'short' } }));
+  });
+  test('a URL push moved to another key version', async () => {
+    await seedPush({});
+    await assertFails(updateDoc(pushRef(), { ...retitled, keyVersion: 2 }));
+  });
+  test('a URL push given an objectPath', async () => {
+    await seedPush({});
+    await assertFails(updateDoc(pushRef(), { objectPath }));
+  });
+  test('a file push re-encrypted, which a file push never is', async () => {
+    await seedPush({ type: 'file', objectPath, expiresAt: farFuture });
+    await assertFails(updateDoc(pushRef(), retitled));
+  });
+  test('a file push pointed at another object', async () => {
+    await seedPush({ type: 'file', objectPath, expiresAt: farFuture });
+    await assertFails(updateDoc(pushRef(), { objectPath: 'uploads/alice/YW5vdGhlci1vYmplY3QtMDAw' }));
+  });
+  test('kept past its expiry', async () => {
+    await seedPush({ type: 'file', objectPath, expiresAt: anchoredOnFirst });
+    await assertFails(updateDoc(pushRef(), { expiresAt: farFuture }));
+  });
+  test('handed to someone else', async () => {
+    await seedPush({});
+    await assertFails(updateDoc(pushRef(), { ...retitled, userId: 'bob' }));
+  });
+  test('updated by someone else', async () => {
+    await seedPush({});
+    await assertFails(updateDoc(doc(env.authenticatedContext('bob').firestore(), 'pushes/p1'), retitled));
+  });
+  test('deleted by its owner', async () => {
+    await seedPush({});
+    await assertSucceeds(deleteDoc(pushRef()));
+  });
+});
+
+// A plaintext push encrypted in place (docs/e2ee.md, Migration): enc, the blind index,
+// keyVersion and deviceId in; url, title, deviceName and ext out; a file push gains the
+// objectPath its title named. Once, since the result has enc and the encrypted rules
+// apply from then on.
+describe('migrating a plaintext push', () => {
+  const pushRef = () => doc(alice(), 'pushes/p1');
+  const seedPush = (data) =>
+    env.withSecurityRulesDisabled((c) =>
+      setDoc(doc(c.firestore(), 'pushes/p1'), webPush({ createdAt: anchoredOnFirst, deviceName: 'Pixel', ...data }))
+    );
+  const migration = (fields = {}) => ({
+    enc: envelope,
+    searchTokens: ['AAAAAAAAAAAAAAAA'],
+    keyVersion: 1,
+    deviceId: 'ZGV2aWNlLWlkLTAwMDAwMA',
+    url: deleteField(),
+    title: deleteField(),
+    deviceName: deleteField(),
+    ext: deleteField(),
+    ...fields,
+  });
+  const legacyFile = {
+    type: 'file',
+    url: 'https://firebasestorage.googleapis.com/v0/b/b/o/uploads%2Falice%2Fa.pdf?alt=media&token=t',
+    title: 'a.pdf',
+    ext: 'pdf',
+    expiresAt: farFuture,
+  };
+
+  test('a URL push', async () => {
+    await seedPush({});
+    await assertSucceeds(updateDoc(pushRef(), migration()));
+  });
+  test('a URL push an old client made with no search tokens or extension', async () => {
+    const { searchTokens: _searchTokens, ...old } = webPush({ createdAt: anchoredOnFirst, deviceName: 'Pixel' });
+    await env.withSecurityRulesDisabled((c) => setDoc(doc(c.firestore(), 'pushes/p1'), old));
+    await assertSucceeds(updateDoc(pushRef(), migration()));
+  });
+  test('a file push, keeping its expiry, with the path its title named', async () => {
+    await seedPush(legacyFile);
+    await assertSucceeds(updateDoc(pushRef(), migration({ objectPath: 'uploads/alice/a.pdf' })));
+  });
+  test('then its title rewritten as an encrypted push', async () => {
+    await seedPush({});
+    await updateDoc(pushRef(), migration());
+    await assertSucceeds(updateDoc(pushRef(), { enc: { ...envelope, n: 'CwoJCAcGBQQDAgEA' } }));
+  });
+
+  for (const key of ['url', 'title', 'deviceName']) {
+    test(`keeping its plaintext ${key}`, async () => {
+      await seedPush({ ext: 'html' });
+      const { [key]: _kept, ...rest } = migration();
+      await assertFails(updateDoc(pushRef(), rest));
+    });
+  }
+  test('keeping its plaintext ext', async () => {
+    await seedPush({ ext: 'html' });
+    const { ext: _kept, ...rest } = migration();
+    await assertFails(updateDoc(pushRef(), rest));
+  });
+  test('without an envelope', async () => {
+    await seedPush({});
+    const { enc: _enc, ...rest } = migration();
+    await assertFails(updateDoc(pushRef(), rest));
+  });
+  test('without a key version', async () => {
+    await seedPush({});
+    const { keyVersion: _keyVersion, ...rest } = migration();
+    await assertFails(updateDoc(pushRef(), rest));
+  });
+  test('without a device id', async () => {
+    await seedPush({});
+    const { deviceId: _deviceId, ...rest } = migration();
+    await assertFails(updateDoc(pushRef(), rest));
+  });
+  test('with a bad envelope', async () => {
+    await seedPush({});
+    await assertFails(updateDoc(pushRef(), migration({ enc: { ...envelope, v: '1' } })));
+  });
+  test('a URL push given an objectPath', async () => {
+    await seedPush({});
+    await assertFails(updateDoc(pushRef(), migration({ objectPath })));
+  });
+  test('a file push without an objectPath', async () => {
+    await seedPush(legacyFile);
+    await assertFails(updateDoc(pushRef(), migration()));
+  });
+  test("a file push naming someone else's object", async () => {
+    await seedPush(legacyFile);
+    await assertFails(updateDoc(pushRef(), migration({ objectPath: 'uploads/bob/a.pdf' })));
+  });
+  test('a file push made a URL push on the way', async () => {
+    await seedPush(legacyFile);
+    await assertFails(updateDoc(pushRef(), migration({ type: 'url', expiresAt: deleteField() })));
+  });
+  test('a file push kept past its expiry on the way', async () => {
+    await seedPush(legacyFile);
+    await assertFails(
+      updateDoc(pushRef(), migration({ objectPath: 'uploads/alice/a.pdf', expiresAt: anchoredOnFirst }))
+    );
+  });
+  test('moved to another day on the way', async () => {
+    await seedPush({});
+    await assertFails(updateDoc(pushRef(), migration({ createdAt: Timestamp.now() })));
+  });
+  test('handed to someone else on the way', async () => {
+    await seedPush({});
+    await assertFails(updateDoc(pushRef(), migration({ userId: 'bob' })));
+  });
+  test('with a field no client writes', async () => {
+    await seedPush({});
+    await assertFails(updateDoc(pushRef(), migration({ pinned: true })));
   });
 });

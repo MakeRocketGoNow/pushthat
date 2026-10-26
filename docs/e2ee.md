@@ -179,8 +179,8 @@ Until a title arrives the list shows the URL, as it does today for a push with n
 
 `firestore.rules`:
 
-- `pushes` create: keys `hasOnly` the plaintext list above; `enc` is a map with string `v`, `n` and `ct`; `type` is `url` or `file`; `objectPath` is required for `file` and must start with `uploads/{uid}/`; `expiresAt` absent; the usage check unchanged. No `url`, `title`, `deviceName` or `ext` key.
-- `pushes` update: `type == 'url'` and `affectedKeys().hasOnly(['enc', 'searchTokens'])`.
+- `pushes` create: keys `hasOnly` the plaintext list above; `enc` is a map with an int `v` and string `n` and `ct`; `type` is `url` or `file`; `objectPath` is required for `file` and must start with `uploads/{uid}/`; `expiresAt` absent; the usage check unchanged. No `url`, `title`, `deviceName` or `ext` key.
+- `pushes` update: on a push with `enc`, `type == 'url'` and `affectedKeys().hasOnly(['enc', 'searchTokens'])`. On a push without it, today's title update and the one migration update described under Migration.
 - `users` create and update: the client may also write `e2ee`, a map whose `keyVersion` is an int no smaller than the stored one. The `hasOnly` lists gain `e2ee`; everything else stays server-owned.
 - The `deviceNames` array the trigger keeps on the user document is dropped; it was the model name and it is gone from the push.
 

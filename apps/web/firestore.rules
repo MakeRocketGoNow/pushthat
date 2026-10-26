@@ -149,6 +149,97 @@ service cloud.firestore {
         || (data.searchTokens is list && data.searchTokens.size() <= 3000);
     }
 
+    // An encrypted push (docs/e2ee.md) keeps in plaintext only what the rules, the
+    // triggers and the sweeps read, and its content in enc. Both shapes are accepted until
+    // phase 5 of that plan, when the plaintext one is refused; until then a client that
+    // has not updated keeps pushing as it does today.
+    //
+    // No url, title, deviceName or ext beside enc: the list leaves them out, so a client
+    // that encrypts cannot also leak a field by accident. The bounds are the job the old
+    // shape's did: deviceId is 16 bytes in base64url, keyVersion a count, and enc.ct a
+    // ciphertext of what a URL push could hold before (1500 characters each of URL and
+    // title, as JSON, in base64) with room to spare, far inside a document's megabyte.
+    // The notification no longer carries any of it, so FCM's 4 KB is not the bound here.
+    // createdAt is checked by the create rule alone: a push migrated in place keeps the
+    // createdAt it was made with, which an old client may never have written.
+    function isEncryptedPushFields(data) {
+      return data.type in ['url', 'file']
+        && isEnvelope(data.enc)
+        && data.keyVersion is int
+        && data.keyVersion >= 1
+        && isBoundedString(data.deviceId, 64)
+        && hasValidSearchTokens(data)
+        && (data.type == 'file'
+          ? isOwnObjectPath(data.objectPath, data.userId)
+          : !('objectPath' in data));
+    }
+
+    // The keys an encrypted push may have. expiresAt is onNewPushCreated's, so a create
+    // never has it; a file push migrated in place keeps the one it was given.
+    function encryptedPushKeys() {
+      return ['userId', 'type', 'createdAt', 'deviceId', 'keyVersion', 'enc', 'searchTokens', 'objectPath'];
+    }
+
+    // AES-GCM's output under the account's metaKey: the version of the envelope, a 12-byte
+    // nonce (16 characters of base64) and the ciphertext with its tag.
+    function isEnvelope(enc) {
+      return enc is map
+        && enc.keys().hasOnly(['v', 'n', 'ct'])
+        && enc.v is int
+        && enc.n is string
+        && enc.n.size() == 16
+        && isBoundedString(enc.ct, 16384);
+    }
+
+    // An object the uploader owns: uploads/{uid}/{name}, one name deep, which is the only
+    // place the Storage rules let uid write, and the shape uploaderOf in
+    // functions/src/orphans.ts reads. onPushRecordDeleted deletes what a file push names,
+    // so a push must not be able to name someone else's object, or a nested path the sweep
+    // would not see.
+    function isOwnObjectPath(path, uid) {
+      return isBoundedString(path, 1024)
+        && path.split('/').size() == 3
+        && path.split('/')[0] == 'uploads'
+        && path.split('/')[1] == uid
+        && path.split('/')[2].size() > 0;
+    }
+
+    // The one update a client makes to a push it has not encrypted: the Android and iOS
+    // title scrapers filling in a URL push's title once the page has answered. A file push
+    // is never updated this way, since its title names the stored object that
+    // onPushRecordDeleted removes, and its type is what tells that trigger to look; either
+    // changed would keep the file for good.
+    function isPlaintextRetitle() {
+      return resource.data.type == 'url'
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['title', 'searchTokens'])
+        && isBoundedString(request.resource.data.title, 1500)
+        && hasValidSearchTokens(request.resource.data);
+    }
+
+    // The same on an encrypted push: the scraped title is re-encrypted with the URL under a
+    // fresh nonce, so the update rewrites enc and the blind index together.
+    function isEncryptedRetitle() {
+      return resource.data.type == 'url'
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['enc', 'searchTokens'])
+        && isEnvelope(request.resource.data.enc)
+        && hasValidSearchTokens(request.resource.data);
+    }
+
+    // A plaintext push encrypted in place on its owner's first sign-in with an updated
+    // client (docs/e2ee.md, Migration): enc, the blind index, keyVersion and deviceId go
+    // in, and url, title, deviceName and ext go out, leaving the encrypted shape. In place
+    // rather than recreated, because a create would fire onNewPushCreated and count
+    // against the month. A file push also gains objectPath, the path its title named,
+    // since onPushRecordDeleted can no longer read the title. userId, type, createdAt and
+    // expiresAt are not among the keys it may touch, so the push stays whose, what and
+    // how long it was.
+    function isMigration() {
+      return request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['enc', 'searchTokens', 'keyVersion', 'deviceId', 'objectPath', 'url', 'title', 'deviceName', 'ext'])
+        && request.resource.data.keys().hasOnly(encryptedPushKeys().concat(['expiresAt']))
+        && isEncryptedPushFields(request.resource.data);
+    }
+
     // The device tokens a user document may hold. A token is about 160 characters and
     // the trigger removes the dead ones as sends fail, so a hundred is far past any
     // real set. The bound on the joined length is what caps the document's size: a
@@ -195,22 +286,22 @@ service cloud.firestore {
       allow read, delete: if request.auth != null
         && resource.data.userId == request.auth.uid;
 
-      // The one update a client makes: the Android and iOS title scrapers filling in a
-      // URL push's title once the page has answered. A file push is never updated, since
-      // its title names the stored object that onPushRecordDeleted removes, and its type
-      // is what tells that trigger to look; either changed would keep the file for good.
-      // expiresAt, when the sweep deletes a file push, is onNewPushCreated's alone.
+      // A push is updated only to fill in a scraped title, or to encrypt it in place;
+      // which of those depends on whether it is encrypted already. expiresAt, when the
+      // sweep deletes a file push, is onNewPushCreated's alone.
       allow update: if request.auth != null
         && resource.data.userId == request.auth.uid
-        && resource.data.type == 'url'
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['title', 'searchTokens'])
-        && isBoundedString(request.resource.data.title, 1500)
-        && hasValidSearchTokens(request.resource.data);
+        && ('enc' in resource.data
+          ? isEncryptedRetitle()
+          : isPlaintextRetitle() || isMigration());
 
       allow create: if
         request.auth != null
         && request.resource.data.userId == request.auth.uid
-        && isPushShape(request.resource.data)
+        && (isPushShape(request.resource.data)
+          || (request.resource.data.keys().hasOnly(encryptedPushKeys())
+            && request.resource.data.createdAt is timestamp
+            && isEncryptedPushFields(request.resource.data)))
         && isWithinUsageLimit(request.auth.uid, request.resource.data.type);
     }
 
