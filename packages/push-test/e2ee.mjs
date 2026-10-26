@@ -84,10 +84,15 @@ const equal = (a, b) => {
 
 export const sha256 = async (bytes) => new Uint8Array(await subtle.digest("SHA-256", bytes));
 
-export const hmacSha256 = async (key, message) => {
-  const k = await subtle.importKey("raw", key, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
-  return new Uint8Array(await subtle.sign("HMAC", k, message));
-};
+// Every key parameter below takes raw bytes or a CryptoKey already imported for the use:
+// the apps on the other platforms hold bytes, the web app and the extension hold
+// non-extractable keys (see accountSubkeyKeys), and the bytes are what the vectors pin.
+const isKey = (key) => typeof CryptoKey !== "undefined" && key instanceof CryptoKey;
+
+const hmacKey = async (key) =>
+  isKey(key) ? key : subtle.importKey("raw", key, { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+
+export const hmacSha256 = async (key, message) => new Uint8Array(await subtle.sign("HMAC", await hmacKey(key), message));
 
 const ZERO_KEY = new Uint8Array(32);
 
@@ -98,7 +103,7 @@ export const hkdfOneBlock = async (ikm, label) => {
   return hmacSha256(prk, concat(utf8(label), new Uint8Array([0x01])));
 };
 
-const aesKey = async (raw, usages) => subtle.importKey("raw", raw, { name: "AES-GCM" }, false, usages);
+const aesKey = async (key, usages) => (isKey(key) ? key : subtle.importKey("raw", key, { name: "AES-GCM" }, false, usages));
 
 export const aesGcmSeal = async (key, nonce, plaintext, aad) => {
   if (nonce.length !== NONCE_LENGTH) throw new Error(`nonce must be ${NONCE_LENGTH} bytes`);
@@ -162,6 +167,21 @@ export const accountSubkeys = async (accountKey) => ({
   metaKey: await hkdfOneBlock(accountKey, "pushthat/meta/v1"),
   searchKey: await hkdfOneBlock(accountKey, "pushthat/search/v1"),
 });
+
+// What the web app and the extension keep after sign-in: the two subkeys as
+// non-extractable CryptoKeys, derived once from the account key by WebCrypto's own HKDF,
+// which is byte for byte what accountSubkeys writes out (the tests check both against
+// each other). `accountKey` is the raw bytes straight from the unwrap, or the HKDF base
+// key if that is what the store holds. The raw key is then dropped: scripts can use the
+// keys and never read them.
+export const accountSubkeyKeys = async (accountKey) => {
+  const base = isKey(accountKey) ? accountKey : await subtle.importKey("raw", accountKey, "HKDF", false, ["deriveKey"]);
+  const hkdf = (label) => ({ name: "HKDF", hash: "SHA-256", salt: new Uint8Array(0), info: utf8(label) });
+  return {
+    metaKey: await subtle.deriveKey(hkdf("pushthat/meta/v1"), base, { name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]),
+    searchKey: await subtle.deriveKey(hkdf("pushthat/search/v1"), base, { name: "HMAC", hash: "SHA-256", length: 256 }, false, ["sign"]),
+  };
+};
 
 export const newWrapId = () => base64url(randomBytes(8));
 export const newDeviceId = () => base64url(randomBytes(16));

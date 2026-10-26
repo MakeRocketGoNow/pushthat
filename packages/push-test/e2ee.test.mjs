@@ -6,6 +6,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import {
+  accountSubkeyKeys,
   accountSubkeys,
   base64,
   base64url,
@@ -115,6 +116,21 @@ test("metaKey and searchKey derive from the account key and differ", async () =>
   assert.equal(hex(sub.metaKey), vectors.account.metaKey);
   assert.equal(hex(sub.searchKey), vectors.account.searchKey);
   assert.notEqual(hex(sub.metaKey), hex(sub.searchKey));
+});
+
+test("the subkeys as non-extractable CryptoKeys seal, open and blind exactly as the bytes do", async () => {
+  const keys = await accountSubkeyKeys(inputs.accountKey);
+  assert.equal(keys.metaKey.extractable, false);
+  assert.equal(keys.searchKey.extractable, false);
+  const enc = await sealPush(keys.metaKey, inputs.uid, inputs.pushId, utf8(inputs.pushPlaintext), inputs.pushNonce);
+  assert.deepEqual(enc, vectors.push.enc);
+  assert.deepEqual(await openPush(keys.metaKey, inputs.uid, inputs.pushId, vectors.push.enc), JSON.parse(inputs.pushPlaintext));
+  assert.deepEqual(await blindIndex(keys.searchKey, vectors.search.tokens), vectors.search.blind);
+  // The file key and the wrapping keys take a CryptoKey the same way.
+  const fk = await crypto.subtle.importKey("raw", inputs.fk, { name: "AES-GCM" }, false, ["encrypt", "decrypt"]);
+  const empty = await encryptFile(fk, inputs.np, new Uint8Array(0));
+  assert.equal(hex(empty), vectors.emptyFile.encrypted);
+  assert.equal((await decryptFile(fk, empty, inputs.np)).length, 0);
 });
 
 test("a password wrap round-trips and matches the vector", async () => {
