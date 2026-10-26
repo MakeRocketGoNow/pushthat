@@ -4,7 +4,7 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 /**
  * Stripe, the merchant of record for PushThat Pro through Managed Payments: the
  * configuration that turns billing on, and the handful of calls the functions make.
- * A port of Unbent's `apps/api/src/lib/stripe.ts` (docs/billing.md), without the
+ * A port of Unbent's `apps/api/src/lib/stripe.ts` (see docs/billing.md), without the
  * storage add-on it sells and with Node's crypto in place of the Web Crypto API.
  *
  * No SDK: Stripe's is a large package wrapping a form-encoded REST API, and about ten

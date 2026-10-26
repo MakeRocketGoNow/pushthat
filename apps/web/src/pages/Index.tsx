@@ -5,7 +5,7 @@ import { GlowLink } from '@/components/GlowLink';
 import { LIMITS, PRO_PRICE_USD, REFUND_DAYS, formatMb } from '@/config/plan';
 import clsx from 'clsx';
 
-/** The two tiers side by side (docs/billing.md in pushthat-functions). The numbers are the functions' and the rules'. */
+/** The two tiers side by side (docs/billing.md at the repository root). The numbers are the functions' and the rules'. */
 function Pricing() {
   return (
     <section className={styles.pricing} id="pricing">

@@ -2,7 +2,7 @@ import { FunctionsError, getFunctions, httpsCallable } from 'firebase/functions'
 
 import type { TierLimits } from '@/config/plan';
 
-/** What `getPlan` answers: see `PlanReport` in pushthat-functions' plan.ts. */
+/** What `getPlan` answers: see `PlanReport` in functions/src/plan.ts. */
 export interface PlanReport {
   tier: 'free' | 'pro';
   limits: TierLimits;
@@ -21,7 +21,7 @@ export interface PlanReport {
 
 const call = <T, R>(name: string) => httpsCallable<T, R>(getFunctions(), name);
 
-/** The plan callables in pushthat-functions, one wrapper each. */
+/** The plan callables in functions/src/stripe-functions.ts, one wrapper each. */
 export const planApi = {
   getPlan: () => call<void, PlanReport>('getPlan')().then((r) => r.data),
   refreshSubscription: () => call<void, PlanReport>('refreshSubscription')().then((r) => r.data),

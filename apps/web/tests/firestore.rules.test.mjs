@@ -90,7 +90,7 @@ describe('changing an existing user document', () => {
 });
 
 // The tiers' limits: Free 50 URL and 3 file pushes a month, Pro 10,000 and 100
-// (docs/billing.md in pushthat-functions).
+// (docs/billing.md at the repository root).
 describe('the push quota', () => {
   const push = (type = 'url') => addDoc(collection(alice(), 'pushes'), { userId: 'alice', type, url: 'https://x.com' });
   const pro = { startedAt: anchoredOnFirst, expiresAt: farFuture };

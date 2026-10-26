@@ -60,8 +60,8 @@ service cloud.firestore {
         : getCurrentMonthString(now);
     }
 
-    // The pushes a month each tier allows (docs/billing.md in pushthat-functions; the same
-    // numbers are in its functions/src/plan.ts, and the two are changed together). Pro is
+    // The pushes a month each tier allows (docs/billing.md; the same numbers are in
+    // functions/src/plan.ts, and the two are changed together). Pro is
     // a subscription whose expiresAt is ahead of the clock, which the Stripe webhook keeps
     // in step and a comp sets by hand; nothing a client can write.
     function getUserLimit(user, type) {

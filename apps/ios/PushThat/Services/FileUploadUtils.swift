@@ -20,7 +20,7 @@ enum FileUploadError: LocalizedError {
     }
 }
 
-/// What `getPlan` answers (plan.ts in pushthat-functions): the tier, this month's usage against its limits, and the subscription.
+/// What `getPlan` answers (functions/src/plan.ts): the tier, this month's usage against its limits, and the subscription.
 struct PlanReport: Decodable {
     struct Limits: Decodable {
         let url: Int
@@ -51,7 +51,7 @@ struct PlanReport: Decodable {
     var isPro: Bool { tier == "pro" }
 }
 
-/// The account's plan, Free or Pro (docs/billing.md in pushthat-functions).
+/// The account's plan, Free or Pro (docs/billing.md at the repository root).
 ///
 /// The app never sells the plan: the App Store forbids selling a subscription in an app
 /// through anything but its own billing, so it shows where the account stands and says

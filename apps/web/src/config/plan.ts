@@ -1,6 +1,6 @@
 /**
- * The plan, as the pages describe it (docs/billing.md in pushthat-functions). The
- * numbers the functions enforce and report are in `functions/src/plan.ts` there and
+ * The plan, as the pages describe it (docs/billing.md at the repository root). The
+ * numbers the functions enforce and report are in `functions/src/plan.ts` and
  * the rules carry them too; these are what the front page quotes before anyone has
  * signed in, and the Plan page reads its own from `getPlan`. The copies are changed
  * together.

@@ -2,7 +2,7 @@ rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
     // Whether the uploader is Pro: the same test the Firestore rules make on a push, read
-    // across services from the user document (docs/billing.md in pushthat-functions).
+    // across services from the user document (docs/billing.md at the repository root).
     // Deploying this needs the bucket's service account allowed to read Firestore, which
     // `firebase deploy` offers to grant the first time.
     function isPro() {

@@ -15,7 +15,7 @@ import org.json.JSONObject
 import java.util.concurrent.TimeUnit
 
 /**
- * The account's plan, Free or Pro (docs/billing.md in pushthat-functions).
+ * The account's plan, Free or Pro (docs/billing.md at the repository root).
  *
  * The app never sells the plan: both stores forbid selling a subscription in an app
  * through anything but their own billing, so it shows where the account stands and
