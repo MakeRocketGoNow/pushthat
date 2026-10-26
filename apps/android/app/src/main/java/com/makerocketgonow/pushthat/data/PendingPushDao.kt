@@ -5,6 +5,7 @@ import androidx.room.Delete
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import androidx.room.Update
 import androidx.lifecycle.LiveData
 
 @Dao
@@ -19,6 +20,9 @@ interface PendingPushDao {
     // cannot be observed.
     @Query("SELECT * FROM pending_pushes ORDER BY created_at DESC")
     suspend fun loadAllPendingPushes(): List<PendingPush>
+
+    @Update
+    fun update(pendingPush: PendingPush): Int
 
     @Delete
     fun delete(pendingPush: PendingPush): Int

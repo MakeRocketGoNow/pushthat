@@ -16,8 +16,8 @@ import javax.crypto.spec.GCMParameterSpec
  * Where this install keeps the account key (docs/e2ee.md, "Where keys live on each
  * device"): `accountKey` encrypted under an AES-GCM key that lives in the AndroidKeyStore
  * and never leaves it, with the ciphertext, its IV and the install's `deviceId` in a
- * private SharedPreferences file. Any component with a Context reads it, which is what
- * `ShareActivity`, `RetryPushWorker` and `PushThatMessagingService` will do in phase 4.
+ * private SharedPreferences file. Any component with a Context reads it: `ShareActivity`,
+ * `RetryPushWorker`, `TitleScrapingWorker` and `PushThatMessagingService` all do.
  *
  * The Keystore key asks for no user authentication: the worker and the messaging service
  * have to decrypt with the screen locked, and a key bound to the lock screen would make
@@ -103,6 +103,15 @@ object AccountKeyStore {
     }
 
     fun hasKey(context: Context, uid: String): Boolean = load(context, uid) != null
+
+    /**
+     * What pushes are encrypted with on this install for [uid], or null without a key: the
+     * subkeys of the stored key, the version stored beside it, and this install's id.
+     */
+    fun pushKeys(context: Context, uid: String): PushKeys? {
+        val stored = load(context, uid) ?: return null
+        return PushKeys.of(uid, stored.accountKey, stored.keyVersion, deviceId(context))
+    }
 
     /** On sign-out: the key goes, the install's `deviceId` stays. */
     @Synchronized
