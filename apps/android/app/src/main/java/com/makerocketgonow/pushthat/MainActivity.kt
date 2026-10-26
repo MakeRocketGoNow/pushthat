@@ -24,6 +24,7 @@ import android.view.Menu
 import android.view.MenuItem
 import androidx.appcompat.widget.Toolbar
 import com.makerocketgonow.pushthat.workers.RetryPushWorker
+import com.makerocketgonow.pushthat.e2ee.AccountKeyStore
 import android.content.ClipboardManager
 import android.content.ClipData
 import android.widget.Toast
@@ -372,6 +373,10 @@ class MainActivity : AppCompatActivity() {
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         return when (item.itemId) {
             R.id.nav_logout -> {
+                // The key first, so a sign-out that stops between the two leaves a session
+                // with no key (which asks for the password) and never a key on a phone that
+                // is signed out. deviceId stays: it belongs to the install.
+                AccountKeyStore.clear(this)
                 auth.signOut()
                 startActivity(Intent(this, LoginActivity::class.java))
                 finish()

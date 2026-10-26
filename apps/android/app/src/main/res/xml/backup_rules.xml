@@ -1,13 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?><!--
-   Sample backup rules file; uncomment and customize as necessary.
+   Auto Backup on Android 11 and older (data_extraction_rules.xml is the same for 12 on).
    See https://developer.android.com/guide/topics/data/autobackup
-   for details.
-   Note: This file is ignored for devices older that API 31
-   See https://developer.android.com/about/versions/12/backup-restore
 -->
 <full-backup-content>
-    <!--
-   <include domain="sharedpref" path="."/>
-   <exclude domain="sharedpref" path="device.xml"/>
--->
+    <!-- The account key, wrapped under a Keystore key that never leaves this phone, and
+         this install's deviceId (AccountKeyStore). Restored elsewhere, the first could not
+         be opened and the second would give two installs one id. -->
+    <exclude domain="sharedpref" path="e2ee_keys.xml"/>
 </full-backup-content>
