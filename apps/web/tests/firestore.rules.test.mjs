@@ -135,6 +135,63 @@ describe('the push quota', () => {
     await assertSucceeds(push());
   });
   test('no document yet', () => assertSucceeds(push()));
+
+  // A comp is written by hand as {type, expiresAt} alone (docs/billing.md). Reading its
+  // startedAt was an error once usageRecords existed, which refused every push after
+  // the first.
+  test('a comp, with usage already counted', async () => {
+    await seed({
+      createdAt: anchoredOnFirst,
+      subscription: { type: 'comp', expiresAt: farFuture },
+      usageRecords: { [periodKey]: { url: 9999, file: 99 } },
+    });
+    await assertSucceeds(push());
+    await assertSucceeds(push('file'));
+  });
+  test('a comp, at the Pro limits', async () => {
+    await seed({
+      createdAt: anchoredOnFirst,
+      subscription: { type: 'comp', expiresAt: farFuture },
+      usageRecords: { [periodKey]: { url: 10000, file: 100 } },
+    });
+    await assertFails(push());
+    await assertFails(push('file'));
+  });
+  test('a subscription with no expiresAt is free', async () => {
+    await seed({ createdAt: anchoredOnFirst, subscription: { type: 'pro' }, usageRecords: { [periodKey]: { url: 50 } } });
+    await assertFails(push());
+  });
+
+  // The period's anchor: the subscription's start while it runs, the account's creation
+  // otherwise, as usageOf in functions/src/plan.ts has it. Anchored on the last day of a
+  // month, the period is the previous calendar month on every day but the last.
+  const anchoredOnLastDay = Timestamp.fromDate(new Date(Date.UTC(2025, 0, 31)));
+  const previousPeriodKey = (() => {
+    const prev = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1));
+    return `${prev.getUTCFullYear()}-${String(prev.getUTCMonth() + 1).padStart(2, '0')}`;
+  })();
+  const lastDayOfMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 0)).getUTCDate();
+  const todayIsLastDay = now.getUTCDate() === lastDayOfMonth;
+
+  test('a lapsed subscription counts from the account, not from the subscription', async () => {
+    const past = Timestamp.fromDate(new Date(Date.UTC(2025, 0, 2)));
+    await seed({
+      createdAt: anchoredOnFirst,
+      subscription: { startedAt: anchoredOnLastDay, expiresAt: past },
+      usageRecords: { [periodKey]: { url: 50 }, [previousPeriodKey]: { url: 0 } },
+    });
+    // Anchored on the subscription this would read the previous month's 0 and pass.
+    await assertFails(push());
+  });
+  test('a running subscription counts from its start', async () => {
+    await seed({
+      createdAt: anchoredOnFirst,
+      subscription: { startedAt: anchoredOnLastDay, expiresAt: farFuture },
+      usageRecords: { [periodKey]: { url: 10000 }, [previousPeriodKey]: { url: 0 } },
+    });
+    // On the last day of the month both anchors name this month, whose count is full.
+    await (todayIsLastDay ? assertFails(push()) : assertSucceeds(push()));
+  });
 });
 
 // expiresAt is when the sweep deletes a file push; only onNewPushCreated sets it.

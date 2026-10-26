@@ -35,17 +35,38 @@ service cloud.firestore {
         : null;
     }
 
+    // Pro is a subscription whose expiresAt is ahead of the clock, which the Stripe webhook
+    // keeps in step and a comp sets by hand; nothing a client can write. The same test as
+    // subscriptionActive in functions/src/plan.ts. Each key is tested for before it is
+    // read, since reading a key a map lacks is an error, and an error refuses the write:
+    // a comp is written by hand as {type, expiresAt} alone (docs/billing.md), and reading
+    // its startedAt refused every push after the first, once usageRecords existed.
+    function isPro(user) {
+      return user != null
+        && "subscription" in user.data
+        && "expiresAt" in user.data.subscription
+        && user.data.subscription.expiresAt is timestamp
+        && user.data.subscription.expiresAt > request.time;
+    }
+
     // Helper to get the current billing period key
     function getBillingPeriodKey(userId) {
       let user = getCurrentUser(userId);
       let now = request.time;
 
-      let hasSub = user != null && "subscription" in user.data;
+      // The period is anchored on the day the subscription started while it runs, and on
+      // the day the account was made otherwise: what usageOf in functions/src/plan.ts
+      // does, so the count onNewPushCreated keeps and the check here land in the same
+      // month. Anchoring a lapsed subscription on startedAt, as this once did, put the
+      // two in different months for part of each month, and the check read a count the
+      // function was not adding to.
       // A document made without createdAt (the Chrome extension's first token write used to
       // make one) counts from today, as onNewPushCreated does before it fills the field in.
-      let start = hasSub && user.data.subscription.startedAt != null
+      let start = isPro(user)
+          && "startedAt" in user.data.subscription
+          && user.data.subscription.startedAt is timestamp
         ? user.data.subscription.startedAt
-        : user != null && "createdAt" in user.data
+        : user != null && "createdAt" in user.data && user.data.createdAt is timestamp
           ? user.data.createdAt
           : request.time;
 
@@ -61,13 +82,9 @@ service cloud.firestore {
     }
 
     // The pushes a month each tier allows (docs/billing.md; the same numbers are in
-    // functions/src/plan.ts, and the two are changed together). Pro is
-    // a subscription whose expiresAt is ahead of the clock, which the Stripe webhook keeps
-    // in step and a comp sets by hand; nothing a client can write.
+    // functions/src/plan.ts, and the two are changed together).
     function getUserLimit(user, type) {
-      let hasSub = user != null && "subscription" in user.data;
-      let isActive = hasSub
-        && user.data.subscription.expiresAt > request.time;
+      let isActive = isPro(user);
 
       return (isActive && type == 'url') ? 10000 : // url - pro tier
              (isActive && type == 'file') ? 100 : // file - pro tier
