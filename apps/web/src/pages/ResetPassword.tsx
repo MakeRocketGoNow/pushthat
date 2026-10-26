@@ -9,6 +9,7 @@ import {
   ResetSession,
   WrongRecoveryKeyError,
   afterPasswordChanged,
+  deleteLockedPushes,
   emailForResetCode,
   hasRecoveryWrap,
   rewrapWithRecoveryKey,
@@ -21,13 +22,16 @@ import styles from './ResetPassword.module.css';
 // What docs/e2ee.md asks of a new password at sign-up, since the password is the key.
 const MIN_PASSWORD_LENGTH = 10;
 
+// Deleting the pushes the old key locked, which runs after the new recovery key is shown.
+type Deletion = { state: 'none' } | { state: 'running' } | { state: 'done'; deleted: number } | { state: 'failed' };
+
 type Step =
   | { name: 'checking' }
   | { name: 'badLink'; reason: 'mode' | 'code' }
   | { name: 'password'; email: string }
   | { name: 'recovery'; session: ResetSession }
   | { name: 'withoutRecovery'; session: ResetSession }
-  | { name: 'newRecoveryKey'; recoveryKey: string; deleted: number; deleteFailed: boolean }
+  | { name: 'newRecoveryKey'; recoveryKey: string; deletion: Deletion }
   | { name: 'done' };
 
 /**
@@ -76,10 +80,25 @@ export function ResetPassword() {
     }
   };
 
+  const setDeletion = (deletion: Deletion) =>
+    setStep((current) => (current.name === 'newRecoveryKey' ? { ...current, deletion } : current));
+
   const startOver = (session: ResetSession, deleteLocked: boolean) =>
     run(
       async () => {
-        setStep({ name: 'newRecoveryKey', ...(await startNewKeys(session, { deleteLocked })) });
+        const recoveryKey = await startNewKeys(session);
+        // The key is stored, so it goes on screen now, before the delete, which can take a
+        // while on a large account and must not stand between the user and the only copy.
+        setStep({ name: 'newRecoveryKey', recoveryKey, deletion: { state: deleteLocked ? 'running' : 'none' } });
+        if (deleteLocked) {
+          deleteLockedPushes(session).then(
+            (deleted) => setDeletion({ state: 'done', deleted }),
+            (error) => {
+              console.error('Deleting the locked pushes failed:', error);
+              setDeletion({ state: 'failed' });
+            }
+          );
+        }
       },
       () => 'Your password is changed, but your new keys could not be saved. Try again.'
     );
@@ -122,8 +141,8 @@ export function ResetPassword() {
                   if (!session.e2ee) {
                     // Nothing is encrypted yet, so there is nothing to recover: the
                     // account gets its first keys, and its recovery key to save.
-                    const keys = await afterPasswordChanged(() => startNewKeys(session, { deleteLocked: false }));
-                    setStep({ name: 'newRecoveryKey', ...keys });
+                    const recoveryKey = await afterPasswordChanged(() => startNewKeys(session));
+                    setStep({ name: 'newRecoveryKey', recoveryKey, deletion: { state: 'none' } });
                   } else {
                     setStep(
                       hasRecoveryWrap(session) ? { name: 'recovery', session } : { name: 'withoutRecovery', session }
@@ -216,8 +235,7 @@ export function ResetPassword() {
         {step.name === 'newRecoveryKey' && (
           <NewRecoveryKey
             recoveryKey={step.recoveryKey}
-            deleted={step.deleted}
-            deleteFailed={step.deleteFailed}
+            deletion={step.deletion}
             onDone={() => setStep({ name: 'done' })}
           />
         )}
@@ -353,13 +371,11 @@ function RecoveryForm({
 
 function NewRecoveryKey({
   recoveryKey,
-  deleted,
-  deleteFailed,
+  deletion,
   onDone,
 }: {
   recoveryKey: string;
-  deleted: number;
-  deleteFailed: boolean;
+  deletion: Deletion;
   onDone: () => void;
 }) {
   const [saved, setSaved] = useState(false);
@@ -378,11 +394,16 @@ function NewRecoveryKey({
     <>
       <h2 className={styles.title}>Save your recovery key</h2>
       <p className={styles.message}>
-        Your password is changed
-        {deleted > 0 && `, and ${deleted} locked push${deleted === 1 ? ' is' : 'es are'} deleted`}. If you forget your
-        password, this key is the only way to keep your pushes. We cannot show it again.
+        Your password is changed. If you forget your password, this key is the only way to keep your pushes. We cannot
+        show it again.
       </p>
-      {deleteFailed && (
+      {deletion.state === 'running' && <p className={styles.message}>Deleting your locked pushes…</p>}
+      {deletion.state === 'done' && deletion.deleted > 0 && (
+        <p className={styles.message}>
+          {deletion.deleted} locked push{deletion.deleted === 1 ? ' is' : 'es are'} deleted.
+        </p>
+      )}
+      {deletion.state === 'failed' && (
         <p className={styles.message}>
           Some of your locked pushes could not be deleted. They stay in your list, where you can delete them.
         </p>

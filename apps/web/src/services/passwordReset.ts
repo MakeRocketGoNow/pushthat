@@ -93,14 +93,6 @@ export interface ResetSession {
   e2ee: E2ee | undefined;
 }
 
-/** The recovery key the user must save, in its display form, and how many pushes went with the old key. */
-export interface NewKeys {
-  recoveryKey: string;
-  deleted: number;
-  /** Whether deleting the locked pushes stopped partway; the rest stay as locked rows. */
-  deleteFailed: boolean;
-}
-
 /** The recovery key the user typed opens none of the account's recovery wraps. */
 export class WrongRecoveryKeyError extends Error {}
 
@@ -186,20 +178,12 @@ export async function rewrapWithRecoveryKey(session: ResetSession, recoveryText:
 
 /**
  * Without the recovery key, or for an account with no keys yet: a new account key and a
- * new recovery key. For an account that had keys, `keyVersion` goes up, the pushes made
- * under the old key can no longer be read, and `deleteLocked` removes them. The keys are
- * written first, and the delete after them is best effort: once the new recovery wrap is
- * stored, the user must see its key whatever the delete does, or the next forgotten
- * password loses everything again (and a retry would replace the key a second time). A
- * delete that fails partway leaves locked rows the user can delete from the list. An
- * account with no keys loses nothing: its pushes are not encrypted yet.
+ * new recovery key, returned in its display form. For an account that had keys,
+ * `keyVersion` goes up and the pushes made under the old key can no longer be read;
+ * `deleteLockedPushes` removes them, and is the caller's to run after the key is on
+ * screen. An account with no keys loses nothing: its pushes are not encrypted yet.
  */
-export async function startNewKeys(
-  session: ResetSession,
-  { deleteLocked }: { deleteLocked: boolean }
-): Promise<NewKeys> {
-  // Read before writeKeys replaces session.e2ee with the new map.
-  const hadKeys = session.e2ee !== undefined;
+export async function startNewKeys(session: ResetSession): Promise<string> {
   const accountKey = newAccountKey();
   const recoveryBytes = newRecoveryKey();
   const keyVersion = session.e2ee ? session.e2ee.keyVersion + 1 : 1;
@@ -219,14 +203,7 @@ export async function startNewKeys(
     },
   };
   await writeKeys(session, e2ee);
-  const recoveryKey = encodeRecoveryKey(recoveryBytes);
-  if (!hadKeys || !deleteLocked) return { recoveryKey, deleted: 0, deleteFailed: false };
-  try {
-    return { recoveryKey, deleted: await deleteLockedPushes(session.uid, keyVersion), deleteFailed: false };
-  } catch (error) {
-    console.error('Deleting the locked pushes failed:', error);
-    return { recoveryKey, deleted: 0, deleteFailed: true };
-  }
+  return encodeRecoveryKey(recoveryBytes);
 }
 
 async function writeKeys(session: ResetSession, e2ee: E2ee): Promise<void> {
@@ -245,13 +222,19 @@ async function writeKeys(session: ResetSession, e2ee: E2ee): Promise<void> {
 const DELETE_PAGE = 300;
 
 /**
- * Deletes the user's encrypted pushes made under a key older than `keyVersion`. Plaintext
- * pushes are kept, since nothing locks them. By document id, a page at a time, which the
- * single-field index on `userId` serves; a composite index on `userId` and `keyVersion`
- * would read less, but would be one more thing to deploy by hand for a step taken once.
- * `onPushRecordDeleted` removes a file push's stored object as it does for any delete.
+ * Deletes the user's encrypted pushes made under a key older than the account's current
+ * one, once `startNewKeys` has replaced it. Plaintext pushes are kept, since nothing locks
+ * them. By document id, a page at a time, which the single-field index on `userId`
+ * serves; a composite index on `userId` and `keyVersion` would read less, but would be
+ * one more thing to deploy by hand for a step taken once. It can take a while on a large
+ * account, which is why it runs after the new recovery key is shown and not before: a tab
+ * closed partway leaves locked rows the user can delete from the list, where a tab closed
+ * before the key was shown would leave a key nobody has seen. `onPushRecordDeleted`
+ * removes a file push's stored object as it does for any delete.
  */
-async function deleteLockedPushes(uid: string, keyVersion: number): Promise<number> {
+export async function deleteLockedPushes(session: ResetSession): Promise<number> {
+  const keyVersion = session.e2ee?.keyVersion ?? 0;
+  const { uid } = session;
   const { db } = reset();
   let deleted = 0;
   let last: QueryDocumentSnapshot<DocumentData> | undefined;
