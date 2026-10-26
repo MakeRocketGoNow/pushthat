@@ -224,6 +224,19 @@ class AccountKeys(
     class NoAccountKeyException : Exception("this install holds no account key")
 
     /**
+     * This install holds the key, but the Keystore could not open it this time (it runs in
+     * a system service, which can be busy or restarting). Not [NoAccountKeyException], whose
+     * message tells the user to sign out and in again: a retry is all this needs.
+     */
+    class KeyUnavailableException : Exception("the Keystore could not open the account key this time")
+
+    /** The account key this install holds, off the main thread, or why there is none to use. */
+    private suspend fun deviceKey(uid: String): AccountKeyStore.Stored = withContext(Dispatchers.IO) {
+        AccountKeyStore.load(appContext, uid)
+            ?: throw if (AccountKeyStore.hasKey(appContext, uid)) KeyUnavailableException() else NoAccountKeyException()
+    }
+
+    /**
      * The spec's order: a new password wrap first, then the Firebase password, then the old
      * wrap goes. A crash between any two leaves an account that opens with either password,
      * never one that opens with neither.
@@ -232,7 +245,7 @@ class AccountKeys(
         val user = auth.currentUser ?: throw IllegalStateException("not signed in")
         val email = user.email ?: throw IllegalStateException("the account has no email")
         val uid = user.uid
-        val device = withContext(Dispatchers.IO) { AccountKeyStore.load(appContext, uid) } ?: throw NoAccountKeyException()
+        val device = deviceKey(uid)
 
         val current = derive(email, currentPassword)
         user.reauthenticate(EmailAuthProvider.getCredential(email, current.firebasePassword)).await()
@@ -283,7 +296,7 @@ class AccountKeys(
     suspend fun replaceRecoveryKey(): String {
         val user = auth.currentUser ?: throw IllegalStateException("not signed in")
         val email = user.email ?: throw IllegalStateException("the account has no email")
-        val device = withContext(Dispatchers.IO) { AccountKeyStore.load(appContext, user.uid) } ?: throw NoAccountKeyException()
+        val device = deviceKey(user.uid)
         val recoveryBytes = E2ee.newRecoveryKey()
         val recoveryWrap = withContext(Dispatchers.Default) {
             E2ee.wrapAccountKey(E2ee.recoveryWrappingKey(recoveryBytes), device.accountKey, user.uid, E2ee.BY_RECOVERY)
