@@ -1,7 +1,6 @@
 import { FirebaseError } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
 import { addDoc, collection, getFirestore, serverTimestamp } from 'firebase/firestore';
-import { getFunctions, httpsCallable } from 'firebase/functions';
 import {
   StorageError,
   StorageReference,
@@ -142,9 +141,6 @@ export default function Push() {
     setIsSubmitting(true);
 
     try {
-      // Fetch title first
-      let finalTitle = url;
-
       // Validate this is a valid URL.
       try {
         new URL(url);
@@ -154,21 +150,12 @@ export default function Push() {
         return;
       }
 
-      try {
-        const functions = getFunctions();
-        const getPageTitle = httpsCallable(functions, 'getPageTitle');
-        const result = await getPageTitle({ url });
-        const data = result.data as { title: string };
-        if (data.title) {
-          finalTitle = data.title;
-        }
-      } catch (error) {
-        console.error('Error fetching page title:', error);
-        // Fallback to using URL as title
-      }
-
+      // No title from here: a browser cannot read a cross-origin page, and a server that
+      // fetched it for us would learn the URL, which is what the push keeps from it
+      // (docs/e2ee.md, Titles). The list shows the URL until the first phone or Mac to
+      // receive the push scrapes the title and writes it back.
       const db = getFirestore();
-      const push = createPushDocument(url, finalTitle, 'url');
+      const push = createPushDocument(url, '', 'url');
 
       const docRef = await addDoc(collection(db, 'pushes'), push);
       console.log('Link saved with ID:', docRef.id);
