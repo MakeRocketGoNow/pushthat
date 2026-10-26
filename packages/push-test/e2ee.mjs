@@ -342,7 +342,29 @@ export const openChunk = async (fk, prefix, index, sealed, final) => {
   return aesGcmOpen(fk, chunkNonce(prefix, index), sealed, chunkAad(index, final));
 };
 
-// The whole file in memory, which the reference can afford. Chunks are every 1 MiB of the
+// Where each sealed chunk of an encrypted object of `length` bytes starts and ends, and
+// which is final. The boundaries follow from the length alone: every chunk but the last is
+// exactly 1 MiB + 16 bytes on disk, so n = ceil(body / (1 MiB + 16)) chunks, and the
+// remainder is the last. A body that leaves a last chunk shorter than its tag, or that is
+// empty, is not a file. A streaming decryptor knows the object's size from Storage before
+// it reads a byte, so it can take this layout, read one chunk at a time and open each with
+// openChunk; this is the one part of the format a client cannot rebuild from the chunk
+// functions alone, so the five clients should share it rather than each derive it.
+export const chunkLayout = (length) => {
+  if (length < FILE_HEADER_LENGTH + TAG_LENGTH) throw new Error("file too short");
+  const sealedSize = CHUNK_SIZE + TAG_LENGTH;
+  const count = Math.ceil((length - FILE_HEADER_LENGTH) / sealedSize);
+  return Array.from({ length: count }, (_, index) => {
+    const start = FILE_HEADER_LENGTH + index * sealedSize;
+    const final = index === count - 1;
+    return { index, start, end: final ? length : start + sealedSize, final };
+  });
+};
+
+// The whole file in memory, for the vectors and the tests: three copies of the file at
+// peak, which a 100 MB push on the web cannot afford. A client streams instead, sealing
+// 1 MiB at a time with sealChunk (on the web into the parts of a Blob) and opening by
+// chunkLayout with openChunk; it should not copy these two. Chunks are every 1 MiB of the
 // plaintext, so a file of n > 0 bytes has ceil(n / 1 MiB) chunks and the last one holds
 // 1..1 MiB; the empty file is the one case with an empty final chunk.
 export const encryptFile = async (fk, prefix, plaintext) => {
@@ -355,28 +377,20 @@ export const encryptFile = async (fk, prefix, plaintext) => {
   return concat(...parts);
 };
 
-// The chunk boundaries follow from the length alone: every chunk but the last is exactly
-// 1 MiB + 16 bytes on disk, so n = ceil(body / (1 MiB + 16)) chunks, and the remainder is
-// the last. A body that leaves a last chunk shorter than its tag, or that is empty, is not
-// a file. Every other corruption (a byte changed, a chunk dropped, moved or appended, the
-// prefix swapped) fails on a tag, because the index and the final flag are in the AAD.
-// `np` is the envelope's prefix and is not optional: the header must carry the same
-// bytes, which ties the object to its push, and a port that could leave it out would.
+// Every corruption a file can suffer (a byte changed, a chunk dropped, moved or appended,
+// the prefix swapped, a cut at a chunk boundary) fails on a tag, because the index and the
+// final flag are in the AAD. `np` is the envelope's prefix and is not optional: the header
+// must carry the same bytes, which ties the object to its push, and a port that could
+// leave it out would.
 export const decryptFile = async (fk, file, np) => {
   if (!(np instanceof Uint8Array) || np.length !== FILE_PREFIX_LENGTH) throw new Error("the envelope's np is required");
-  if (file.length < FILE_HEADER_LENGTH + TAG_LENGTH) throw new Error("file too short");
+  const layout = chunkLayout(file.length);
   if (!equal(file.subarray(0, FILE_MAGIC.length), utf8(FILE_MAGIC))) throw new Error("not an encrypted file");
   const prefix = file.subarray(FILE_MAGIC.length, FILE_HEADER_LENGTH);
   if (!equal(prefix, np)) throw new Error("file prefix does not match the push");
-
-  const body = file.length - FILE_HEADER_LENGTH;
-  const sealedSize = CHUNK_SIZE + TAG_LENGTH;
-  const chunks = Math.ceil(body / sealedSize);
   const parts = [];
-  for (let i = 0; i < chunks; i++) {
-    const start = FILE_HEADER_LENGTH + i * sealedSize;
-    const end = i === chunks - 1 ? file.length : start + sealedSize;
-    parts.push(await openChunk(fk, prefix, i, file.subarray(start, end), i === chunks - 1));
+  for (const { index, start, end, final } of layout) {
+    parts.push(await openChunk(fk, prefix, index, file.subarray(start, end), final));
   }
   return concat(...parts);
 };

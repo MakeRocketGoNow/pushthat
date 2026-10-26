@@ -13,6 +13,7 @@ import {
   blindIndex,
   blindToken,
   CHUNK_SIZE,
+  chunkLayout,
   decodeRecoveryKey,
   decryptFile,
   deriveKeys,
@@ -365,6 +366,25 @@ test("files of 1 byte, exactly 1 MiB, 1 MiB + 1 and exactly 2 MiB round-trip wit
     assert.equal(file.length, 12 + length + 16 * chunks, `${length} bytes`);
     assert.equal(hex(await decryptFile(fk, file, np)), hex(plain), `${length} bytes`);
   }
+});
+
+test("the chunk layout follows from the length alone", () => {
+  const sealed = CHUNK_SIZE + 16;
+  assert.deepEqual(chunkLayout(28), [{ index: 0, start: 12, end: 28, final: true }]);
+  assert.deepEqual(chunkLayout(12 + sealed), [{ index: 0, start: 12, end: 12 + sealed, final: true }]);
+  assert.deepEqual(chunkLayout(12 + sealed + 16), [
+    { index: 0, start: 12, end: 12 + sealed, final: false },
+    { index: 1, start: 12 + sealed, end: 12 + sealed + 16, final: true },
+  ]);
+  assert.deepEqual(chunkLayout(12 + 2 * sealed), [
+    { index: 0, start: 12, end: 12 + sealed, final: false },
+    { index: 1, start: 12 + sealed, end: 12 + 2 * sealed, final: true },
+  ]);
+  const layout = chunkLayout(vectors.file.encryptedLength);
+  assert.equal(layout.length, 4);
+  assert.deepEqual(layout[3], { index: 3, start: 12 + 3 * sealed, end: vectors.file.encryptedLength, final: true });
+  assert.throws(() => chunkLayout(27), /too short/);
+  assert.throws(() => chunkLayout(0), /too short/);
 });
 
 test("every chunk but the last must be exactly 1 MiB", async () => {
