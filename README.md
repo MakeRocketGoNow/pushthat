@@ -54,7 +54,8 @@ there is no workspace. `apps/android` is a Gradle project built with its own wra
 
 Everything else is in [docs/](docs/README.md): [the web app and the Chrome extension](docs/web.md),
 [the Android](docs/android.md), [iOS](docs/ios.md) and [macOS](docs/macos.md) apps,
-[billing](docs/billing.md), and [end-to-end encryption](docs/e2ee.md).
+[deploying](docs/deploying.md), [billing](docs/billing.md), and
+[end-to-end encryption](docs/e2ee.md).
 [AGENTS.md](AGENTS.md) holds the conventions the code follows and how to verify a change.
 
 ## License
