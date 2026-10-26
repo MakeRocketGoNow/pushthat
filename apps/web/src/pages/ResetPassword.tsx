@@ -437,14 +437,16 @@ function NewRecoveryKey({
   onDone: () => void;
 }) {
   const [saved, setSaved] = useState(false);
-  const [copied, setCopied] = useState(false);
+  const [copied, setCopied] = useState<'no' | 'yes' | 'failed'>('no');
 
   const copy = async () => {
     try {
       await navigator.clipboard.writeText(recoveryKey);
-      setCopied(true);
+      setCopied('yes');
     } catch {
-      // No clipboard (an insecure context, or permission refused): the key is on screen to copy by hand.
+      // No clipboard (an insecure context, or permission refused): say so, since the button
+      // would otherwise look as if it had worked, and the key is on screen to copy by hand.
+      setCopied('failed');
     }
   };
 
@@ -470,7 +472,7 @@ function NewRecoveryKey({
       )}
       <code className={styles.recoveryKey}>{recoveryKey}</code>
       <Button type="button" outline className={styles.button} onClick={copy}>
-        {copied ? 'Copied' : 'Copy'}
+        {copied === 'yes' ? 'Copied' : copied === 'failed' ? 'Copy failed, select the key above' : 'Copy'}
       </Button>
       <label className={styles.checkbox}>
         <input type="checkbox" checked={saved} onChange={(e) => setSaved(e.target.checked)} />I saved it
