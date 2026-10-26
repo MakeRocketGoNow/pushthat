@@ -231,11 +231,14 @@ service cloud.firestore {
     // rather than recreated, because a create would fire onNewPushCreated and count
     // against the month. A file push also gains objectPath, the path its title named,
     // since onPushRecordDeleted can no longer read the title. userId, type, createdAt and
-    // expiresAt are not among the keys it may touch, so the push stays whose, what and
-    // how long it was.
+    // expiresAt must not change, so the push stays whose, what and how long it was; any
+    // other field may go, and the list of what the result holds is what makes sure the
+    // plaintext ones do. That is a guard on what stays rather than a list of what may be
+    // removed because a push made before the shape was bounded may hold a field no client
+    // writes now, and a list would leave it unable ever to migrate.
     function isMigration() {
-      return request.resource.data.diff(resource.data).affectedKeys()
-          .hasOnly(['enc', 'searchTokens', 'keyVersion', 'deviceId', 'objectPath', 'url', 'title', 'deviceName', 'ext'])
+      return !request.resource.data.diff(resource.data).affectedKeys()
+          .hasAny(['userId', 'type', 'createdAt', 'expiresAt'])
         && request.resource.data.keys().hasOnly(encryptedPushKeys().concat(['expiresAt']))
         && isEncryptedPushFields(request.resource.data);
     }

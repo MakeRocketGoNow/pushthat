@@ -631,6 +631,16 @@ describe('migrating a plaintext push', () => {
     await seedPush(legacyFile);
     await assertSucceeds(updateDoc(pushRef(), migration({ objectPath: 'uploads/alice/a.pdf' })));
   });
+  // The shape was bounded on 2026-10-26; a push from before may hold a field no client
+  // writes now, and the migration drops it with the plaintext ones.
+  test('a push from before the shape was bounded, with a field no client writes now', async () => {
+    await seedPush({ pinned: true });
+    await assertSucceeds(updateDoc(pushRef(), migration({ pinned: deleteField() })));
+  });
+  test('the same push keeping that field', async () => {
+    await seedPush({ pinned: true });
+    await assertFails(updateDoc(pushRef(), migration()));
+  });
   test('then its title rewritten as an encrypted push', async () => {
     await seedPush({});
     await updateDoc(pushRef(), migration());
