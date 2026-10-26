@@ -1,0 +1,38 @@
+[versions]
+# Android Studio refuses to sync a project whose AGP is newer than the version
+# it ships with, so this line sets the minimum IDE version. AGP 9.4 needs a
+# 2026.1.4 (Quail 4) or newer Studio.
+#
+# 9.4 is also the floor for this project specifically: AGP 9.0-9.3 resolve
+# signing configs too eagerly (issue 499166350), and app/build.gradle.kts
+# creates the `release` signing config conditionally, so on those versions a
+# release build can come out unsigned without failing.
+agp = "9.4.0"
+# KSP decoupled from the Kotlin compiler version at 2.3.0, so this no longer
+# has to track the Kotlin version. (Kotlin itself is pinned on the buildscript
+# classpath in the root build file, since AGP 9 supplies it.)
+ksp = "2.3.11"
+googleServices = "4.5.0"
+# 1.17.0 is the newest that pairs with compileSdk 36; 1.19.0 wants compileSdk 37.
+coreKtx = "1.17.0"
+junit = "4.13.2"
+junitVersion = "1.3.0"
+espressoCore = "3.7.0"
+appcompat = "1.8.0"
+material = "1.14.0"
+playServicesSafetynet = "18.1.0"
+
+[libraries]
+androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
+junit = { group = "junit", name = "junit", version.ref = "junit" }
+androidx-junit = { group = "androidx.test.ext", name = "junit", version.ref = "junitVersion" }
+androidx-espresso-core = { group = "androidx.test.espresso", name = "espresso-core", version.ref = "espressoCore" }
+androidx-appcompat = { group = "androidx.appcompat", name = "appcompat", version.ref = "appcompat" }
+material = { group = "com.google.android.material", name = "material", version.ref = "material" }
+play-services-safetynet = { group = "com.google.android.gms", name = "play-services-safetynet", version.ref = "playServicesSafetynet" }
+
+[plugins]
+android-application = { id = "com.android.application", version.ref = "agp" }
+ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
+google-services = { id = "com.google.gms.google-services", version.ref = "googleServices" }
+

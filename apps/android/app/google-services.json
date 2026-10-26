@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "644804248017",
+    "project_id": "push-that",
+    "storage_bucket": "push-that.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:644804248017:android:2b5a5001847b1568cae0f0",
+        "android_client_info": {
+          "package_name": "com.makerocketgonow.pushthat"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCD1g6kK8YJL0HWN1_vqO43P41qZ971sKc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

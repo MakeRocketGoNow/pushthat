@@ -1,0 +1,16 @@
+*.iml
+.gradle
+/local.properties
+/.idea
+.DS_Store
+/build
+/captures
+/release
+.externalNativeBuild
+.cxx
+local.properties
+
+# Release signing - credentials and keystores must never be committed.
+keystore.properties
+*.jks
+*.keystore

@@ -1,0 +1,63 @@
+<?xml version="1.0"
+encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+  android:layout_width="match_parent"
+  android:layout_height="wrap_content"
+  android:orientation="horizontal"
+  android:paddingLeft="14dp"
+  android:paddingTop="16dp"
+  android:paddingRight="16dp"
+  android:paddingBottom="16dp"
+  android:background="?android:attr/selectableItemBackground"
+  android:clickable="true"
+  android:focusable="true">
+
+  <!-- Replace TextView with ImageView for favicon -->
+  <com.makerocketgonow.pushthat.SwivelCheckView
+    android:id="@+id/avatarImage"
+    android:layout_width="36dp"
+    android:layout_height="36dp"
+    android:padding="2dp" />
+
+  <!-- Content container -->
+  <LinearLayout
+    android:layout_width="0dp"
+    android:layout_height="wrap_content"
+    android:layout_weight="1"
+    android:orientation="vertical"
+    android:layout_marginStart="12dp">
+
+    <TextView
+      android:id="@+id/titleText"
+      android:layout_width="match_parent"
+      android:layout_height="wrap_content"
+      android:textSize="16sp"
+      android:textColor="?android:attr/textColorPrimary"
+      android:ellipsize="end"
+      android:maxLines="1" />
+
+    <LinearLayout
+      android:layout_width="match_parent"
+      android:layout_height="wrap_content"
+      android:orientation="horizontal"
+      android:layout_marginTop="4dp">
+
+      <TextView
+        android:id="@+id/relativeTimeText"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:textSize="14sp"
+        android:textColor="?android:attr/textColorSecondary" />
+
+      <TextView
+        android:id="@+id/actualTimeText"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="8dp"
+        android:textSize="14sp"
+        android:textColor="?android:attr/textColorSecondary" />
+
+    </LinearLayout>
+  </LinearLayout>
+
+</LinearLayout>

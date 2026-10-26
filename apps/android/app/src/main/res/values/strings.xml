@@ -1,0 +1,59 @@
+<resources>
+    <string name="app_name">PushThat</string>
+    <string name="delete_confirmation_title">Delete Selected Urls</string>
+    <string name="delete_confirmation_single">Permanently delete this item?</string>
+    <string name="delete_confirmation_multiple">Permanently delete %d items?</string>
+    <string name="delete">Delete</string>
+    <string name="deselect_all">DESELECT ALL</string>
+    <string name="cancel">Cancel</string>
+    <string name="navigation_drawer_open">Open navigation drawer</string>
+    <string name="navigation_drawer_close">Close navigation drawer</string>
+    <string name="logout">Logout</string>
+    <string name="select_all">SELECT ALL</string>
+    <string name="sign_in_to_pushthat">Sign in to PushThat</string>
+    <string name="email">Email</string>
+    <string name="password">Password</string>
+    <string name="forgot_password">Forgot your password?</string>
+    <string name="sign_in">SIGN IN</string>
+    <string name="register">REGISTER</string>
+    <string name="signing_in">Signing in…</string>
+    <string name="creating_account">Creating account…</string>
+    <string name="email_required">Email is required</string>
+    <string name="password_required">Password is required</string>
+    <string name="authentication_failed">Authentication failed.</string>
+    <string name="waiting_for_links">Waiting for Links</string>
+    <string name="logo_description">The PushThat Logo</string>
+
+    <!-- File handling strings -->
+    <string name="no_file_received">No file received</string>
+    <string name="file_size_error">Could not determine file size</string>
+    <string name="file_too_large">File size must be less than %1$d MB on your plan</string>
+    <string name="file_upload_error">Failed to upload file. Please try again.</string>
+
+    <string name="new_push">New Push</string>
+    <string name="default_notification_channel_id">push_that_default_channel</string>
+    <string name="default_notification_channel_name">Push That Notifications</string>
+    <string name="open_push">Open</string>
+
+    <!-- Error dialog strings -->
+    <string name="push_failed_title">Unable to Save</string>
+    <string name="push_failed_message_limit">You have reached this month’s push limit.</string>
+    <string name="push_failed_message_generic">Failed to save push. Please try again later.</string>
+    <string name="ok">OK</string>
+    <string name="only_urls_can_be_pushed">Only URLs can be pushed</string>
+    <string name="no_url_found">No valid URL found in shared content</string>
+
+    <!-- The plan dialog. The app never sells the plan (store rules): no button, link or address leads
+         anywhere, and a limit message says only the limit. -->
+    <string name="plan">Plan</string>
+    <string name="plan_free">Free</string>
+    <string name="plan_pro">Pro</string>
+    <string name="plan_pro_comp">Pro, complimentary</string>
+    <string name="plan_usage">%1$d of %2$d links and %3$d of %4$d files pushed this month.\n\nFiles up to %5$d MB, kept for %6$d days.</string>
+    <string name="plan_renews">Renews on %1$s.</string>
+    <string name="plan_payment_failed">The last renewal could not be collected.</string>
+    <string name="plan_reading">Reading your plan…</string>
+    <string name="plan_ends">Pro ends on %1$s.</string>
+    <string name="plan_managed">Your plan is managed from your PushThat account on the web.</string>
+    <string name="plan_unavailable">Your plan could not be read right now.</string>
+</resources>

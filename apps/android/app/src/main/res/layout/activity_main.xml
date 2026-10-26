@@ -1,0 +1,127 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout
+  xmlns:android="http://schemas.android.com/apk/res/android"
+  xmlns:app="http://schemas.android.com/apk/res-auto"
+  android:layout_width="match_parent"
+  android:layout_height="match_parent"
+  android:orientation="vertical"
+  android:background="@color/color_background">
+
+  <androidx.appcompat.widget.Toolbar
+    android:id="@+id/toolbar"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:background="?attr/colorPrimary"
+    android:theme="@style/ThemeOverlay.MaterialComponents.Light"
+    app:popupTheme="@style/PopupMenuStyle"
+    app:theme="@style/PopupMenuStyle"
+    app:titleTextColor="@color/black"
+    app:contentInsetStartWithNavigation="0dp"
+    app:contentInsetStart="0dp">
+
+    <FrameLayout
+      android:layout_width="match_parent"
+      android:layout_height="?attr/actionBarSize">
+
+      <!-- Search Layout -->
+      <LinearLayout
+        android:id="@+id/searchLayout"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingStart="16dp"
+        android:paddingEnd="16dp">
+
+        <ImageView
+          android:layout_width="32dp"
+          android:layout_height="32dp"
+          android:src="@mipmap/ic_launcher"
+          android:layout_marginEnd="24dp"/>
+
+        <androidx.appcompat.widget.SearchView
+          android:id="@+id/searchView"
+          android:layout_width="0dp"
+          android:layout_weight="1"
+          android:layout_height="40dp"
+          android:background="@drawable/search_background"
+          android:layout_marginEnd="8dp"
+          android:theme="@style/SearchViewStyle"
+          app:queryHint="Search pushes..."
+          app:iconifiedByDefault="false"
+          app:queryBackground="@null"/>
+
+      </LinearLayout>
+
+      <!-- Selection Layout -->
+      <LinearLayout
+        android:id="@+id/selectionLayout"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:gravity="center_vertical|end"
+        android:orientation="horizontal"
+        android:paddingStart="16dp"
+        android:paddingEnd="16dp"
+        android:visibility="gone">
+
+        <TextView
+          android:id="@+id/selectAllText"
+          android:layout_width="wrap_content"
+          android:layout_height="wrap_content"
+          android:text="@string/select_all"
+          android:textColor="@color/black"
+          android:padding="8dp"
+          android:textSize="16sp"
+          android:layout_marginEnd="16dp"/>
+
+        <ImageView
+          android:id="@+id/deleteButton"
+          android:layout_width="24dp"
+          android:layout_height="24dp"
+          android:src="@drawable/ic_delete"
+          android:layout_marginStart="8dp"/>
+
+      </LinearLayout>
+
+    </FrameLayout>
+
+  </androidx.appcompat.widget.Toolbar>
+
+  <FrameLayout
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <androidx.swiperefreshlayout.widget.SwipeRefreshLayout
+      android:id="@+id/swipeRefreshLayout"
+      android:layout_width="match_parent"
+      android:layout_height="match_parent">
+
+      <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/pushRecyclerView"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:clipToPadding="false" />
+
+    </androidx.swiperefreshlayout.widget.SwipeRefreshLayout>
+
+    <TextView
+      android:id="@+id/emptyStateText"
+      android:layout_width="wrap_content"
+      android:layout_height="wrap_content"
+      android:layout_gravity="center"
+      android:text="@string/waiting_for_links"
+      android:textSize="18sp"
+      android:textColor="@color/color_text"
+      android:visibility="gone" />
+
+    <ProgressBar
+      android:id="@+id/deleteProgressBar"
+      android:layout_width="wrap_content"
+      android:layout_height="wrap_content"
+      android:layout_gravity="center"
+      android:visibility="gone"
+      android:indeterminateTint="@color/color_primary" />
+
+  </FrameLayout>
+
+</LinearLayout>

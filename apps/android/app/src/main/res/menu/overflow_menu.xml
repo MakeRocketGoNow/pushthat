@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android"
+  xmlns:app="http://schemas.android.com/apk/res-auto">
+  <item
+    android:id="@+id/menu_more"
+    android:icon="@drawable/ic_more_vert"
+    android:title=""
+    app:showAsAction="always">
+    <menu>
+      <item
+        android:id="@+id/nav_plan"
+        android:icon="@drawable/ic_plan"
+        android:title="@string/plan"
+        android:theme="@style/PopupMenuTextStyle" />
+      <item
+        android:id="@+id/nav_logout"
+        android:icon="@drawable/ic_logout"
+        android:title="@string/logout"
+        android:theme="@style/PopupMenuTextStyle" />
+    </menu>
+  </item>
+</menu>
