@@ -52,6 +52,9 @@ class AuthViewModel: ObservableObject {
         if let user = auth.currentUser {
             isAuthenticated = true
             keyGate = AccountKeyStore.accountKey(for: user.uid) == nil ? .unlock : .ready
+        } else {
+            // Signed out while the app was not running (see `sessionChanged`).
+            AccountKeyStore.clearAccountKey()
         }
 
         // Listen for auth state changes
@@ -68,6 +71,14 @@ class AuthViewModel: ObservableObject {
     private func sessionChanged(_ user: User?) {
         guard !keyFlowRunning else { return }
         guard let user else {
+            // Not only the app's own "Sign out" ends a session: Firebase drops it when the
+            // tokens are revoked (a password changed on another device) or the account is
+            // disabled. The key goes with it, as `signOut()` takes it, so that no key is
+            // left behind for whoever signs in next. Checked against the live session, since
+            // this runs from a queued task and a sign-in may have landed since.
+            if auth.currentUser == nil {
+                AccountKeyStore.clearAccountKey()
+            }
             isAuthenticated = false
             keyGate = .ready
             pendingRecovery = nil
