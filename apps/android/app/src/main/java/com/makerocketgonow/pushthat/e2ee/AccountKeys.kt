@@ -13,8 +13,9 @@ import kotlinx.coroutines.withContext
 import java.security.GeneralSecurityException
 
 /**
- * Signing in, registering and recovering with the end-to-end keys (docs/e2ee.md, "Keys"
- * and "Migration"; the client flow every app follows is pinned in the phase 3 contract).
+ * Signing in, registering and recovering with the end-to-end keys: docs/e2ee.md, "Keys"
+ * and "Migration", for what the keys are and how an account moves to them, and the web's
+ * apps/web/src/services/signIn.ts for the same flow in the app the others follow.
  * Firebase Auth is given `base64url(authKey)`, never the password; `masterKey` opens the
  * account key on the user document; the account key is all this install keeps.
  *
