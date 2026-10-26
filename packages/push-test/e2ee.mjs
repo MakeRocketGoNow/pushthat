@@ -334,12 +334,14 @@ export const encryptFile = async (fk, prefix, plaintext) => {
 // the last. A body that leaves a last chunk shorter than its tag, or that is empty, is not
 // a file. Every other corruption (a byte changed, a chunk dropped, moved or appended, the
 // prefix swapped) fails on a tag, because the index and the final flag are in the AAD.
-// `expectedPrefix` is the envelope's `np`; passing it ties the object to its push.
-export const decryptFile = async (fk, file, expectedPrefix) => {
+// `np` is the envelope's prefix and is not optional: the header must carry the same
+// bytes, which ties the object to its push, and a port that could leave it out would.
+export const decryptFile = async (fk, file, np) => {
+  if (!(np instanceof Uint8Array) || np.length !== FILE_PREFIX_LENGTH) throw new Error("the envelope's np is required");
   if (file.length < FILE_HEADER_LENGTH + TAG_LENGTH) throw new Error("file too short");
   if (!equal(file.subarray(0, FILE_MAGIC.length), utf8(FILE_MAGIC))) throw new Error("not an encrypted file");
   const prefix = file.subarray(FILE_MAGIC.length, FILE_HEADER_LENGTH);
-  if (expectedPrefix && !equal(prefix, expectedPrefix)) throw new Error("file prefix does not match the push");
+  if (!equal(prefix, np)) throw new Error("file prefix does not match the push");
 
   const body = file.length - FILE_HEADER_LENGTH;
   const sealedSize = CHUNK_SIZE + TAG_LENGTH;

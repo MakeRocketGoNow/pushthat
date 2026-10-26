@@ -268,7 +268,7 @@ test("the tampered copy has the vector's hash and fails to decrypt", async () =>
   const tampered = Uint8Array.from(file);
   tampered[TAMPER_OFFSET] ^= 0x01;
   assert.equal(hex(await sha256(tampered)), vectors.file.tamperedSha256);
-  await assert.rejects(decryptFile(inputs.fk, tampered), /decryption failed/);
+  await assert.rejects(decryptFile(inputs.fk, tampered, inputs.np), /decryption failed/);
 });
 
 test("a reordered chunk has the vector's hash and fails to decrypt", async () => {
@@ -277,40 +277,45 @@ test("a reordered chunk has the vector's hash and fails to decrypt", async () =>
   reordered.set(file.subarray(12, 12 + sealedSize), 12 + sealedSize);
   reordered.set(file.subarray(12 + sealedSize, 12 + 2 * sealedSize), 12);
   assert.equal(hex(await sha256(reordered)), vectors.file.reorderedSha256);
-  await assert.rejects(decryptFile(inputs.fk, reordered), /decryption failed/);
+  await assert.rejects(decryptFile(inputs.fk, reordered, inputs.np), /decryption failed/);
 });
 
 test("a truncated, extended or shortened-by-a-chunk file fails to decrypt", async () => {
   const file = await encryptFile(inputs.fk, inputs.np, filePattern(inputs.fileLength));
   // Cut at a chunk boundary: the last chunk left was sealed as non-final.
-  await assert.rejects(decryptFile(inputs.fk, file.subarray(0, 12 + 2 * sealedSize)), /decryption failed/);
+  await assert.rejects(decryptFile(inputs.fk, file.subarray(0, 12 + 2 * sealedSize), inputs.np), /decryption failed/);
   // Cut inside a chunk.
-  await assert.rejects(decryptFile(inputs.fk, file.subarray(0, file.length - 1)), /decryption failed/);
+  await assert.rejects(decryptFile(inputs.fk, file.subarray(0, file.length - 1), inputs.np), /decryption failed/);
   // A whole sealed chunk appended: the old final chunk is now read as non-final.
   const extended = new Uint8Array(file.length + sealedSize);
   extended.set(file);
   extended.set(file.subarray(12, 12 + sealedSize), file.length);
-  await assert.rejects(decryptFile(inputs.fk, extended), /bytes|decryption failed/);
+  await assert.rejects(decryptFile(inputs.fk, extended, inputs.np), /bytes|decryption failed/);
   // Chunk 1 removed.
   const dropped = new Uint8Array(file.length - sealedSize);
   dropped.set(file.subarray(0, 12 + sealedSize));
   dropped.set(file.subarray(12 + 2 * sealedSize), 12 + sealedSize);
-  await assert.rejects(decryptFile(inputs.fk, dropped), /decryption failed/);
+  await assert.rejects(decryptFile(inputs.fk, dropped, inputs.np), /decryption failed/);
   // Too short to hold a header and a tag.
-  await assert.rejects(decryptFile(inputs.fk, file.subarray(0, 20)), /too short/);
-  await assert.rejects(decryptFile(inputs.fk, new Uint8Array(0)), /too short/);
+  await assert.rejects(decryptFile(inputs.fk, file.subarray(0, 20), inputs.np), /too short/);
+  await assert.rejects(decryptFile(inputs.fk, new Uint8Array(0), inputs.np), /too short/);
 });
 
 test("the wrong key, a wrong prefix or a wrong magic fails to decrypt", async () => {
   const file = await encryptFile(inputs.fk, inputs.np, filePattern(inputs.fileLength));
-  await assert.rejects(decryptFile(newFileKey(), file), /decryption failed/);
   await assert.rejects(decryptFile(inputs.fk, file, newFilePrefix()), /prefix does not match/);
+  // A header rewritten with another prefix, presented as that prefix's push: the check
+  // passes and the nonces no longer match the tags.
+  const other = newFilePrefix();
   const swapped = Uint8Array.from(file);
-  swapped.set(newFilePrefix(), 4);
-  await assert.rejects(decryptFile(inputs.fk, swapped), /decryption failed/);
+  swapped.set(other, 4);
+  await assert.rejects(decryptFile(inputs.fk, swapped, other), /decryption failed/);
+  await assert.rejects(decryptFile(newFileKey(), file, inputs.np), /decryption failed/);
+  await assert.rejects(decryptFile(inputs.fk, file), /np is required/);
+  await assert.rejects(decryptFile(inputs.fk, file, new Uint8Array(7)), /np is required/);
   const wrongMagic = Uint8Array.from(file);
   wrongMagic[0] = 0x51;
-  await assert.rejects(decryptFile(inputs.fk, wrongMagic), /not an encrypted file/);
+  await assert.rejects(decryptFile(inputs.fk, wrongMagic, inputs.np), /not an encrypted file/);
 });
 
 test("the empty file is the header and one empty final chunk, and matches the vector", async () => {
