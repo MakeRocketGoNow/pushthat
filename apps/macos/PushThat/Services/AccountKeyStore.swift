@@ -14,7 +14,8 @@ struct StoredAccountKey: Codable, Equatable {
 /// The device's key store (docs/e2ee.md, "Where keys live on each device"): Keychain
 /// generic passwords for the account key and the install's `deviceId`, readable after the
 /// first unlock so that the share extension, and in phase 4 the notification service
-/// extension, can read them while the phone is locked.
+/// extension, can read them while the phone is locked. The `deviceId` also stays on this
+/// device (see `deviceId()`).
 ///
 /// The items live in the access group the app and its share extension already share for
 /// Firebase Auth, so an extension finds the key where it finds the session. This file is
@@ -81,10 +82,10 @@ enum AccountKeyStore {
         return result as? Data
     }
 
-    private static func write(_ item: String, _ data: Data) throws {
+    private static func write(_ item: String, _ data: Data, accessible: CFString) throws {
         let attributes: [String: Any] = [
             kSecValueData as String: data,
-            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlock,
+            kSecAttrAccessible as String: accessible,
         ]
         var status = SecItemUpdate(query(item) as CFDictionary, attributes as CFDictionary)
         if status == errSecItemNotFound {
@@ -103,8 +104,11 @@ enum AccountKeyStore {
         return stored
     }
 
+    /// `AfterFirstUnlock` without `ThisDeviceOnly`, as the spec has it: a phone restored
+    /// from an encrypted backup comes back with the key and needs no password to read its
+    /// pushes.
     static func save(_ stored: StoredAccountKey) throws {
-        try write(accountKeyItem, JSONEncoder().encode(stored))
+        try write(accountKeyItem, JSONEncoder().encode(stored), accessible: kSecAttrAccessibleAfterFirstUnlock)
     }
 
     /// On sign-out. The device id stays: it belongs to the install, not the account.
@@ -113,12 +117,17 @@ enum AccountKeyStore {
     }
 
     /// This install's id, made on first use.
+    ///
+    /// `ThisDeviceOnly`, unlike the account key: the id names the install, and phase 4
+    /// skips a push whose `deviceId` is the device's own (echo suppression). With the key's
+    /// accessibility it would travel through a backup, and a phone restored from another's
+    /// backup would share its id, so each would hide the other's pushes.
     static func deviceId() throws -> String {
         if let data = read(deviceIdItem), let id = String(data: data, encoding: .utf8), !id.isEmpty {
             return id
         }
         let id = E2eeCrypto.newDeviceId()
-        try write(deviceIdItem, Data(id.utf8))
+        try write(deviceIdItem, Data(id.utf8), accessible: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly)
         return id
     }
 }
