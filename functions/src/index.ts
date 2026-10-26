@@ -15,6 +15,7 @@ import { HttpsError, onCall } from 'firebase-functions/v2/https';
 // import { beforeUserCreated } from 'firebase-functions/v2/identity';
 import 'whatwg-fetch';
 
+import { deadTokens } from './notifications';
 import { recordPush } from './usage';
 
 // The user document's plan fields are described in plan.ts (`PlanUser`); the count a
@@ -194,21 +195,18 @@ export const onNewPushCreated = onDocumentCreated('pushes/{pushId}', async (even
 
     // Handle any failed messages
     if (batchResponse.failureCount > 0) {
-      const failedTokens: string[] = [];
-      batchResponse.responses.forEach((resp: SendResponse, idx: number) => {
-        if (!resp.success) {
-          failedTokens.push(tokens[idx]);
-          logger.error('Notification failed:', resp.error);
-        }
+      batchResponse.responses.forEach((resp: SendResponse) => {
+        if (!resp.success) logger.error('Notification failed:', resp.error);
       });
 
-      // Clean up failed tokens from the user's document
-      if (failedTokens.length > 0) {
-        logger.info('Tokens to remove:', failedTokens);
+      // Only the tokens FCM says are dead leave the document (notifications.ts); a
+      // failure about the message or the moment keeps them.
+      const dead = deadTokens(tokens, batchResponse.responses);
+      if (dead.length > 0) {
+        logger.info(`Removing ${dead.length} dead token${dead.length === 1 ? '' : 's'}`);
 
-        // Update the user document to remove failed tokens
         const validTokens = Array.isArray(userData?.fcmTokens)
-          ? userData.fcmTokens.filter((token: string) => !failedTokens.includes(token))
+          ? userData.fcmTokens.filter((token: string) => !dead.includes(token))
           : [];
 
         await recipientTokensSnapshot.ref.update({
