@@ -71,6 +71,15 @@ private fun extractRootDomain(url: String): String {
 }
 
 class MainActivity : AppCompatActivity() {
+    companion object {
+        /**
+         * LoginActivity found a recovery key waiting and could not open it this time; see
+         * `LoginViewModel.recoveryKeyUnavailable`. The list opens instead of sending the
+         * user back to it.
+         */
+        const val EXTRA_RECOVERY_KEY_UNAVAILABLE = "recoveryKeyUnavailable"
+    }
+
     private val TAG = "MainActivity"
     private lateinit var pushRecyclerView: RecyclerView
     private lateinit var swipeRefreshLayout: SwipeRefreshLayout
@@ -151,7 +160,11 @@ class MainActivity : AppCompatActivity() {
         if (
             user == null ||
             !AccountKeyStore.hasKey(this, user.uid) ||
-            (!settingsShowKey && AccountKeyStore.hasUnconfirmedRecoveryKey(this, user.uid))
+            (
+                !settingsShowKey &&
+                    !intent.getBooleanExtra(EXTRA_RECOVERY_KEY_UNAVAILABLE, false) &&
+                    AccountKeyStore.hasUnconfirmedRecoveryKey(this, user.uid)
+                )
         ) {
             startActivity(Intent(this, LoginActivity::class.java))
             finish()

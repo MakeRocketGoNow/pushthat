@@ -300,7 +300,10 @@ class LoginActivity : AppCompatActivity() {
 
     private fun startMainActivity() {
         if (isFinishing) return
-        startActivity(Intent(this, MainActivity::class.java))
+        startActivity(
+            Intent(this, MainActivity::class.java)
+                .putExtra(MainActivity.EXTRA_RECOVERY_KEY_UNAVAILABLE, viewModel.recoveryKeyUnavailable)
+        )
         finish()
     }
 }

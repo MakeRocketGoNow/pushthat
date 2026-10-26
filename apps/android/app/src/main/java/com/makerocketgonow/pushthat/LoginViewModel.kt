@@ -79,6 +79,16 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
      * Read off the main thread, as every Keystore call; meanwhile the form is busy, so it
      * cannot start a sign-in on top. Without one that opens, on as if there were none.
      */
+    /**
+     * Set when a recovery key is waiting but the Keystore could not open it this time (the
+     * key store keeps it for a passing failure). The list opens anyway and is told not to
+     * send the user straight back here: that check finds the key still waiting, and the two
+     * activities would hand the user back and forth for as long as the Keystore kept failing,
+     * with neither on screen long enough to sign out. The next launch tries again.
+     */
+    var recoveryKeyUnavailable = false
+        private set
+
     fun showUnconfirmedRecoveryKey(uid: String) {
         if (_state.value.working != null || _state.value.screen != Screen.Form) return
         _state.value = State(working = R.string.signing_in)
@@ -88,7 +98,9 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
             _state.value = State(
                 when {
                     recoveryKey != null -> Screen.RecoveryKey(recoveryKey)
-                    AccountKeyStore.hasKey(app, uid) -> Screen.Done
+                    AccountKeyStore.hasKey(app, uid) -> Screen.Done.also {
+                        recoveryKeyUnavailable = AccountKeyStore.hasUnconfirmedRecoveryKey(app, uid)
+                    }
                     else -> Screen.Form
                 }
             )
