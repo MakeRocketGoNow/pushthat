@@ -202,7 +202,11 @@ export function ResetPassword() {
               You can delete them now, or keep them in your list as locked rows that you can delete later but never
               open. Files expire on their own within 30 days either way.
             </p>
-            {error && <div className={styles.error}>{error}</div>}
+            {error && (
+              <div className={styles.error} role="alert">
+                {error}
+              </div>
+            )}
             <Button
               type="button"
               className={styles.button}
@@ -313,7 +317,11 @@ function PasswordForm({
         For <strong>{email}</strong>
       </p>
       <form className={styles.form} onSubmit={submit}>
-        {(problem || error) && <div className={styles.error}>{problem || error}</div>}
+        {(problem || error) && (
+          <div className={styles.error} role="alert">
+            {problem || error}
+          </div>
+        )}
         <input
           autoFocus
           type="password"
@@ -368,7 +376,11 @@ function RecoveryForm({
           onSubmit(recoveryKey);
         }}
       >
-        {error && <div className={styles.error}>{error}</div>}
+        {error && (
+          <div className={styles.error} role="alert">
+            {error}
+          </div>
+        )}
         <input
           autoFocus
           required
