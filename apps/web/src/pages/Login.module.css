@@ -98,7 +98,15 @@
 }
 
 .registerButton {
+  margin-top: 0.75rem;
+}
+
+.passwordRule {
   margin-top: 1.5rem;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  text-align: center;
+  color: var(--color-text);
 }
 
 .resetButton {

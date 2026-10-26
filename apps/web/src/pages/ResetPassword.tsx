@@ -18,11 +18,9 @@ import {
   setNewPassword,
   startNewKeys,
 } from '@/services/passwordReset';
+import { MIN_PASSWORD_LENGTH } from '@/services/signIn';
 
 import styles from './ResetPassword.module.css';
-
-// What docs/e2ee.md asks of a new password at sign-up, since the password is the key.
-const MIN_PASSWORD_LENGTH = 10;
 
 // Deleting the pushes the old key locked, which runs after the new recovery key is shown.
 type Deletion = { state: 'none' } | { state: 'running' } | { state: 'done'; deleted: number } | { state: 'failed' };
@@ -271,9 +269,8 @@ export function ResetPassword() {
             <h2 tabIndex={-1} className={styles.title}>
               Your password is changed
             </h2>
-            {/* True once phase 3's sign-in (docs/e2ee.md) treats a working password with no
-                key it can open as this page does; the reset email reaches this page only
-                after those clients are out (docs/deploying.md). */}
+            {/* The sign-in (services/signIn.ts, and its copy on each app) asks for the
+                recovery key when a working password opens no wrap, as this page does. */}
             <p className={styles.message}>
               The keys to your pushes could not be updated. Sign in with your new password and the app will finish.
             </p>

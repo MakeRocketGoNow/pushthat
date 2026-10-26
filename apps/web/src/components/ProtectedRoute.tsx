@@ -1,5 +1,6 @@
 import { Navigate, Outlet } from 'react-router';
 
+import { KeyGate } from '@/components/KeyGate';
 import { useAuth } from '@/contexts/AuthContext';
 
 export default function ProtectedRoute() {
@@ -11,5 +12,9 @@ export default function ProtectedRoute() {
     return <Navigate to="/login" />;
   }
 
-  return <Outlet />;
+  return (
+    <KeyGate>
+      <Outlet />
+    </KeyGate>
+  );
 }

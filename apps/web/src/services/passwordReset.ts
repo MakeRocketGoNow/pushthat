@@ -47,8 +47,9 @@ export { KeysChangedError, WrongRecoveryKeyError } from './accountKeys';
  * The steps are separate calls because the page asks the user something between them.
  * Firebase holds the new password from `setNewPassword` on, so a failure after it leaves
  * an account that signs in with the new password and still has its old wraps (or none);
- * phase 3's sign-in has to handle a working `authKey` with no `password` wrap it can open
- * as it handles a registration, by offering the recovery key or a new account key.
+ * the sign-in (signIn.ts) handles that as this page does, by asking for the recovery key
+ * or making a new account key. Both derive with `deriveKeys` and write through
+ * accountKeys.ts.
  */
 
 let resetFirebase: { auth: Auth; db: Firestore } | undefined;
