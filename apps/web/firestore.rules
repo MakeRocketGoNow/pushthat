@@ -255,7 +255,19 @@ service cloud.firestore {
       return !request.resource.data.diff(resource.data).affectedKeys()
           .hasAny(['userId', 'type', 'createdAt', 'expiresAt'])
         && request.resource.data.keys().hasOnly(encryptedPushKeys().concat(['expiresAt']))
-        && isEncryptedPushFields(request.resource.data);
+        && isEncryptedPushFields(request.resource.data)
+        && isMigratedObjectPath();
+    }
+
+    // A file push migrated in place names the object its title named, which is the one
+    // onPushRecordDeleted has been deleting with it. Any other path, even one of the
+    // owner's own, would leave the real object to the orphan sweep and point the delete at
+    // something else. A push with no title (none is made now) names nothing to compare
+    // with, and is held only to its owner's folder.
+    function isMigratedObjectPath() {
+      return resource.data.type != 'file'
+        || !(resource.data.get('title', null) is string)
+        || request.resource.data.objectPath == 'uploads/' + resource.data.userId + '/' + resource.data.title;
     }
 
     // The device tokens a user document may hold. A token is about 160 characters and

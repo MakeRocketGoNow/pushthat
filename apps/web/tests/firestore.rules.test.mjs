@@ -714,6 +714,10 @@ describe('migrating a plaintext push', () => {
     await seedPush(legacyFile);
     await assertFails(updateDoc(pushRef(), migration()));
   });
+  test("a file push naming another of its owner's objects, not the one its title named", async () => {
+    await seedPush(legacyFile);
+    await assertFails(updateDoc(pushRef(), migration({ objectPath: 'uploads/alice/b.pdf' })));
+  });
   test("a file push naming someone else's object", async () => {
     await seedPush(legacyFile);
     await assertFails(updateDoc(pushRef(), migration({ objectPath: 'uploads/bob/a.pdf' })));
