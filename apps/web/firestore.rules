@@ -106,6 +106,9 @@ service cloud.firestore {
         : 0;
     }
 
+    // The count read here is written by onNewPushCreated seconds after each push, so a
+    // burst passes before any of it is counted; the function applies the limit again
+    // where the count is exact and deletes what landed over it (docs/billing.md).
     function isWithinUsageLimit(userId, type) {
       let user = getCurrentUser(userId);
 

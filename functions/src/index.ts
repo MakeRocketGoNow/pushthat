@@ -7,8 +7,6 @@
  * See a full list of supported triggers at https://firebase.google.com/docs/functions
  */
 import { initializeApp } from 'firebase-admin/app';
-import { getAuth } from 'firebase-admin/auth';
-import { Timestamp, FieldValue } from 'firebase-admin/firestore';
 import { BaseMessage, SendResponse, getMessaging } from 'firebase-admin/messaging';
 import { getStorage } from 'firebase-admin/storage';
 import * as logger from 'firebase-functions/logger';
@@ -17,10 +15,10 @@ import { HttpsError, onCall } from 'firebase-functions/v2/https';
 // import { beforeUserCreated } from 'firebase-functions/v2/identity';
 import 'whatwg-fetch';
 
-import { PlanUser, fileExpiryOf, subscriptionActive, usageOf } from './plan';
+import { recordPush } from './usage';
 
-// The user document's plan fields are described in plan.ts (`PlanUser`); the Stripe side
-// is in stripe-functions.ts.
+// The user document's plan fields are described in plan.ts (`PlanUser`); the count a
+// push adds to them is in usage.ts, and the Stripe side in stripe-functions.ts.
 
 // Initialize Firebase Admin
 initializeApp();
@@ -132,120 +130,17 @@ export const onNewPushCreated = onDocumentCreated('pushes/{pushId}', async (even
     }
 
     const pushData = snapshot.data();
-    const pushType = pushData.type || 'unknown';
 
-    // Track usage for all push types
-    const userRef = snapshot.ref.firestore.collection('users').doc(pushData.userId);
-    const firestore = snapshot.ref.firestore;
-
-    // Run in a transaction to avoid race conditions
-    await firestore.runTransaction(async (transaction) => {
-      // First, perform all reads. The push is read too: this runs seconds after it was
-      // made, or longer after a cold start, and the stamp below must not bring back one
-      // the user has deleted in that window.
-      const [userDoc, pushDoc] = await Promise.all([transaction.get(userRef), transaction.get(snapshot.ref)]);
-      const now = new Date();
-      const nowTimestamp = Timestamp.fromDate(now);
-
-      // Then the writes. A file push is kept for the tier's retention and then deleted
-      // by the sweep (expiry.ts). Decided here, from the tier at the moment of the push,
-      // since the rules keep clients from writing expiresAt at all.
-      if (pushType === 'file' && pushDoc.exists) {
-        const expiresAt = fileExpiryOf(userDoc.exists ? (userDoc.data() as PlanUser) : undefined, now);
-        transaction.update(snapshot.ref, { expiresAt });
-      }
-
-      if (!userDoc.exists) {
-        // Get user email from Firebase Auth
-        const auth = getAuth();
-        const userRecord = await auth.getUser(pushData.userId);
-
-        // Create the user if they don't exist
-        transaction.set(userRef, {
-          email: userRecord.email,
-          createdAt: nowTimestamp,
-        });
-
-        // Set initial usage data
-        transaction.set(
-          userRef,
-          {
-            usageRecords: {
-              [usageOf({ createdAt: nowTimestamp }, now).periodKey]: {
-                [pushType]: 1,
-              },
-            },
-            lastPushWasActiveSubscription: false,
-            periodStart: nowTimestamp,
-            updatedAt: now,
-          },
-          { merge: true }
-        );
-
-        // Track device name uniquely
-        if (typeof pushData.deviceName === 'string' && pushData.deviceName.trim()) {
-          transaction.set(
-            userRef,
-            {
-              deviceNames: FieldValue.arrayUnion(pushData.deviceName),
-            },
-            { merge: true }
-          );
-        }
-
-        return;
-      }
-
-      const userData = userDoc.data();
-      if (!userData) {
-        logger.error(`User ${pushData.userId} data is undefined`);
-        return;
-      }
-
-      const subscription = userData.subscription;
-      const isActive = subscriptionActive(subscription, now);
-      const createdAt = userData.createdAt || nowTimestamp;
-
-      // The period the push is counted into: the same arithmetic the Plan page reports
-      // and the rules check, so the three cannot drift.
-      const { periodKey } = usageOf({ ...(userData as PlanUser), createdAt }, now);
-
-      // Get current usage from user document
-      const currentUsage = userData.usageRecords?.[periodKey]?.[pushType] || 0;
-
-      if (!userData.createdAt) {
-        transaction.set(userRef, { createdAt }, { merge: true });
-      }
-
-      // Update usage counter
-      transaction.set(
-        userRef,
-        {
-          usageRecords: {
-            ...userData.usageRecords,
-            [periodKey]: {
-              ...userData.usageRecords?.[periodKey],
-              [pushType]: currentUsage + 1,
-            },
-          },
-          lastPushWasActiveSubscription: !!isActive,
-          periodStart: subscription?.startedAt || createdAt,
-          updatedAt: now,
-        },
-        { merge: true }
-      );
-
-      // Track device name uniquely
-      if (typeof pushData.deviceName === 'string' && pushData.deviceName.trim()) {
-        transaction.set(
-          userRef,
-          {
-            deviceNames: FieldValue.arrayUnion(pushData.deviceName),
-          },
-          { merge: true }
-        );
-      }
-    });
+    // Count the push, or take it back: the rules let a burst through before any of it
+    // is counted, and the count here is the exact one (usage.ts). A push taken back is
+    // not announced; the device that made it sees it go from its list.
+    const outcome = await recordPush(
+      snapshot.ref.firestore,
+      snapshot.ref,
+      { userId: pushData.userId, type: pushData.type },
+      new Date()
+    );
+    if (outcome === 'refused') return;
 
     // Get the messaging instance
     const messaging = getMessaging();
