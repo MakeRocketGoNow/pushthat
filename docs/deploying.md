@@ -113,10 +113,14 @@ do
 done
 
 # The functions run as the default compute account; deploying them means acting as it.
-gcloud iam service-accounts add-iam-policy-binding \
-  $PROJECT_NUMBER-compute@developer.gserviceaccount.com --quiet \
-  --member serviceAccount:$SA --role roles/iam.serviceAccountUser > /dev/null \
-  && echo "Granted acting as the functions' account"
+# The CLI also checks for acting as the App Engine default account before any functions
+# deploy, and stops without it (found on the first CI deploy).
+for account in $PROJECT_NUMBER-compute@developer.gserviceaccount.com $PROJECT_ID@appspot.gserviceaccount.com
+do
+  gcloud iam service-accounts add-iam-policy-binding $account --quiet \
+    --member serviceAccount:$SA --role roles/iam.serviceAccountUser > /dev/null \
+    && echo "Granted acting as $account"
+done
 
 gcloud iam workload-identity-pools create github --location global --display-name GitHub
 
