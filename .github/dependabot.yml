@@ -1,0 +1,51 @@
+# Dependency updates: security only.
+#
+# Version updates are off for every ecosystem: `open-pull-requests-limit` is 0, which stops
+# the weekly and monthly pull requests and leaves security updates alone (they are not
+# counted against it). Routine updates are done by hand, where whoever does them can read
+# the changelog against the code. Whether security updates run at all is a repository
+# setting rather than a file; what this file decides is how they are grouped, so that an
+# advisory arrives as one pull request per folder rather than one per package.
+#
+# Each npm folder has its own lockfile (there is no workspace), so each is listed on its
+# own and a bump there rewrites that folder's package.json and package-lock.json together.
+
+version: 2
+updates:
+  - package-ecosystem: npm
+    directories:
+      - '/apps/web'
+      - '/functions'
+      - '/packages/push-test'
+    schedule:
+      interval: weekly
+    groups:
+      security:
+        applies-to: security-updates
+        patterns:
+          - '*'
+    open-pull-requests-limit: 0
+
+  - package-ecosystem: gradle
+    directory: '/apps/android'
+    schedule:
+      interval: monthly
+    groups:
+      security:
+        applies-to: security-updates
+        patterns:
+          - '*'
+    open-pull-requests-limit: 0
+
+  # The actions in .github/workflows are pinned to commit SHAs, and a SHA stays where it is
+  # until something proposes a new one. This is the thing that proposes: one grouped pull
+  # request a month, with the `# vX.Y.Z` comment beside each pin rewritten to match.
+  - package-ecosystem: github-actions
+    directory: '/'
+    schedule:
+      interval: monthly
+    groups:
+      actions:
+        patterns:
+          - '*'
+    open-pull-requests-limit: 1

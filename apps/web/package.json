@@ -14,7 +14,7 @@
     "test:rules": "firebase emulators:exec --project demo-pushthat --only firestore,storage \"node --test --test-concurrency=1 tests/*.test.mjs\"",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "spellcheck": "cspell -c .vscode/cspell.json --gitignore  \"**/*.{js,json,jsx,md,ts,tsx}\""
+    "spellcheck": "cspell -c ../../cspell.json --gitignore \"**/*.{js,json,jsx,md,ts,tsx}\""
   },
   "dependencies": {
     "@axiomhq/js": "^1.3.1",

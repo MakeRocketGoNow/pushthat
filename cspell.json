@@ -1,0 +1,32 @@
+{
+  "version": "0.2",
+  "language": "en",
+  "ignorePaths": [
+    "**/node_modules/**",
+    "**/dist/**",
+    "**/build/**",
+    "**/lib/**",
+    "apps/web/chrome-extension/**",
+    "**/.firebase/**",
+    ".gitignore"
+  ],
+  "words": [
+    "Avenir",
+    "axiomhq",
+    "CDEUTSCH",
+    "crxjs",
+    "Deutsch",
+    "firebaseapp",
+    "firebasestorage",
+    "Firestore",
+    "grayscale",
+    "MakeRocketGoNow",
+    "nodenext",
+    "nowrap",
+    "pushthat",
+    "rgba",
+    "trivago",
+    "Vite"
+  ],
+  "flagWords": ["hte"]
+}

@@ -1,0 +1,25 @@
+name: Feature request
+description: Something PushThat could do, or do better.
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Issues here are public.** Please don't paste what you pushed: describe the kind of link or file instead, like "a video from the camera roll" or "a page behind a sign-in".
+  - type: textarea
+    id: goal
+    attributes:
+      label: What are you trying to do?
+      description: The thing you want to get done, rather than the feature you imagine for it. That is often what decides how it gets built.
+    validations:
+      required: true
+  - type: textarea
+    id: today
+    attributes:
+      label: How do you do it today?
+      description: In PushThat, in another app, or not at all.
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would help?
+      description: If you have a picture of it, describe it here.
