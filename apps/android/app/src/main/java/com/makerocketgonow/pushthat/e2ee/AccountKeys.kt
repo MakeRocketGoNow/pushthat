@@ -41,8 +41,12 @@ class AccountKeys(
         /** The key is stored and the user can go in, once they have saved [recoveryKey] if one was made. */
         class Ready(val recoveryKey: String?) : Outcome
 
-        /** The password opens no wrap but a recovery key could: ask for it. */
-        class NeedsRecovery(val pending: Pending) : Outcome
+        /**
+         * The password opens no wrap but a recovery key could: ask for it. [keysChanged] when
+         * the recovery prompt was already showing and the keys changed under it, so the
+         * screen says why it is asking again.
+         */
+        class NeedsRecovery(val pending: Pending, val keysChanged: Boolean = false) : Outcome
     }
 
     /**
@@ -190,8 +194,11 @@ class AccountKeys(
                 stored.with(mapOf(E2ee.newWrapId() to passwordWrap) + kept)
             }
         } catch (_: KeysChangedException) {
-            // Another device changed the keys meanwhile; the password may open them now.
-            return resolve(pending.uid, pending.email, pending.masterKey, pending.firebasePassword, pending.legacy)
+            // Another device changed the keys meanwhile; the password may open them now. If
+            // it does not, the prompt asks again, for keys that may need a different recovery
+            // key, and says so rather than looking as though nothing happened.
+            val outcome = resolve(pending.uid, pending.email, pending.masterKey, pending.firebasePassword, pending.legacy)
+            return if (outcome is Outcome.NeedsRecovery) Outcome.NeedsRecovery(outcome.pending, keysChanged = true) else outcome
         }
         if (pending.legacy) updatePassword(pending.firebasePassword)
         keep(pending.uid, accountKey, pending.stored.keyVersion)
@@ -201,12 +208,15 @@ class AccountKeys(
     /**
      * "I don't have it", once the user has confirmed that the pushes encrypted before now
      * will not be readable: a new account key under the next `keyVersion`.
+     *
+     * If the keys changed since the prompt read them, [KeysChangedException] comes out
+     * rather than a fresh resolve: the user agreed to replace the keys they were shown, not
+     * whatever another device has written since, and a resolve that found no wraps the
+     * password opens would start over again unasked. The screen goes back to the password
+     * prompt with the keys-changed message.
      */
-    suspend fun startOver(pending: Pending): Outcome = try {
+    suspend fun startOver(pending: Pending): Outcome =
         startNewKeys(pending.uid, pending.email, pending.masterKey, pending.firebasePassword, pending.legacy, pending.stored)
-    } catch (_: KeysChangedException) {
-        resolve(pending.uid, pending.email, pending.masterKey, pending.firebasePassword, pending.legacy)
-    }
 
     // -------------------------------------------------------------------------------------
     // Settings, on a signed-in install that holds the key

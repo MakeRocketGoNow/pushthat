@@ -110,10 +110,13 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun run(@StringRes working: Int, step: suspend () -> AccountKeys.Outcome) {
         if (_state.value.working != null) return
+        val app = getApplication<Application>()
         _state.value = _state.value.copy(working = working, error = null)
         viewModelScope.launch {
             _state.value = try {
-                State(screenFor(step()))
+                val outcome = step()
+                val keysChanged = outcome is AccountKeys.Outcome.NeedsRecovery && outcome.keysChanged
+                State(screenFor(outcome), error = if (keysChanged) app.getString(R.string.keys_changed) else null)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: FirebaseAuthRecentLoginRequiredException) {
@@ -124,7 +127,13 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
                 // goes and the unlock prompt asks for the password, which signs in afresh;
                 // the keys written before the failure open with it, so it finishes from there.
                 Log.w(TAG, "A sign-in step needs a fresh sign-in", e)
-                State(Screen.Form, error = getApplication<Application>().getString(R.string.password_again_to_finish))
+                State(Screen.Form, error = app.getString(R.string.password_again_to_finish))
+            } catch (e: KeysChangedException) {
+                // Even after reading them again: back to the password prompt, which starts
+                // from the keys as they are now. From the recovery prompt this drops the
+                // pending state, which was read from the keys that changed.
+                Log.w(TAG, "The keys changed during a sign-in step", e)
+                State(Screen.Form, error = app.getString(R.string.keys_changed))
             } catch (e: Exception) {
                 Log.w(TAG, "A sign-in step failed", e)
                 _state.value.copy(working = null, error = messageFor(e))
@@ -138,14 +147,13 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     // Firebase's own message for its errors (a wrong password, no network, too many tries),
-    // as the screen showed before; ours for the two this flow adds. Anything else is a
+    // as the screen showed before; ours for a wrong recovery key. Anything else is a
     // generic failure: its message is written for the log ("not signed in", a `require`),
     // not for the person holding the phone.
     private fun messageFor(e: Exception): String {
         val app = getApplication<Application>()
         return when (e) {
             is AccountKeys.WrongRecoveryKeyException -> app.getString(R.string.wrong_recovery_key)
-            is KeysChangedException -> app.getString(R.string.keys_changed)
             is FirebaseException -> e.message ?: app.getString(R.string.authentication_failed)
             else -> app.getString(R.string.authentication_failed)
         }
