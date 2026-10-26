@@ -1,6 +1,7 @@
 import Foundation
 import BackgroundTasks
 import FirebaseFirestore
+import FirebaseStorage
 import SwiftData
 
 /// Manages background retry of failed push uploads
@@ -62,11 +63,15 @@ class RetryManager {
 
     // MARK: - Retry Logic
 
-    /// Retry all pending pushes stored in local database
+    /// Retry all pending pushes stored in the local database.
+    ///
+    /// A prepared push is written as it was sealed: the same id and ciphertext on every
+    /// attempt. One queued before the encryption update is sealed now under a new id, and
+    /// waits while this device holds no key. A refusal by the rules is final (a key a
+    /// reset replaced, a push over a limit): the push is dropped and a file's upload with
+    /// it, unless the push turns out to exist already, which is an earlier attempt that
+    /// landed after all and whose object must stay.
     func retryPendingPushes() {
-        // This would use SwiftData to fetch pending pushes
-        // For now, we'll implement a simple version
-
         Task {
             do {
                 let container = try ModelContainer(for: PendingPush.self)
@@ -75,10 +80,15 @@ class RetryManager {
                 let descriptor = FetchDescriptor<PendingPush>()
                 let pendingPushes = try context.fetch(descriptor)
 
-                for push in pendingPushes {
+                for pending in pendingPushes {
                     do {
-                        try await uploadPendingPush(push)
-                        context.delete(push)
+                        guard let push = try preparedPush(for: pending, in: context) else { continue }
+                        do {
+                            try await PushDocuments.create(push, firestore: db)
+                        } catch where PushDocuments.isPermissionDenied(error) {
+                            await dropRefused(push)
+                        }
+                        context.delete(pending)
                         try context.save()
                     } catch {
                         print("Failed to retry push: \(error)")
@@ -90,8 +100,26 @@ class RetryManager {
         }
     }
 
-    private func uploadPendingPush(_ push: PendingPush) async throws {
-        let data = push.toFirestoreData()
-        _ = try await db.collection("pushes").addDocument(data: data)
+    /// The push to write for a queued one, sealing a pre-update one in place so that its
+    /// next attempt reuses the id; nil while there is no key to seal it with.
+    private func preparedPush(for pending: PendingPush, in context: ModelContext) throws -> PreparedPush? {
+        if let push = pending.preparedPush { return push }
+        guard let userId = pending.userId, !userId.isEmpty, let keys = PushKeys.load(uid: userId) else { return nil }
+        let push = try pending.prepareLegacy(keys: keys, pushId: db.collection("pushes").document().documentID)
+        pending.pushId = push.pushId
+        pending.prepared = try JSONEncoder().encode(push)
+        pending.url = ""
+        pending.title = ""
+        try context.save()
+        return push
+    }
+
+    /// After a refusal, read from the server: an earlier attempt whose reply was lost may
+    /// have landed, and then this set was an update the rules refuse. That push exists and
+    /// keeps its object; only one that never landed loses its upload.
+    private func dropRefused(_ push: PreparedPush) async {
+        let exists = (try? await db.collection("pushes").document(push.pushId).getDocument(source: .server).exists) ?? false
+        guard !exists, push.type == "file", let objectPath = push.objectPath else { return }
+        try? await Storage.storage().reference(withPath: objectPath).delete()
     }
 }

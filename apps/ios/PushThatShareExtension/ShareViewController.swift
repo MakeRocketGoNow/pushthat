@@ -98,6 +98,15 @@ class ShareViewController: UIViewController {
             return
         }
 
+        // Every push is sealed with the account key, which the app keeps in the shared
+        // Keychain once the password has been entered on this device. A session without
+        // it (an install that updated while signed in) pushes nothing until the app has
+        // asked for the password.
+        guard PushKeys.load(uid: userId) != nil else {
+            completeWithError(PushDocuments.PushError.noKey.localizedDescription)
+            return
+        }
+
         // The tier is read only when something will be sized: a web link or a piece of
         // text, the common share, never waits on a server round trip from an extension
         // whose Firestore keeps no cache. A file URL (the Files app) is sized like a file.
