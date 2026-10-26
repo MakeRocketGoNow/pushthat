@@ -328,6 +328,7 @@ function PasswordForm({
           autoComplete="new-password"
           required
           className={styles.input}
+          aria-label="New password"
           placeholder="New password"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
@@ -337,6 +338,7 @@ function PasswordForm({
           autoComplete="new-password"
           required
           className={styles.input}
+          aria-label="Confirm new password"
           placeholder="New password again"
           value={confirmation}
           onChange={(e) => setConfirmation(e.target.value)}
@@ -387,6 +389,7 @@ function RecoveryForm({
           autoComplete="off"
           spellCheck={false}
           className={styles.input}
+          aria-label="Recovery key"
           placeholder="XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX"
           value={recoveryKey}
           onChange={(e) => setRecoveryKey(e.target.value)}
