@@ -32,7 +32,8 @@ type Step =
   | { name: 'recovery'; session: ResetSession }
   | { name: 'withoutRecovery'; session: ResetSession }
   | { name: 'newRecoveryKey'; recoveryKey: string; deletion: Deletion }
-  | { name: 'done' };
+  | { name: 'done' }
+  | { name: 'keysNotUpdated' };
 
 /**
  * `/reset`, where the password reset email's action URL points (Authentication,
@@ -137,25 +138,30 @@ export function ResetPassword() {
             onSubmit={(password) =>
               run(
                 async () => {
-                  const session = await setNewPassword(oobCode, step.email, password);
-                  if (!session.e2ee) {
-                    // Nothing is encrypted yet, so there is nothing to recover: the
-                    // account gets its first keys, and its recovery key to save.
-                    const recoveryKey = await afterPasswordChanged(() => startNewKeys(session));
-                    setStep({ name: 'newRecoveryKey', recoveryKey, deletion: { state: 'none' } });
-                  } else {
-                    setStep(
-                      hasRecoveryWrap(session) ? { name: 'recovery', session } : { name: 'withoutRecovery', session }
-                    );
+                  try {
+                    const session = await setNewPassword(oobCode, step.email, password);
+                    if (!session.e2ee) {
+                      // Nothing is encrypted yet, so there is nothing to recover: the
+                      // account gets its first keys, and its recovery key to save.
+                      const recoveryKey = await afterPasswordChanged(() => startNewKeys(session));
+                      setStep({ name: 'newRecoveryKey', recoveryKey, deletion: { state: 'none' } });
+                    } else {
+                      setStep(
+                        hasRecoveryWrap(session) ? { name: 'recovery', session } : { name: 'withoutRecovery', session }
+                      );
+                    }
+                  } catch (error) {
+                    // The link is used up once Firebase has the new password, so this
+                    // ends here rather than leaving a form whose retry can only fail.
+                    if (error instanceof PasswordChangedError) setStep({ name: 'keysNotUpdated' });
+                    else throw error;
                   }
                 },
                 (error) =>
-                  error instanceof PasswordChangedError
-                    ? 'Your password is changed, but your keys could not be updated. Sign in with your new password to finish.'
-                    : error instanceof FirebaseError &&
-                        (error.code === 'auth/expired-action-code' || error.code === 'auth/invalid-action-code')
-                      ? 'This link has expired. Ask for a new one from the sign-in page.'
-                      : 'Your password could not be changed. Try again.'
+                  error instanceof FirebaseError &&
+                  (error.code === 'auth/expired-action-code' || error.code === 'auth/invalid-action-code')
+                    ? 'This link has expired. Ask for a new one from the sign-in page.'
+                    : 'Your password could not be changed. Try again.'
               )
             }
           />
@@ -238,6 +244,23 @@ export function ResetPassword() {
             deletion={step.deletion}
             onDone={() => setStep({ name: 'done' })}
           />
+        )}
+
+        {step.name === 'keysNotUpdated' && (
+          <>
+            <h2 className={styles.title}>Your password is changed</h2>
+            {/* True once phase 3's sign-in (docs/e2ee.md) treats a working password with no
+                key it can open as this page does; the reset email reaches this page only
+                after those clients are out (docs/deploying.md). */}
+            <p className={styles.message}>
+              The keys to your pushes could not be updated. Sign in with your new password and the app will finish.
+            </p>
+            <div className={styles.footer}>
+              <Link className={styles.footerLink} to="/login">
+                Sign in
+              </Link>
+            </div>
+          </>
         )}
 
         {step.name === 'done' && (
