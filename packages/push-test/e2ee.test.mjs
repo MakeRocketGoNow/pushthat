@@ -311,8 +311,10 @@ test("a truncated, extended or shortened-by-a-chunk file fails to decrypt", asyn
   const file = await encryptFile(inputs.fk, inputs.np, filePattern(inputs.fileLength));
   // Cut at a chunk boundary: the last chunk left was sealed as non-final.
   await assert.rejects(decryptFile(inputs.fk, file.subarray(0, HEADER + 2 * sealedSize), inputs.np), /decryption failed/);
-  // Cut inside a chunk.
-  await assert.rejects(decryptFile(inputs.fk, file.subarray(0, file.length - 1), inputs.np), /decryption failed/);
+  // Cut inside a chunk: the layout refuses it when the last chunk left cannot hold a tag,
+  // and the tag refuses it otherwise.
+  await assert.rejects(decryptFile(inputs.fk, file.subarray(0, file.length - 1), inputs.np), /bad last chunk/);
+  await assert.rejects(decryptFile(inputs.fk, file.subarray(0, HEADER + 2 * sealedSize + 100), inputs.np), /decryption failed/);
   // A whole sealed chunk appended: the old final chunk is now read as non-final.
   const extended = new Uint8Array(file.length + sealedSize);
   extended.set(file);
@@ -369,22 +371,34 @@ test("files of 1 byte, exactly 1 MiB, 1 MiB + 1 and exactly 2 MiB round-trip wit
 });
 
 test("the chunk layout follows from the length alone", () => {
-  const sealed = CHUNK_SIZE + 16;
-  assert.deepEqual(chunkLayout(28), [{ index: 0, start: 12, end: 28, final: true }]);
-  assert.deepEqual(chunkLayout(12 + sealed), [{ index: 0, start: 12, end: 12 + sealed, final: true }]);
-  assert.deepEqual(chunkLayout(12 + sealed + 16), [
-    { index: 0, start: 12, end: 12 + sealed, final: false },
-    { index: 1, start: 12 + sealed, end: 12 + sealed + 16, final: true },
+  assert.deepEqual(chunkLayout(HEADER + TAG_LENGTH), [{ index: 0, start: HEADER, end: HEADER + TAG_LENGTH, final: true }]);
+  assert.deepEqual(chunkLayout(HEADER + sealedSize), [{ index: 0, start: HEADER, end: HEADER + sealedSize, final: true }]);
+  assert.deepEqual(chunkLayout(HEADER + sealedSize + TAG_LENGTH + 1), [
+    { index: 0, start: HEADER, end: HEADER + sealedSize, final: false },
+    { index: 1, start: HEADER + sealedSize, end: HEADER + sealedSize + TAG_LENGTH + 1, final: true },
   ]);
-  assert.deepEqual(chunkLayout(12 + 2 * sealed), [
-    { index: 0, start: 12, end: 12 + sealed, final: false },
-    { index: 1, start: 12 + sealed, end: 12 + 2 * sealed, final: true },
+  assert.deepEqual(chunkLayout(HEADER + 2 * sealedSize), [
+    { index: 0, start: HEADER, end: HEADER + sealedSize, final: false },
+    { index: 1, start: HEADER + sealedSize, end: HEADER + 2 * sealedSize, final: true },
   ]);
   const layout = chunkLayout(vectors.file.encryptedLength);
   assert.equal(layout.length, 4);
-  assert.deepEqual(layout[3], { index: 3, start: 12 + 3 * sealed, end: vectors.file.encryptedLength, final: true });
-  assert.throws(() => chunkLayout(27), /too short/);
+  assert.deepEqual(layout[3], { index: 3, start: HEADER + 3 * sealedSize, end: vectors.file.encryptedLength, final: true });
+  assert.throws(() => chunkLayout(HEADER + TAG_LENGTH - 1), /too short/);
   assert.throws(() => chunkLayout(0), /too short/);
+  // A last chunk shorter than its tag, and a full chunk followed by an empty final chunk,
+  // which only the empty file may have.
+  assert.throws(() => chunkLayout(HEADER + sealedSize + 5), /bad last chunk/);
+  assert.throws(() => chunkLayout(HEADER + sealedSize + TAG_LENGTH), /bad last chunk/);
+  assert.throws(() => chunkLayout(HEADER + 2 * sealedSize + TAG_LENGTH), /bad last chunk/);
+});
+
+test("a full chunk followed by an empty final chunk is refused on both sides", async () => {
+  await assert.rejects(sealChunk(inputs.fk, inputs.np, 1, new Uint8Array(0), true), /only the empty file/);
+  const file = await encryptFile(inputs.fk, inputs.np, filePattern(CHUNK_SIZE));
+  const withEmptyTail = new Uint8Array(file.length + TAG_LENGTH);
+  withEmptyTail.set(file);
+  await assert.rejects(decryptFile(inputs.fk, withEmptyTail, inputs.np), /bad last chunk/);
 });
 
 test("every chunk but the last must be exactly 1 MiB", async () => {

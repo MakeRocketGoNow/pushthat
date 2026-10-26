@@ -331,6 +331,9 @@ export const sealChunk = async (fk, prefix, index, chunk, final) => {
   if (final ? chunk.length > CHUNK_SIZE : chunk.length !== CHUNK_SIZE) {
     throw new Error(`chunk ${index} is ${chunk.length} bytes`);
   }
+  // A streaming encryptor that learns the end only when the source runs dry must hold
+  // back one chunk, so the last full chunk can be sealed as final; see chunkLayout.
+  if (final && index > 0 && chunk.length === 0) throw new Error("only the empty file has an empty final chunk");
   return aesGcmSeal(fk, chunkNonce(prefix, index), chunk, chunkAad(index, final));
 };
 
@@ -354,6 +357,12 @@ export const chunkLayout = (length) => {
   if (length < FILE_HEADER_LENGTH + TAG_LENGTH) throw new Error("file too short");
   const sealedSize = CHUNK_SIZE + TAG_LENGTH;
   const count = Math.ceil((length - FILE_HEADER_LENGTH) / sealedSize);
+  const last = length - FILE_HEADER_LENGTH - (count - 1) * sealedSize;
+  // The last chunk holds at least its tag, and only the empty file has an empty one: a
+  // full chunk followed by an empty final chunk is what an encryptor that does not know
+  // its length writes, and it is refused here so that no client accepts a second
+  // encoding of the same bytes that another refuses.
+  if (last < TAG_LENGTH || (count > 1 && last === TAG_LENGTH)) throw new Error("not a file: bad last chunk");
   return Array.from({ length: count }, (_, index) => {
     const start = FILE_HEADER_LENGTH + index * sealedSize;
     const final = index === count - 1;
