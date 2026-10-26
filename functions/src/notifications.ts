@@ -55,9 +55,9 @@ export function pushMessageOf(pushId: string, push: Record<string, unknown>): Ba
     return {
       data: {
         pushId,
-        type: String(push.type),
+        type: typeof push.type === 'string' ? push.type : 'unknown',
         deviceId: typeof push.deviceId === 'string' ? push.deviceId : '',
-        keyVersion: String(push.keyVersion),
+        keyVersion: typeof push.keyVersion === 'number' ? String(push.keyVersion) : '',
       },
       android: { priority: 'high' },
       apns: { payload: { aps: { alert: { title: 'New push' }, mutableContent: true, sound: 'default' } } },

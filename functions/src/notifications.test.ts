@@ -61,6 +61,13 @@ describe('the message for a new push', () => {
       sound: 'default',
     });
   });
+  test('a field written past the rules goes out empty, not as the word undefined', () =>
+    expect(pushMessageOf('p1', { enc: { v: 1 } }).data).toEqual({
+      pushId: 'p1',
+      type: 'unknown',
+      deviceId: '',
+      keyVersion: '',
+    }));
   test('an encrypted file push says so', () =>
     expect(pushMessageOf('p1', { ...encrypted, type: 'file', objectPath: 'uploads/u1/x' }).data?.type).toBe('file'));
 
