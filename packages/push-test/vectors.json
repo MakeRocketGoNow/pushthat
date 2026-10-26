@@ -1,0 +1,113 @@
+{
+  "spec": "docs/e2ee.md",
+  "kdf": "pbkdf2-sha256-600000",
+  "keys": {
+    "email": " Example.User@Example.com ",
+    "normalizedEmail": "example.user@example.com",
+    "password": "Cafe\u0301 latte, 2026!",
+    "passwordNfcUtf8": "436166c3a9206c617474652c203230323621",
+    "iterations": 600000,
+    "salt": "4067f2c4f47b303be5d726a5438ace1f01ea317b1c6bcb3652d97d70b911e105",
+    "stretched": "cc285865ce969d4d4f0443c5a2dc9c5077055b3a39212a5bcbff7e05a72f5fb9",
+    "authKey": "e1dc71392c199ea9782a7b093485b6ddfbb5a928ae257c85aeb06e14f16ee1ef",
+    "masterKey": "d605e874e408530716b1894e4752e5624c9fbed5f879f9243b575600991089a1",
+    "firebasePassword": "4dxxOSwZnql4KnsJNIW23fu1qSiuJXyFrrBuFPFu4e8"
+  },
+  "account": {
+    "uid": "vector-uid-0001",
+    "accountKey": "101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f",
+    "metaKey": "7bd1d17c9193a5269f6fafbb12020de497294e8077e4881e940c7d66a15e742a",
+    "searchKey": "d930b99fe327b6506962b48ffd90d46982af222f0a76786b9253f4fb4fcdafb5",
+    "wrapAad": "70757368746861742f777261702f76313a766563746f722d7569642d30303031",
+    "passwordWrap": {
+      "nonce": "a0a1a2a3a4a5a6a7a8a9aaab",
+      "by": "password",
+      "n": "oKGio6Slpqeoqaqr",
+      "ct": "i0ksA5Abj9v4INTkxizGt63obFUsKqkmvypIcqjKtoYofP7pGzfzC71rG2B4T8dr"
+    },
+    "recovery": {
+      "bytes": "404142434445464748494a4b4c4d4e4f50515253",
+      "display": "810M-4GT4-8N34-EJ29-995M-RKAE-9X85-2MJK",
+      "wrappingKey": "901e771142d05ab265e1b28af1b161482b94d3a24854dc705b2c1f7fa277e515",
+      "wrap": {
+        "nonce": "b0b1b2b3b4b5b6b7b8b9babb",
+        "by": "recovery",
+        "n": "sLGys7S1tre4ubq7",
+        "ct": "kK2AsmocaZrXPLv/4iJzpXh/p8NADRp+p2eQqQzEJ25pQwGy1Iz/YzvIT94RUUP3"
+      }
+    }
+  },
+  "push": {
+    "userId": "vector-uid-0001",
+    "pushId": "vector-push-0001",
+    "aad": "70757368746861742f707573682f76313a766563746f722d7569642d303030313a766563746f722d707573682d30303031",
+    "plaintext": "{\"url\":\"https://example.com/docs/report?v=2#summary\",\"title\":\"Example report\",\"ext\":\"html\"}",
+    "plaintextUtf8": "7b2275726c223a2268747470733a2f2f6578616d706c652e636f6d2f646f63732f7265706f72743f763d322373756d6d617279222c227469746c65223a224578616d706c65207265706f7274222c22657874223a2268746d6c227d",
+    "nonce": "c0c1c2c3c4c5c6c7c8c9cacb",
+    "enc": {
+      "v": 1,
+      "n": "wMHCw8TFxsfIycrL",
+      "ct": "iIUip/Dci/qcfQ0XWuOV4jwhuk2qdvC8gjCizYTe2hUdGpWlLSLFvGNDyNMFwvn7DJfY/sPvUVRULa69uAee/JEjVOGsL8f7t0lUgIVjEKBqIjt0OGuD33jYr3PnJRwYCyHJc+7WVwIb/iA="
+    }
+  },
+  "search": {
+    "text": "GitHub Repository",
+    "tokens": [
+      "g",
+      "gi",
+      "git",
+      "gith",
+      "githu",
+      "github",
+      "r",
+      "re",
+      "rep",
+      "repo",
+      "repos",
+      "reposi",
+      "reposit",
+      "reposito",
+      "repositor",
+      "repository"
+    ],
+    "blind": [
+      "kdJm8JFj7GpCWJpj",
+      "DKqHER5MAf9mIDXq",
+      "xSpnTI7QrxivmagI",
+      "Mp60ZsvpIOVXSqBo",
+      "u6Gm6voFNeHovHSd",
+      "eN5uCFgNaj5kdDsh",
+      "zKc29u2qFV3c_Rap",
+      "Uuk17S7SlvjpHlXH",
+      "aK0vHgPIs6H_OWh1",
+      "rCQuZ-VhvvHArx0e",
+      "OsuGzKEtTYZRERSb",
+      "76VX1HzIVUQF2R3p",
+      "h3BOivQqZnC_Ossr",
+      "4pJEP769lHyD6M5a",
+      "MoYSijTLFRXJZIqo",
+      "jRAqZuvU-oecAF06"
+    ]
+  },
+  "file": {
+    "fk": "606162636465666768696a6b6c6d6e6f707172737475767778797a7b7c7d7e7f",
+    "np": "d0d1d2d3d4d5d6d7",
+    "fkBase64": "YGFiY2RlZmdoaWprbG1ub3BxcnN0dXZ3eHl6e3x9fn8=",
+    "npBase64": "0NHS09TV1tc=",
+    "header": "50544531d0d1d2d3d4d5d6d7",
+    "length": 3145729,
+    "pattern": "byte i is i mod 251",
+    "plaintextSha256": "fc66cb381d8de4396b685896bfef3b1811ca920b052873bea5227a354fd64f37",
+    "encryptedLength": 3145805,
+    "encryptedSha256": "f25e2105f2863158a6f1033bf9232916766bd8963f8fa890e880feb9f6d6f92f",
+    "tamperOffset": 2000000,
+    "tamperedSha256": "90196ae6a4865fd9c65d188c7b8a64984f170f7385483455c1438857a85f40e2",
+    "reorderedSha256": "9c4a0c625cc4c2ac534ef8e14db725861e1aa5cd0505d01f9c3797e4ba167644"
+  },
+  "emptyFile": {
+    "fk": "606162636465666768696a6b6c6d6e6f707172737475767778797a7b7c7d7e7f",
+    "np": "d0d1d2d3d4d5d6d7",
+    "encrypted": "50544531d0d1d2d3d4d5d6d7e7f8df8248b15367270cc97a7c4f4670",
+    "encryptedSha256": "465587cb525ff6ac531d71d6e4582e92a791a57ea92a79963577b46e848a14f8"
+  }
+}
