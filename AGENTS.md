@@ -118,3 +118,16 @@ yet, so run them yourself when a change reaches the rules, the functions or the 
 A change to a rule is not done until `npm run test:rules` covers it. A change to the plan's
 limits touches `functions/src/plan.ts`, both rules files and `apps/web/src/config/plan.ts`
 together, and [docs/billing.md](docs/billing.md) with them.
+
+## Workflows
+
+Every `uses:` in `.github/workflows/` names a commit SHA, with the exact version beside it
+as a comment (`# v7.0.1`). A tag is a pointer its publisher can move; a SHA cannot be. The
+repository refuses a workflow that names a tag (`sha_pinning_required`), and Dependabot
+moves the pins once a month (`.github/dependabot.yml`). Pin a new action by resolving its
+tag through the API (`gh api repos/<owner>/<action>/git/ref/tags/<tag>`, then the tag
+object's commit if the type is `tag`), not by copying a SHA from a release page.
+
+Actions outside `actions/*` and verified publishers must also be on the allow-list in the
+repository's Actions settings, which today names `gradle/actions/*` and
+`google-github-actions/auth`. A run that uses anything else is refused before it starts.
