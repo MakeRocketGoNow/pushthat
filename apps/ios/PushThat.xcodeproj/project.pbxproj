@@ -66,6 +66,14 @@
 		A1000022226B52E900000030 /* SearchTokenGenerator.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000005226B52E900000002 /* SearchTokenGenerator.swift */; };
 		A1000022226B52E900000031 /* PushContent.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000022226B52E900000001 /* PushContent.swift */; };
 		A1000022226B52E900000032 /* AccountKeyStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000020226B52E900000005 /* AccountKeyStore.swift */; };
+		A1000023226B52E900000010 /* FirebaseAuth in Frameworks */ = {isa = PBXBuildFile; productRef = A1000023226B52E90000000F /* FirebaseAuth */; };
+		A1000023226B52E900000011 /* NotificationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000023226B52E900000002 /* NotificationService.swift */; };
+		A1000023226B52E900000012 /* E2eeCrypto.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000020226B52E900000002 /* E2eeCrypto.swift */; };
+		A1000023226B52E900000013 /* AccountKeyStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000020226B52E900000005 /* AccountKeyStore.swift */; };
+		A1000023226B52E900000014 /* PushContent.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000022226B52E900000001 /* PushContent.swift */; };
+		A1000023226B52E900000015 /* SearchTokenGenerator.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000005226B52E900000002 /* SearchTokenGenerator.swift */; };
+		A1000023226B52E900000016 /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = A1000008226B52E900000003 /* GoogleService-Info.plist */; };
+		A1000023226B52E900000017 /* PushThatNotificationService.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = A1000023226B52E900000001 /* PushThatNotificationService.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -75,6 +83,13 @@
 			proxyType = 1;
 			remoteGlobalIDString = A100000D226B52E900000002;
 			remoteInfo = PushThatShareExtension;
+		};
+		A1000023226B52E90000000D /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = A100000C226B52E900000001 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = A1000023226B52E900000006;
+			remoteInfo = PushThatNotificationService;
 		};
 /* End PBXContainerItemProxy section */
 
@@ -86,6 +101,7 @@
 			dstSubfolderSpec = 13;
 			files = (
 				A1000009226B52E900000003 /* PushThatShareExtension.appex in Embed App Extensions */,
+				A1000023226B52E900000017 /* PushThatNotificationService.appex in Embed App Extensions */,
 			);
 			name = "Embed App Extensions";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -136,6 +152,10 @@
 		A1000022226B52E900000002 /* PushDocuments.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PushDocuments.swift; sourceTree = "<group>"; };
 		A1000022226B52E900000003 /* PushMigration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PushMigration.swift; sourceTree = "<group>"; };
 		A1000022226B52E900000004 /* PushFileOpener.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PushFileOpener.swift; sourceTree = "<group>"; };
+		A1000023226B52E900000001 /* PushThatNotificationService.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = PushThatNotificationService.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		A1000023226B52E900000002 /* NotificationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationService.swift; sourceTree = "<group>"; };
+		A1000023226B52E900000003 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		A1000023226B52E900000004 /* PushThatNotificationService.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = PushThatNotificationService.entitlements; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -168,6 +188,14 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		A1000023226B52E900000008 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A1000023226B52E900000010 /* FirebaseAuth in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -176,6 +204,7 @@
 			children = (
 				A1000011226B52E900000002 /* PushThat */,
 				A1000011226B52E900000003 /* PushThatShareExtension */,
+				A1000023226B52E900000005 /* PushThatNotificationService */,
 				A1000021226B52E900000006 /* PushThatTests */,
 				A1000011226B52E900000004 /* Products */,
 			);
@@ -211,6 +240,7 @@
 			children = (
 				A100000F226B52E900000001 /* PushThat.app */,
 				A1000009226B52E900000004 /* PushThatShareExtension.appex */,
+				A1000023226B52E900000001 /* PushThatNotificationService.appex */,
 				A1000021226B52E900000001 /* PushThatTests.xctest */,
 			);
 			name = Products;
@@ -316,6 +346,16 @@
 			path = PushThatTests;
 			sourceTree = "<group>";
 		};
+		A1000023226B52E900000005 /* PushThatNotificationService */ = {
+			isa = PBXGroup;
+			children = (
+				A1000023226B52E900000002 /* NotificationService.swift */,
+				A1000023226B52E900000003 /* Info.plist */,
+				A1000023226B52E900000004 /* PushThatNotificationService.entitlements */,
+			);
+			path = PushThatNotificationService;
+			sourceTree = "<group>";
+		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
@@ -332,6 +372,7 @@
 			);
 			dependencies = (
 				A1000015226B52E900000001 /* PBXTargetDependency */,
+				A1000023226B52E90000000E /* PBXTargetDependency */,
 			);
 			name = PushThat;
 			packageProductDependencies = (
@@ -384,6 +425,26 @@
 			productReference = A1000021226B52E900000001 /* PushThatTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
 		};
+		A1000023226B52E900000006 /* PushThatNotificationService */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A1000023226B52E90000000A /* Build configuration list for PBXNativeTarget "PushThatNotificationService" */;
+			buildPhases = (
+				A1000023226B52E900000007 /* Sources */,
+				A1000023226B52E900000008 /* Frameworks */,
+				A1000023226B52E900000009 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = PushThatNotificationService;
+			packageProductDependencies = (
+				A1000023226B52E90000000F /* FirebaseAuth */,
+			);
+			productName = PushThatNotificationService;
+			productReference = A1000023226B52E900000001 /* PushThatNotificationService.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -401,6 +462,9 @@
 						CreatedOnToolsVersion = 15.0;
 					};
 					A1000021226B52E90000000A = {
+						CreatedOnToolsVersion = 15.0;
+					};
+					A1000023226B52E900000006 = {
 						CreatedOnToolsVersion = 15.0;
 					};
 				};
@@ -424,6 +488,7 @@
 				A100000D226B52E900000001 /* PushThat */,
 				A100000D226B52E900000002 /* PushThatShareExtension */,
 				A1000021226B52E90000000A /* PushThatTests */,
+				A1000023226B52E900000006 /* PushThatNotificationService */,
 			);
 		};
 /* End PBXProject section */
@@ -452,6 +517,14 @@
 			buildActionMask = 2147483647;
 			files = (
 				A1000021226B52E900000005 /* vectors.json in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A1000023226B52E900000009 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A1000023226B52E900000016 /* GoogleService-Info.plist in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -524,6 +597,18 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		A1000023226B52E900000007 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A1000023226B52E900000011 /* NotificationService.swift in Sources */,
+				A1000023226B52E900000012 /* E2eeCrypto.swift in Sources */,
+				A1000023226B52E900000013 /* AccountKeyStore.swift in Sources */,
+				A1000023226B52E900000014 /* PushContent.swift in Sources */,
+				A1000023226B52E900000015 /* SearchTokenGenerator.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -531,6 +616,11 @@
 			isa = PBXTargetDependency;
 			target = A100000D226B52E900000002 /* PushThatShareExtension */;
 			targetProxy = A100000B226B52E900000001 /* PBXContainerItemProxy */;
+		};
+		A1000023226B52E90000000E /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = A1000023226B52E900000006 /* PushThatNotificationService */;
+			targetProxy = A1000023226B52E90000000D /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -800,6 +890,58 @@
 			};
 			name = Release;
 		};
+		A1000023226B52E90000000B /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = PushThatNotificationService/PushThatNotificationService.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = PushThatNotificationService/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = PushThat;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.makerocketgonow.pushthat.PushThatNotificationService;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		A1000023226B52E90000000C /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = PushThatNotificationService/PushThatNotificationService.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = PushThatNotificationService/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = PushThat;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.makerocketgonow.pushthat.PushThatNotificationService;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -835,6 +977,15 @@
 			buildConfigurations = (
 				A1000021226B52E90000000C /* Debug */,
 				A1000021226B52E90000000D /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		A1000023226B52E90000000A /* Build configuration list for PBXNativeTarget "PushThatNotificationService" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A1000023226B52E90000000B /* Debug */,
+				A1000023226B52E90000000C /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
@@ -892,6 +1043,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = A1000017226B52E900000001 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
 			productName = FirebaseStorage;
+		};
+		A1000023226B52E90000000F /* FirebaseAuth */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A1000017226B52E900000001 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseAuth;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
