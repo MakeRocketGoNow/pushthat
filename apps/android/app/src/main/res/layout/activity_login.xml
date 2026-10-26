@@ -46,6 +46,17 @@
       android:layout_marginTop="16dp"
       android:visibility="gone" />
 
+    <!-- The signed-in account, on the unlock prompt, in place of the email field. -->
+    <TextView
+      android:id="@+id/accountEmailText"
+      android:layout_width="match_parent"
+      android:layout_height="wrap_content"
+      android:layout_marginTop="24dp"
+      android:textColor="@color/color_text"
+      android:textSize="16sp"
+      android:textStyle="bold"
+      android:visibility="gone" />
+
     <EditText
       android:id="@+id/emailInput"
       style="@style/Widget.LinkShare.Input"

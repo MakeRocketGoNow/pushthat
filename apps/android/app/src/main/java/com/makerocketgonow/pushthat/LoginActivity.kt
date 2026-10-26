@@ -22,6 +22,7 @@ import com.google.firebase.Firebase
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.auth
 import com.makerocketgonow.pushthat.LoginViewModel.Screen
+import com.makerocketgonow.pushthat.e2ee.AccountKeyStore
 import kotlinx.coroutines.launch
 
 /**
@@ -35,6 +36,7 @@ class LoginActivity : AppCompatActivity() {
 
     private lateinit var titleText: TextView
     private lateinit var bodyText: TextView
+    private lateinit var accountEmailText: TextView
     private lateinit var emailInput: EditText
     private lateinit var passwordInput: EditText
     private lateinit var forgotPasswordText: TextView
@@ -56,13 +58,18 @@ class LoginActivity : AppCompatActivity() {
         auth = Firebase.auth
         viewModel = ViewModelProvider(this)[LoginViewModel::class.java]
 
-        if (auth.currentUser != null && viewModel.state.value.screen == Screen.Form) {
+        // Signed in with the key here: straight to the list. Signed in without it (an install
+        // that updated while signed in, or a sign-in that stopped partway), the form asks
+        // for the password once instead; see unlockEmail.
+        val user = auth.currentUser
+        if (user != null && viewModel.state.value.screen == Screen.Form && AccountKeyStore.hasKey(this, user.uid)) {
             startMainActivity()
             return
         }
 
         titleText = findViewById(R.id.titleText)
         bodyText = findViewById(R.id.bodyText)
+        accountEmailText = findViewById(R.id.accountEmailText)
         emailInput = findViewById(R.id.emailInput)
         passwordInput = findViewById(R.id.passwordInput)
         forgotPasswordText = findViewById(R.id.forgotPasswordText)
@@ -116,12 +123,17 @@ class LoginActivity : AppCompatActivity() {
         findViewById<View>(R.id.logoImage).isVisible = !showingKey
         titleText.isVisible = !showingKey
         titleText.setText(if (recovery) R.string.recovery_prompt_title else R.string.sign_in_to_pushthat)
-        bodyText.isVisible = recovery
+        val unlockEmail = if (form) unlockEmail() else null
+        val unlocking = unlockEmail != null
+        bodyText.isVisible = recovery || unlocking
         if (recovery) bodyText.setText(R.string.recovery_prompt_body)
+        if (unlocking) bodyText.setText(R.string.unlock_body)
+        accountEmailText.isVisible = unlocking
+        accountEmailText.text = unlockEmail
 
-        emailInput.isVisible = form
+        emailInput.isVisible = form && !unlocking
         passwordInput.isVisible = form
-        forgotPasswordText.isVisible = form
+        forgotPasswordText.isVisible = form && !unlocking
         recoveryInput.isVisible = recovery
 
         recoveryKeyView.isVisible = showingKey
@@ -135,11 +147,17 @@ class LoginActivity : AppCompatActivity() {
         primaryButton.text = getString(
             when {
                 state.working != null -> state.working
-                recovery -> R.string.continue_
+                recovery || unlocking -> R.string.continue_
                 else -> R.string.sign_in
             }
         )
-        secondaryButton.setText(if (recovery) R.string.no_recovery_key else R.string.register)
+        secondaryButton.setText(
+            when {
+                recovery -> R.string.no_recovery_key
+                unlocking -> R.string.sign_out
+                else -> R.string.register
+            }
+        )
 
         val working = state.working != null
         progress.isVisible = working
@@ -151,9 +169,29 @@ class LoginActivity : AppCompatActivity() {
         errorText.text = state.error
     }
 
+    /**
+     * The signed-in account's email when the form is the unlock prompt: a session with no
+     * key here, which the same sign-in flow sets up from the password. Every account signed
+     * in before the encryption arrives this way, so this is how most of them migrate.
+     */
+    private fun unlockEmail(): String? {
+        val user = auth.currentUser ?: return null
+        return user.email?.takeIf { it.isNotEmpty() }
+    }
+
     private fun onPrimary() {
         when (viewModel.state.value.screen) {
             Screen.Form -> {
+                val unlockEmail = unlockEmail()
+                if (unlockEmail != null) {
+                    val password = passwordInput.text.toString()
+                    if (password.isEmpty()) {
+                        passwordInput.error = getString(R.string.password_required)
+                        return
+                    }
+                    viewModel.signIn(unlockEmail, password)
+                    return
+                }
                 val credentials = credentials(registering = false) ?: return
                 viewModel.signIn(credentials.first, credentials.second)
             }
@@ -172,6 +210,14 @@ class LoginActivity : AppCompatActivity() {
     private fun onSecondary() {
         when (viewModel.state.value.screen) {
             Screen.Form -> {
+                if (unlockEmail() != null) {
+                    // Sign out, from the unlock prompt: back to the plain form.
+                    AccountKeyStore.clear(this)
+                    auth.signOut()
+                    passwordInput.text.clear()
+                    render(viewModel.state.value)
+                    return
+                }
                 val credentials = credentials(registering = true) ?: return
                 viewModel.register(credentials.first, credentials.second)
             }

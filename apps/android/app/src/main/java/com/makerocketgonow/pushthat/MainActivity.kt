@@ -130,8 +130,10 @@ class MainActivity : AppCompatActivity() {
             showDeleteConfirmation()
         }
 
-        // Check if user is signed in
-        if (auth.currentUser == null) {
+        // Signed in, and holding the account key. A session without the key (an install that
+        // updated while signed in) goes to LoginActivity's password prompt before the list.
+        val user = auth.currentUser
+        if (user == null || !AccountKeyStore.hasKey(this, user.uid)) {
             startActivity(Intent(this, LoginActivity::class.java))
             finish()
             return

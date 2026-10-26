@@ -74,5 +74,7 @@
     <string name="no_recovery_key">I don\'t have it</string>
     <string name="start_over_warning">Pushes encrypted before now will not be readable on any device.</string>
     <string name="wrong_recovery_key">That recovery key does not open this account\'s keys.</string>
+    <string name="unlock_body">PushThat now encrypts your pushes on your devices. Enter your password once to set it up here.</string>
+    <string name="sign_out">Sign out</string>
     <string name="keys_changed">Your encryption keys were changed on another device while this one was setting up. Try again.</string>
 </resources>
