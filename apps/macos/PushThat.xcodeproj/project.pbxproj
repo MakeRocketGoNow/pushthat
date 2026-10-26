@@ -51,6 +51,10 @@
 		A1000020226B52E90000000A /* UnlockView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000020226B52E90000000B /* UnlockView.swift */; };
 		A1000020226B52E90000000C /* RecoveryPromptView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000020226B52E90000000D /* RecoveryPromptView.swift */; };
 		A1000020226B52E90000000E /* AccountSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000020226B52E90000000F /* AccountSettings.swift */; };
+		A1000022226B52E900000010 /* PushContent.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000022226B52E900000001 /* PushContent.swift */; };
+		A1000022226B52E900000030 /* SearchTokenGenerator.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000005226B52E900000002 /* SearchTokenGenerator.swift */; };
+		A1000022226B52E900000031 /* PushContent.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000022226B52E900000001 /* PushContent.swift */; };
+		A1000022226B52E900000032 /* AccountKeyStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000020226B52E900000005 /* AccountKeyStore.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -117,6 +121,7 @@
 		A1000020226B52E90000000B /* UnlockView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UnlockView.swift; sourceTree = "<group>"; };
 		A1000020226B52E90000000D /* RecoveryPromptView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecoveryPromptView.swift; sourceTree = "<group>"; };
 		A1000020226B52E90000000F /* AccountSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountSettings.swift; sourceTree = "<group>"; };
+		A1000022226B52E900000001 /* PushContent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PushContent.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -251,6 +256,7 @@
 				A1000020226B52E900000002 /* E2eeCrypto.swift */,
 				A1000020226B52E900000005 /* AccountKeyStore.swift */,
 				A1000020226B52E900000007 /* AccountKeyService.swift */,
+				A1000022226B52E900000001 /* PushContent.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -454,6 +460,7 @@
 				A1000020226B52E90000000A /* UnlockView.swift in Sources */,
 				A1000020226B52E90000000C /* RecoveryPromptView.swift in Sources */,
 				A1000020226B52E90000000E /* AccountSettings.swift in Sources */,
+				A1000022226B52E900000010 /* PushContent.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -473,6 +480,9 @@
 			files = (
 				A1000021226B52E900000003 /* E2eeVectorTests.swift in Sources */,
 				A1000020226B52E900000003 /* E2eeCrypto.swift in Sources */,
+				A1000022226B52E900000030 /* SearchTokenGenerator.swift in Sources */,
+				A1000022226B52E900000031 /* PushContent.swift in Sources */,
+				A1000022226B52E900000032 /* AccountKeyStore.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -19,9 +19,11 @@ the same thing from the command line:
 xcodebuild -project PushThat.xcodeproj -scheme PushThat -destination 'generic/platform=iOS Simulator' build
 ```
 
-The `PushThatTests` target checks the encryption keys ([e2ee](e2ee.md)) byte for byte
-against `packages/push-test/vectors.json`, which it copies in from the repository. It runs
-on any simulator you have (`xcrun simctl list devices available`):
+The `PushThatTests` target checks the encryption ([e2ee](e2ee.md)) byte for byte against
+`packages/push-test/vectors.json`, which it copies in from the repository: the keys, the
+push envelope, the search tokens and their blind index, and the file format. It runs on any
+simulator you have (`xcrun simctl list devices available`; add `,OS=` and the version when
+a name has several):
 
 ```bash
 xcodebuild -project PushThat.xcodeproj -scheme PushThat -destination 'platform=iOS Simulator,name=iPhone 16 Pro' test
