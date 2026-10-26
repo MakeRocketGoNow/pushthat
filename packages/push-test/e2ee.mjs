@@ -53,17 +53,21 @@ export const fromHex = (s) => {
 
 // Standard base64 with padding is what `n`, `ct`, `fk` and `np` carry in a document;
 // base64url without padding is what goes into a string the user or a URL might see (the
-// Firebase password, ids, blind tokens). Buffer is used only as the codec; the bytes in
-// and out are plain Uint8Arrays.
-export const base64 = (bytes) => Buffer.from(bytes).toString("base64");
+// Firebase password, ids, blind tokens). `btoa` and `atob` rather than `Buffer`, which the
+// browser and the extension's service worker do not have, so this runs there unchanged.
+// Both decoders reject what the alphabet or the length rules out, so a document field
+// that was edited by hand fails here and not on a tag.
+const toBinary = (bytes) => Array.from(bytes, (b) => String.fromCharCode(b)).join("");
+export const base64 = (bytes) => btoa(toBinary(bytes));
 export const fromBase64 = (s) => {
   if (!/^[A-Za-z0-9+/]*={0,2}$/.test(s) || s.length % 4 !== 0) throw new Error("not base64");
-  return new Uint8Array(Buffer.from(s, "base64"));
+  return Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
 };
-export const base64url = (bytes) => Buffer.from(bytes).toString("base64url");
+export const base64url = (bytes) => base64(bytes).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 export const fromBase64url = (s) => {
-  if (/[^A-Za-z0-9_-]/.test(s)) throw new Error("not base64url");
-  return new Uint8Array(Buffer.from(s, "base64url"));
+  if (/[^A-Za-z0-9_-]/.test(s) || s.length % 4 === 1) throw new Error("not base64url");
+  const b = s.replace(/-/g, "+").replace(/_/g, "/");
+  return fromBase64(b + "=".repeat((4 - (b.length % 4)) % 4));
 };
 
 export const randomBytes = (n) => crypto.getRandomValues(new Uint8Array(n));

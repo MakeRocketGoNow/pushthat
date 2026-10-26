@@ -7,6 +7,8 @@ import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import {
   accountSubkeys,
+  base64,
+  base64url,
   blindIndex,
   blindToken,
   CHUNK_SIZE,
@@ -18,6 +20,7 @@ import {
   encryptFile,
   firebasePassword,
   fromBase64,
+  fromBase64url,
   fromHex,
   hex,
   hkdfOneBlock,
@@ -165,6 +168,22 @@ test("a recovery wrap round-trips and matches the vector", async () => {
   // A recovery key typed back from its display opens the same wrap.
   const typed = await recoveryWrappingKey(decodeRecoveryKey(vectors.account.recovery.display));
   assert.equal(hex(await unwrapAccountKey(typed, wrap, inputs.uid)), hex(inputs.accountKey));
+});
+
+test("the base64 codecs round-trip and reject what the alphabet or the length rules out", () => {
+  for (const n of [0, 1, 2, 3, 4, 31, 32, 33]) {
+    const bytes = Uint8Array.from({ length: n }, (_, i) => (i * 37 + 11) & 0xff);
+    assert.equal(hex(fromBase64(base64(bytes))), hex(bytes));
+    assert.equal(hex(fromBase64url(base64url(bytes))), hex(bytes));
+  }
+  assert.equal(base64(fromHex("fbff")), "+/8=");
+  assert.equal(base64url(fromHex("fbff")), "-_8");
+  assert.throws(() => fromBase64("+/8"), /not base64/);
+  assert.throws(() => fromBase64("-_8="), /not base64/);
+  assert.throws(() => fromBase64url("+/8"), /not base64url/);
+  assert.throws(() => fromBase64url("-_8="), /not base64url/);
+  // A length of 4k + 1 cannot come from any byte string.
+  assert.throws(() => fromBase64url("abcde"), /not base64url/);
 });
 
 test("ids are base64url of 8 and 16 random bytes", () => {
