@@ -157,6 +157,11 @@ export async function startOver(session: KeySession): Promise<KeysResult> {
  * signs in with the raw password and finds its keys (the `opened` and legacy case above),
  * where the other order could leave one whose Firebase password is `authKey` with no
  * wrap that opens. Straight after a sign-in it needs no reauthentication.
+ *
+ * A recovery key made on the way is stored with the key until the user confirms it. If
+ * storing fails (IndexedDB refused, or full), the recovery wrap is already written, so
+ * the key is shown anyway: the alternative was a recovery wrap nobody ever saw. With no
+ * key on this device, the next step after "I saved it" is the password prompt.
  */
 async function finish(
   session: Pick<KeySession, 'user' | 'keys' | 'legacy'>,
@@ -164,9 +169,14 @@ async function finish(
   recoveryKey?: string
 ): Promise<KeysResult> {
   if (session.legacy) await updatePassword(session.user, session.keys.firebasePassword);
-  await saveAccountKey(session.user.uid, accountKey);
-  // Made here so that the install has its id from its first sign-in, before phase 4's
-  // pushes need one.
-  await deviceId();
+  try {
+    await saveAccountKey(session.user.uid, accountKey, recoveryKey);
+    // Made here so that the install has its id from its first sign-in, before phase 4's
+    // pushes need one.
+    await deviceId();
+  } catch (error) {
+    if (!recoveryKey) throw error;
+    console.error('Could not store the account key; showing the recovery key regardless:', error);
+  }
   return recoveryKey ? { kind: 'recoveryKey', recoveryKey } : { kind: 'ready' };
 }

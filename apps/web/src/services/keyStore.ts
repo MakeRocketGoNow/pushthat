@@ -22,6 +22,20 @@ interface StoredAccountKey {
   /** The account the key belongs to, so another account signing in never picks it up. */
   uid: string;
   key: CryptoKey;
+  /**
+   * A recovery key made with this key and not yet confirmed with "I saved it". The user
+   * leaves the page to save it (a password manager, a note), which is when a tab gets
+   * reloaded or discarded; held only in React state it was gone, and the account kept a
+   * recovery wrap nobody had seen, with nothing to say so. Kept here it comes back on the
+   * next load. It is readable, unlike the key, and opens that key, so it stays only
+   * until it is confirmed.
+   */
+  recoveryKey?: string;
+}
+
+export interface LoadedAccountKey {
+  key: CryptoKey;
+  recoveryKey?: string;
 }
 
 let opening: Promise<IDBDatabase> | undefined;
@@ -52,16 +66,37 @@ async function run<T>(mode: IDBTransactionMode, use: (store: IDBObjectStore) => 
   });
 }
 
-/** Keeps `accountKey` for `uid` as a key that cannot be exported. The caller drops the bytes. */
-export async function saveAccountKey(uid: string, accountKey: Uint8Array): Promise<void> {
-  const stored: StoredAccountKey = { uid, key: await accountBaseKey(accountKey) };
+/**
+ * Keeps `accountKey` for `uid` as a key that cannot be exported, with the recovery key
+ * just made for it, if one was, until `confirmRecoveryKey`. The caller drops the bytes.
+ */
+export async function saveAccountKey(uid: string, accountKey: Uint8Array, recoveryKey?: string): Promise<void> {
+  const stored: StoredAccountKey = { uid, key: await accountBaseKey(accountKey), ...(recoveryKey && { recoveryKey }) };
   await run('readwrite', (store) => store.put(stored, ACCOUNT));
 }
 
-/** The stored account key, if there is one and it is `uid`'s. */
-export async function loadAccountKey(uid: string): Promise<CryptoKey | undefined> {
+/** The stored account key, if there is one and it is `uid`'s, with an unconfirmed recovery key. */
+export async function loadAccountKey(uid: string): Promise<LoadedAccountKey | undefined> {
   const stored = await run<StoredAccountKey | undefined>('readonly', (store) => store.get(ACCOUNT));
-  return stored?.uid === uid ? stored.key : undefined;
+  return stored?.uid === uid ? { key: stored.key, recoveryKey: stored.recoveryKey } : undefined;
+}
+
+/** "I saved it": the recovery key is the user's now, and leaves the store. */
+export async function confirmRecoveryKey(uid: string): Promise<void> {
+  const db = await database();
+  await new Promise<void>((resolve, reject) => {
+    const transaction = db.transaction(STORE, 'readwrite');
+    const store = transaction.objectStore(STORE);
+    // Read and rewritten in one transaction, so a key saved meanwhile is not undone.
+    const request = store.get(ACCOUNT);
+    request.onsuccess = () => {
+      const stored = request.result as StoredAccountKey | undefined;
+      if (stored?.uid === uid && stored.recoveryKey) store.put({ uid: stored.uid, key: stored.key }, ACCOUNT);
+    };
+    transaction.oncomplete = () => resolve();
+    transaction.onerror = () => reject(transaction.error);
+    transaction.onabort = () => reject(transaction.error);
+  });
 }
 
 /** At sign-out. The device id stays: it belongs to the install, not the account. */
