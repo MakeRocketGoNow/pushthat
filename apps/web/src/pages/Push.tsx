@@ -1,22 +1,15 @@
 import { FirebaseError } from 'firebase/app';
-import { getAuth } from 'firebase/auth';
-import { addDoc, collection, getFirestore, serverTimestamp } from 'firebase/firestore';
+import { getFirestore } from 'firebase/firestore';
 import { getFunctions, httpsCallable } from 'firebase/functions';
-import {
-  StorageError,
-  StorageReference,
-  deleteObject,
-  getDownloadURL,
-  getStorage,
-  ref,
-  uploadBytes,
-} from 'firebase/storage';
+import { getStorage } from 'firebase/storage';
 import { useState } from 'react';
 
 import Button from '@/components/Button';
 import { LIMITS, formatMb } from '@/config/plan';
 import { usePlan } from '@/hooks/usePlan';
+import { usePushKeys } from '@/hooks/usePushKeys';
 import { PlanReport } from '@/services/plan';
+import { PushTooLongError, createFilePush, createUrlPush, encryptedSize } from '@/services/pushes';
 
 import styles from './Push.module.css';
 
@@ -31,70 +24,9 @@ const limitMessage = (plan: PlanReport | undefined, type: 'url' | 'file') => {
   return `You have used this month's ${plan.limits[type].toLocaleString()} ${what} pushes.${more}`;
 };
 
-const generateSearchTokens = (text: string): string[] => {
-  // Convert to lowercase and split into words
-  const words = text
-    .toLowerCase()
-    .replace(/[^\w\s]/g, '') // Remove special characters
-    .split(/\s+/); // Split on whitespace
-
-  const tokens = new Set<string>();
-
-  // Add full words
-  words.forEach((word) => {
-    if (word) tokens.add(word);
-  });
-
-  // Add partial matches (substrings)
-  words.forEach((word) => {
-    for (let i = 1; i <= word.length; i++) {
-      tokens.add(word.substring(0, i));
-    }
-  });
-
-  return Array.from(tokens);
-};
-
-const generateUniqueFileName = (originalName: string, attempt: number = 0): string => {
-  const lastDotIndex = originalName.lastIndexOf('.');
-  if (lastDotIndex === -1) {
-    return attempt === 0 ? originalName : `${originalName} (${attempt})`;
-  }
-
-  const nameWithoutExt = originalName.slice(0, lastDotIndex);
-  const extension = originalName.slice(lastDotIndex);
-  return attempt === 0 ? originalName : `${nameWithoutExt} (${attempt})${extension}`;
-};
-
-const checkFileExists = async (storageRef: StorageReference): Promise<boolean> => {
-  try {
-    await getDownloadURL(storageRef);
-    return true;
-  } catch (error: unknown) {
-    if ((error as StorageError).code === 'storage/object-not-found') {
-      return false;
-    }
-    throw error;
-  }
-};
-
-const getUniqueStorageRef = async (
-  storage: ReturnType<typeof getStorage>,
-  userId: string,
-  fileName: string
-): Promise<StorageReference> => {
-  let attempt = 0;
-  let uniqueFileName = fileName;
-  let storageRef = ref(storage, `uploads/${userId}/${uniqueFileName}`);
-
-  while (await checkFileExists(storageRef)) {
-    attempt++;
-    uniqueFileName = generateUniqueFileName(fileName, attempt);
-    storageRef = ref(storage, `uploads/${userId}/${uniqueFileName}`);
-  }
-
-  return storageRef;
-};
+// The keys are read from IndexedDB as the page mounts, which takes a moment; a push sent
+// before then, or in a browser that refuses IndexedDB, is stopped with this.
+const NO_KEYS = 'Your encryption key is not ready on this device. Reload the page and try again.';
 
 export default function Push() {
   const [url, setUrl] = useState('');
@@ -103,31 +35,17 @@ export default function Push() {
   const [isUploadSubmitting, setIsUploadSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { plan, refresh: refreshPlan } = usePlan();
-
-  const createPushDocument = (url: string, title: string, type: 'url' | 'file', ext?: string) => {
-    const auth = getAuth();
-
-    // Generate search tokens from both URL and title
-    const searchText = `${url} ${title}`;
-    const searchTokens = generateSearchTokens(searchText);
-
-    return {
-      url,
-      userId: auth.currentUser?.uid,
-      createdAt: serverTimestamp(),
-      title,
-      type,
-      deviceName: navigator.userAgent,
-      searchTokens, // Add searchTokens field
-      ...(ext && { ext }),
-    };
-  };
+  const { keys } = usePushKeys();
 
   const handleLinkSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
 
     if (!url) return;
+    if (!keys) {
+      setError(NO_KEYS);
+      return;
+    }
 
     // Said before anything is sent: at 50 a month a Free account reaches this routinely.
     // The plan read once per mount can be stale, so the refusal below is handled too.
@@ -142,8 +60,9 @@ export default function Push() {
     setIsSubmitting(true);
 
     try {
-      // Fetch title first
-      let finalTitle = url;
+      // Empty when the page has none to give: the list shows the URL meanwhile, and the
+      // first phone or Mac to receive the push scrapes the title and writes it back.
+      let finalTitle = '';
 
       // Validate this is a valid URL.
       try {
@@ -154,6 +73,8 @@ export default function Push() {
         return;
       }
 
+      // Until phase 5 of docs/e2ee.md, which removes the function: a server that fetches the
+      // page learns the URL, which is the one thing the push otherwise keeps from it.
       try {
         const functions = getFunctions();
         const getPageTitle = httpsCallable(functions, 'getPageTitle');
@@ -164,14 +85,10 @@ export default function Push() {
         }
       } catch (error) {
         console.error('Error fetching page title:', error);
-        // Fallback to using URL as title
       }
 
-      const db = getFirestore();
-      const push = createPushDocument(url, finalTitle, 'url');
-
-      const docRef = await addDoc(collection(db, 'pushes'), push);
-      console.log('Link saved with ID:', docRef.id);
+      const id = await createUrlPush(getFirestore(), keys, url, finalTitle);
+      console.log('Link saved with ID:', id);
 
       // Clear form after successful submission
       setUrl('');
@@ -179,7 +96,13 @@ export default function Push() {
       console.error('Error saving link:', error);
       // The limit reached on another device: read the plan again so the next try is stopped here.
       if (isLimitRefusal(error)) void refreshPlan();
-      setError(isLimitRefusal(error) ? limitMessage(plan, 'url') : 'Failed to save link. Please try again.');
+      setError(
+        isLimitRefusal(error)
+          ? limitMessage(plan, 'url')
+          : error instanceof PushTooLongError
+            ? 'That link is too long to push.'
+            : 'Failed to save link. Please try again.'
+      );
     } finally {
       setIsSubmitting(false);
     }
@@ -190,13 +113,18 @@ export default function Push() {
     setError(null);
 
     if (!file) return;
+    if (!keys) {
+      setError(NO_KEYS);
+      return;
+    }
 
     // The tier's file size, which the Storage rules enforce; said here before the upload
     // starts. Without the plan read (offline, say) the larger limit is assumed and the
     // rules have the last word.
     const limits = plan?.limits ?? LIMITS.pro;
-    // `>=`, as the Storage rule has it: a file of exactly the limit is refused there.
-    if (file.size >= limits.fileBytes) {
+    // `>=`, as the Storage rule has it: a file of exactly the limit is refused there. The
+    // rule measures the encrypted object, a few bytes a megabyte larger than the file.
+    if (encryptedSize(file.size) >= limits.fileBytes) {
       setError(
         `File size must be under ${formatMb(limits.fileBytes)}${plan?.tier === 'free' ? ` on the free plan (${formatMb(LIMITS.pro.fileBytes)} on Pro)` : ''}.`
       );
@@ -213,31 +141,11 @@ export default function Push() {
 
     setIsUploadSubmitting(true);
 
-    let uploaded: StorageReference | null = null;
     try {
-      const auth = getAuth();
-      const storage = getStorage();
-      const db = getFirestore();
-
-      if (!auth.currentUser?.uid) {
-        throw new Error('User not authenticated');
-      }
-
-      const ext = file.name.split('.').pop()?.toLowerCase() || '';
-
-      // Get a unique storage reference
-      const storageRef = await getUniqueStorageRef(storage, auth.currentUser.uid, file.name);
-
-      const snapshot = await uploadBytes(storageRef, file);
-      uploaded = snapshot.ref;
-      const downloadUrl = await getDownloadURL(snapshot.ref);
-
-      // Use the final file name from the storage reference for the title
-      const finalFileName = storageRef.name.split('/').pop() || file.name;
-      const push = createPushDocument(downloadUrl, finalFileName, 'file', ext);
-
-      const docRef = await addDoc(collection(db, 'pushes'), push);
-      console.log('File saved with ID:', docRef.id);
+      // Encrypted in the tab, stored under a random name; a refused push takes its upload
+      // with it (createFilePush), since nothing else would ever name the object.
+      const id = await createFilePush(getFirestore(), getStorage(), keys, file);
+      console.log('File saved with ID:', id);
 
       // Clear form after successful submission
       setFile(null);
@@ -246,11 +154,14 @@ export default function Push() {
       if (fileInput) fileInput.value = '';
     } catch (error) {
       console.error('Error saving file:', error);
-      // A push refused after its upload (the stale-plan case, or a limit reached in
-      // another tab) would otherwise leave the object behind for good.
-      if (uploaded) await deleteObject(uploaded).catch((e) => console.error('Error removing the upload:', e));
       if (isLimitRefusal(error)) void refreshPlan();
-      setError(isLimitRefusal(error) ? limitMessage(plan, 'file') : 'Failed to upload file. Please try again.');
+      setError(
+        isLimitRefusal(error)
+          ? limitMessage(plan, 'file')
+          : error instanceof PushTooLongError
+            ? 'That file name is too long to push.'
+            : 'Failed to upload file. Please try again.'
+      );
     } finally {
       setIsUploadSubmitting(false);
     }
