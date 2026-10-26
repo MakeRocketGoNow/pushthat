@@ -27,7 +27,7 @@ type Step =
   | { name: 'password'; email: string }
   | { name: 'recovery'; session: ResetSession }
   | { name: 'withoutRecovery'; session: ResetSession }
-  | { name: 'newRecoveryKey'; recoveryKey: string; deleted: number; hadKeys: boolean }
+  | { name: 'newRecoveryKey'; recoveryKey: string; deleted: number; deleteFailed: boolean }
   | { name: 'done' };
 
 /**
@@ -79,9 +79,7 @@ export function ResetPassword() {
   const startOver = (session: ResetSession, deleteLocked: boolean) =>
     run(
       async () => {
-        const hadKeys = session.e2ee !== undefined;
-        const { recoveryKey, deleted } = await startNewKeys(session, { deleteLocked });
-        setStep({ name: 'newRecoveryKey', recoveryKey, deleted, hadKeys });
+        setStep({ name: 'newRecoveryKey', ...(await startNewKeys(session, { deleteLocked })) });
       },
       () => 'Your password is changed, but your new keys could not be saved. Try again.'
     );
@@ -124,10 +122,8 @@ export function ResetPassword() {
                   if (!session.e2ee) {
                     // Nothing is encrypted yet, so there is nothing to recover: the
                     // account gets its first keys, and its recovery key to save.
-                    const { recoveryKey, deleted } = await afterPasswordChanged(() =>
-                      startNewKeys(session, { deleteLocked: false })
-                    );
-                    setStep({ name: 'newRecoveryKey', recoveryKey, deleted, hadKeys: false });
+                    const keys = await afterPasswordChanged(() => startNewKeys(session, { deleteLocked: false }));
+                    setStep({ name: 'newRecoveryKey', ...keys });
                   } else {
                     setStep(
                       hasRecoveryWrap(session) ? { name: 'recovery', session } : { name: 'withoutRecovery', session }
@@ -208,6 +204,7 @@ export function ResetPassword() {
                     setError('');
                     setStep({ name: 'recovery', session: step.session });
                   }}
+                  disabled={busy}
                 >
                   I found my recovery key
                 </button>
@@ -220,7 +217,7 @@ export function ResetPassword() {
           <NewRecoveryKey
             recoveryKey={step.recoveryKey}
             deleted={step.deleted}
-            hadKeys={step.hadKeys}
+            deleteFailed={step.deleteFailed}
             onDone={() => setStep({ name: 'done' })}
           />
         )}
@@ -357,12 +354,12 @@ function RecoveryForm({
 function NewRecoveryKey({
   recoveryKey,
   deleted,
-  hadKeys,
+  deleteFailed,
   onDone,
 }: {
   recoveryKey: string;
   deleted: number;
-  hadKeys: boolean;
+  deleteFailed: boolean;
   onDone: () => void;
 }) {
   const [saved, setSaved] = useState(false);
@@ -382,9 +379,14 @@ function NewRecoveryKey({
       <h2 className={styles.title}>Save your recovery key</h2>
       <p className={styles.message}>
         Your password is changed
-        {hadKeys && deleted > 0 && `, and ${deleted} locked push${deleted === 1 ? ' is' : 'es are'} deleted`}. If you
-        forget your password, this key is the only way to keep your pushes. We cannot show it again.
+        {deleted > 0 && `, and ${deleted} locked push${deleted === 1 ? ' is' : 'es are'} deleted`}. If you forget your
+        password, this key is the only way to keep your pushes. We cannot show it again.
       </p>
+      {deleteFailed && (
+        <p className={styles.message}>
+          Some of your locked pushes could not be deleted. They stay in your list, where you can delete them.
+        </p>
+      )}
       <code className={styles.recoveryKey}>{recoveryKey}</code>
       <Button type="button" outline className={styles.button} onClick={copy}>
         {copied ? 'Copied' : 'Copy'}

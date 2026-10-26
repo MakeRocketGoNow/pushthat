@@ -65,6 +65,8 @@ export interface ResetSession {
 export interface NewKeys {
   recoveryKey: string;
   deleted: number;
+  /** Whether deleting the locked pushes stopped partway; the rest stay as locked rows. */
+  deleteFailed: boolean;
 }
 
 /** The recovery key the user typed opens none of the account's recovery wraps. */
@@ -153,15 +155,19 @@ export async function rewrapWithRecoveryKey(session: ResetSession, recoveryText:
 /**
  * Without the recovery key, or for an account with no keys yet: a new account key and a
  * new recovery key. For an account that had keys, `keyVersion` goes up, the pushes made
- * under the old key can no longer be read, and `deleteLocked` removes them (the keys are
- * written first, so a delete that fails partway leaves locked rows the user can still
- * delete, not an account with no key). An account with no keys loses nothing: its pushes
- * are not encrypted yet.
+ * under the old key can no longer be read, and `deleteLocked` removes them. The keys are
+ * written first, and the delete after them is best effort: once the new recovery wrap is
+ * stored, the user must see its key whatever the delete does, or the next forgotten
+ * password loses everything again (and a retry would replace the key a second time). A
+ * delete that fails partway leaves locked rows the user can delete from the list. An
+ * account with no keys loses nothing: its pushes are not encrypted yet.
  */
 export async function startNewKeys(
   session: ResetSession,
   { deleteLocked }: { deleteLocked: boolean }
 ): Promise<NewKeys> {
+  // Read before writeKeys replaces session.e2ee with the new map.
+  const hadKeys = session.e2ee !== undefined;
   const accountKey = newAccountKey();
   const recoveryBytes = newRecoveryKey();
   const keyVersion = session.e2ee ? session.e2ee.keyVersion + 1 : 1;
@@ -181,8 +187,14 @@ export async function startNewKeys(
     },
   };
   await writeKeys(session, e2ee);
-  const deleted = session.e2ee && deleteLocked ? await deleteLockedPushes(session.uid, keyVersion) : 0;
-  return { recoveryKey: encodeRecoveryKey(recoveryBytes), deleted };
+  const recoveryKey = encodeRecoveryKey(recoveryBytes);
+  if (!hadKeys || !deleteLocked) return { recoveryKey, deleted: 0, deleteFailed: false };
+  try {
+    return { recoveryKey, deleted: await deleteLockedPushes(session.uid, keyVersion), deleteFailed: false };
+  } catch (error) {
+    console.error('Deleting the locked pushes failed:', error);
+    return { recoveryKey, deleted: 0, deleteFailed: true };
+  }
 }
 
 async function writeKeys(session: ResetSession, e2ee: E2ee): Promise<void> {
