@@ -1,80 +1,14 @@
 import Foundation
 import FirebaseFirestore
 
-/// `users/{uid}.e2ee` as it was read: the map whole, so that a rewrite keeps what it did
-/// not mean to change (`migratedAt`), and the parts the clients act on.
-struct StoredE2ee {
-    let raw: [String: Any]
-    let keyVersion: Int
-    let wraps: [String: E2eeCrypto.Wrap]
-
-    /// Nil when the field is absent or not a map. A map with a wrap that does not parse
-    /// keeps the others, and one without a usable `keyVersion` reads as 0, so a rewrite
-    /// still goes above whatever the rules compare it with.
-    init?(_ value: Any?) {
-        guard let raw = value as? [String: Any] else { return nil }
-        self.raw = raw
-        keyVersion = (raw["keyVersion"] as? Int) ?? 0
-        var wraps: [String: E2eeCrypto.Wrap] = [:]
-        for (id, value) in (raw["wraps"] as? [String: Any]) ?? [:] {
-            if let wrap = E2eeCrypto.Wrap(firestore: value) { wraps[id] = wrap }
-        }
-        self.wraps = wraps
-    }
-
-    func wraps(by: String) -> [String: E2eeCrypto.Wrap] {
-        wraps.filter { $0.value.by == by }
-    }
-
-    /// Whether two reads hold the same keys: the same version and the same wraps. Nil (no
-    /// keys) matches only nil.
-    static func same(_ a: StoredE2ee?, _ b: StoredE2ee?) -> Bool {
-        a?.keyVersion == b?.keyVersion && a.map { Set($0.wraps.keys) } == b.map { Set($0.wraps.keys) }
-    }
-
-    /// The whole map with these wraps, keeping every other stored field.
-    func with(keyVersion: Int? = nil, wraps: [String: E2eeCrypto.Wrap]) -> [String: Any] {
-        AccountKeyService.e2eeMap(base: raw, keyVersion: keyVersion ?? self.keyVersion, wraps: wraps)
-    }
-}
-
-/// Reads and writes the account's wrapped keys (docs/e2ee.md, "The user document"). The
-/// rules (`isE2ee`, `isE2eeUpdate` in apps/web/firestore.rules) take the map whole, with
-/// at most four wraps and a `keyVersion` that never goes down.
-enum AccountKeyService {
-    enum KeyError: LocalizedError {
-        /// The account key was replaced elsewhere (a reset, or new keys on another device)
-        /// since this device read it. Whatever it was about to write would wrap a key that
-        /// is no longer the account's, so it stops.
-        case keysChanged
-        /// More wraps than the rules take, which a well-behaved client never leaves.
-        case tooManyWraps
-        case noKeys
-
-        var errorDescription: String? {
-            switch self {
-            case .keysChanged: return "Your encryption keys were changed on another device. Sign out and sign in again."
-            case .tooManyWraps: return "Your encryption keys could not be updated. Try again."
-            case .noKeys: return "This account has no encryption keys yet. Sign out and sign in again."
-            }
-        }
-    }
-
-    static let maxWraps = 4
-
+/// The reads and writes of the account's wrapped keys. What a sign-in decides from them and
+/// what each write makes of the stored map are in AccountKeyMaps.swift, beside
+/// `StoredE2ee` and the rest of `AccountKeyService`, where the tests can reach them.
+extension AccountKeyService {
     private static var db: Firestore { Firestore.firestore() }
 
     private static func userRef(_ uid: String) -> DocumentReference {
         db.collection("users").document(uid)
-    }
-
-    static func e2eeMap(base: [String: Any], keyVersion: Int, wraps: [String: E2eeCrypto.Wrap]) -> [String: Any] {
-        var map = base
-        map["v"] = 1
-        map["kdf"] = E2eeCrypto.kdf
-        map["keyVersion"] = keyVersion
-        map["wraps"] = wraps.mapValues { $0.firestoreData }
-        return map
     }
 
     /// The stored keys, or nil for an account with none (or none this client can read).
@@ -140,31 +74,6 @@ enum AccountKeyService {
         return written
     }
 
-    // MARK: - What a sign-in finds
-
-    enum Resolution {
-        /// A password wrap opened: this is the account key.
-        case opened(accountKey: Data, keyVersion: Int)
-        /// No password wrap opens, but a recovery wrap exists to try.
-        case needsRecovery(StoredE2ee)
-        /// Nothing to open: a registration, a legacy account, or a document with no usable
-        /// wraps. `stored` is passed on so the new keys go above its version.
-        case needsNewKeys
-    }
-
-    static func resolve(uid: String, masterKey: Data, stored: StoredE2ee?) -> Resolution {
-        guard let stored else { return .needsNewKeys }
-        for wrap in stored.wraps(by: E2eeCrypto.Wrap.password).values {
-            if let accountKey = try? E2eeCrypto.unwrapAccountKey(wrappingKey: masterKey, wrap: wrap, uid: uid) {
-                return .opened(accountKey: accountKey, keyVersion: stored.keyVersion)
-            }
-        }
-        if !stored.wraps(by: E2eeCrypto.Wrap.recovery).isEmpty {
-            return .needsRecovery(stored)
-        }
-        return .needsNewKeys
-    }
-
     // MARK: - Writing keys
 
     struct NewKeys {
@@ -195,8 +104,7 @@ enum AccountKeyService {
             ),
         ]
         let written = try await write(uid: uid, email: email) { stored in
-            guard StoredE2ee.same(stored, decidedFrom) else { throw KeyError.keysChanged }
-            return e2eeMap(base: stored?.raw ?? [:], keyVersion: (stored?.keyVersion ?? 0) + 1, wraps: wraps)
+            try newKeysMap(stored: stored, decidedFrom: decidedFrom, wraps: wraps)
         }
         return NewKeys(accountKey: accountKey, keyVersion: written.keyVersion, recoveryKey: try E2eeCrypto.encodeRecoveryKey(recoveryBytes))
     }
@@ -211,10 +119,7 @@ enum AccountKeyService {
         )
         let wrapId = E2eeCrypto.newWrapId()
         try await write(uid: uid, email: email) { stored in
-            guard let stored, stored.keyVersion == keyVersion else { throw KeyError.keysChanged }
-            var wraps = stored.wraps(by: E2eeCrypto.Wrap.password)
-            wraps[wrapId] = wrap
-            return stored.with(wraps: wraps)
+            try replacedRecoveryMap(stored: stored, keyVersion: keyVersion, wrapId: wrapId, wrap: wrap)
         }
         return try E2eeCrypto.encodeRecoveryKey(recoveryBytes)
     }
@@ -246,17 +151,7 @@ enum AccountKeyService {
         let passwordWrap = try E2eeCrypto.wrapAccountKey(wrappingKey: masterKey, accountKey: opened.key, uid: uid, by: E2eeCrypto.Wrap.password)
         let passwordWrapId = E2eeCrypto.newWrapId()
         let written = try await write(uid: uid, email: email) { current in
-            // The key opened above belongs to the version read at sign-in; if a reset
-            // elsewhere has replaced it since, its wrap would open the wrong key.
-            guard let current, current.keyVersion == stored.keyVersion else { throw KeyError.keysChanged }
-            let recovery = current.wraps(by: E2eeCrypto.Wrap.recovery)
-            var kept: [String: E2eeCrypto.Wrap] = [:]
-            if let first = recovery[opened.id] { kept[opened.id] = first }
-            for (id, wrap) in recovery.sorted(by: { $0.key < $1.key }) where kept.count < maxWraps - 1 {
-                kept[id] = wrap
-            }
-            kept[passwordWrapId] = passwordWrap
-            return current.with(wraps: kept)
+            try rewrappedMap(current: current, keyVersion: stored.keyVersion, openedId: opened.id, passwordWrapId: passwordWrapId, passwordWrap: passwordWrap)
         }
         return (opened.key, written.keyVersion)
     }
@@ -274,34 +169,12 @@ enum AccountKeyService {
         final class Found: @unchecked Sendable { var ids: Set<String> = [] }
         let found = Found()
         try await write(uid: uid, email: email) { stored in
-            guard let stored, stored.keyVersion == device.keyVersion else { throw KeyError.keysChanged }
-            var wraps = stored.wraps
-            var current: Set<String> = []
-            defer { found.ids = current }
-            for (id, wrap) in stored.wraps(by: E2eeCrypto.Wrap.password) {
-                guard let key = try? E2eeCrypto.unwrapAccountKey(wrappingKey: currentMasterKey, wrap: wrap, uid: uid) else { continue }
-                // The current password opens a different key than this device holds: the
-                // device's key is stale, and wrapping it again would lose the real one.
-                guard key == device.key else { throw KeyError.keysChanged }
-                current.insert(id)
-            }
-            wraps[newWrapId] = newWrap
-            // Room for the new wrap, least needed first: password wraps nothing opens (their
-            // password is gone), then the current password's beyond one (it only has to
-            // last until Firebase has the new password), then recovery wraps. Pruning only
-            // the first kind, as this did, left 1 password + 3 recovery wraps (what a
-            // recovery can leave) at five, which the rules refuse, so the change could never
-            // succeed. Several recovery wraps come only from clients racing, and nothing
-            // says which of their keys the user holds, so the order among them is just a
-            // stable one; dropping one is better than a password that cannot change.
-            let password = stored.wraps(by: E2eeCrypto.Wrap.password).keys.sorted()
-            let room = password.filter { !current.contains($0) }
-                + password.filter { current.contains($0) }.dropFirst()
-                + stored.wraps(by: E2eeCrypto.Wrap.recovery).keys.sorted().reversed()
-            for id in room where wraps.count > maxWraps {
-                wraps[id] = nil
-            }
-            return stored.with(wraps: wraps)
+            let added = try addedPasswordWrapMap(
+                stored: stored, uid: uid, deviceKey: device.key, keyVersion: device.keyVersion,
+                currentMasterKey: currentMasterKey, newWrapId: newWrapId, newWrap: newWrap
+            )
+            found.ids = added.currentIds
+            return added.e2ee
         }
         return Array(found.ids)
     }
@@ -310,10 +183,7 @@ enum AccountKeyService {
     static func removeWraps(uid: String, email: String, ids: [String]) async throws {
         guard !ids.isEmpty else { return }
         try await write(uid: uid, email: email) { stored in
-            guard let stored else { throw KeyError.noKeys }
-            var wraps = stored.wraps
-            for id in ids { wraps[id] = nil }
-            return stored.with(wraps: wraps)
+            try removedWrapsMap(stored: stored, ids: ids)
         }
     }
 }
