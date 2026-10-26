@@ -271,6 +271,9 @@ class MainActivity : AppCompatActivity() {
     private fun loadPushRecords(isInitialLoad: Boolean) {
         val currentUser = auth.currentUser
         if (currentUser == null) {
+            // The session ended while the list was open (see LoginActivity.onCreate): the
+            // key goes with it.
+            AccountKeyStore.clear(this)
             pushAdapter.updatePushes(emptyList())
             swipeRefreshLayout.isRefreshing = false
             return

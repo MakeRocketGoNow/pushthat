@@ -65,6 +65,12 @@ class LoginActivity : AppCompatActivity() {
         // that updated while signed in, or a sign-in that stopped partway), the form asks
         // for the password once instead; see unlockEmail.
         val user = auth.currentUser
+        // No session, though the key may still be here: Logout clears it, but a session can
+        // also end without it (the password changed on another device revokes the tokens, an
+        // account disabled), and Firebase then signs out on its own. Every launch without a
+        // session comes through here (MainActivity and ShareActivity send it), so the key
+        // goes here rather than waiting for the next sign-in to overwrite it.
+        if (user == null) AccountKeyStore.clear(this)
         if (user != null && viewModel.state.value.screen == Screen.Form && AccountKeyStore.hasKey(this, user.uid)) {
             startMainActivity()
             return
