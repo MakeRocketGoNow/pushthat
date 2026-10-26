@@ -124,6 +124,12 @@ export function KeysProvider({ children }: { children: React.ReactNode }) {
       if (!signedInAlready) throw error;
     } finally {
       flowing.current = false;
+      // A sign-out while the flow ran (Logout in another tab) was skipped by the check
+      // above, and the flow may have stored a key after it; nothing else would clear it.
+      if (!auth.currentUser) {
+        setStep({ name: 'signedOut' });
+        clearAccountKey().catch((error) => console.error('Could not clear the account key:', error));
+      }
     }
   }, []);
 
