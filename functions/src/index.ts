@@ -16,6 +16,7 @@ import { HttpsError, onCall } from 'firebase-functions/v2/https';
 import 'whatwg-fetch';
 
 import { deadTokens } from './notifications';
+import { pageTitleOf } from './title';
 import { recordPush } from './usage';
 
 // The user document's plan fields are described in plan.ts (`PlanUser`); the count a
@@ -37,42 +38,17 @@ export { deleteOrphanedUploads } from './orphans';
 // Start writing functions
 // https://firebase.google.com/docs/functions/typescript
 
-export const getPageTitle = onCall({ cors: true }, async ({ data }) => {
+// Signed in only: the function fetches whatever URL it is given, from inside the
+// project, and without the check anyone on the internet could use it as a fetch oracle
+// at the project's expense (title.ts has the rest of what bounds it). The web app calls
+// it from the Push page, which is behind sign-in.
+export const getPageTitle = onCall({ cors: true }, async (request) => {
+  if (!request.auth) throw new HttpsError('unauthenticated', 'Sign in first.');
   try {
-    const { url } = data;
-
-    logger.info('URL:', url);
-
-    if (!url) {
-      throw new HttpsError('invalid-argument', 'URL is required');
-    }
-
-    const resp = await fetch(url);
-
-    logger.info('Status:', resp.status);
-
-    if (resp.status !== 200) {
-      throw new HttpsError('internal', `Failed to fetch page with status code: ${resp.status}`);
-    }
-
-    if (!resp.headers.get('content-type')?.includes('text/html')) {
-      throw new HttpsError('internal', `Failed to fetch page with content type: ${resp.headers.get('content-type')}`);
-    }
-
-    const html = await resp.text();
-
-    // Extract title using regex
-    const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/);
-    const title = titleMatch ? titleMatch[1].trim() : '';
-
-    logger.info('Title:', title);
-
-    return { title };
+    return { title: await pageTitleOf(request.data?.url) };
   } catch (error) {
+    if (error instanceof HttpsError) throw error;
     logger.error('Error in getPageTitle:', error);
-    if (error instanceof HttpsError) {
-      throw error;
-    }
     throw new HttpsError('internal', 'Failed to fetch page title.');
   }
 });
