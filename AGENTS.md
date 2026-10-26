@@ -86,7 +86,7 @@ Each folder is installed and checked on its own, from that folder:
 
 ```bash
 # apps/web
-npm ci && npm run lint && npm run test:vectors && npm run build && npm run build:chrome && npm run test:rules
+npm ci && npm run lint && npm run test:keys && npm run build && npm run build:chrome && npm run test:rules
 
 # functions
 npm ci && npm run lint && npm run build && npm test && npm run test:emulator

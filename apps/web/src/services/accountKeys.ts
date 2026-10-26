@@ -2,24 +2,40 @@ import { type Firestore, doc, getDoc, runTransaction } from 'firebase/firestore'
 
 import {
   type E2ee,
-  KDF,
-  type Wrap,
   decodeRecoveryKey,
   encodeRecoveryKey,
   newAccountKey,
   newRecoveryKey,
   newWrapId,
   recoveryWrappingKey,
-  unwrapAccountKey,
   wrapAccountKey,
 } from './e2ee';
+import {
+  WrongRecoveryKeyError,
+  isE2ee,
+  openAny,
+  withNewKeys,
+  withNewRecoveryWrap,
+  withRewrappedPassword,
+  wrapsBy,
+} from './keyDecisions';
+
+export {
+  KeysChangedError,
+  type PasswordOutcome,
+  WrongRecoveryKeyError,
+  hasRecoveryWrap,
+  isE2ee,
+  openWithPassword,
+  sameKeys,
+} from './keyDecisions';
 
 /**
  * The account key's side of `users/{uid}` (docs/e2ee.md, The user document): reading the
  * stored wraps, opening one, and writing new ones. The sign-in and the password reset page
  * both work through here, on whichever Firestore they are signed in to (the reset has its
  * own Firebase app, see passwordReset.ts), so that a key they write is a key the other
- * one can open.
+ * one can open. What each write keeps is decided in keyDecisions.ts, which is tested.
  */
 
 /** Who the keys belong to, and the Firestore to reach them through. */
@@ -29,75 +45,10 @@ export interface KeyOwner {
   email: string;
 }
 
-/** The recovery key the user typed opens none of the account's recovery wraps. */
-export class WrongRecoveryKeyError extends Error {}
-
-/**
- * The account key was replaced elsewhere (a reset, or a start without the recovery key
- * on another device) after these keys were read. A key opened from the old ones is no
- * longer the account's, and writing a wrap of it would hand the next sign-in the wrong
- * key, so the write stops instead.
- */
-export class KeysChangedError extends Error {}
-
-// Enough of the stored map to open and rewrap it; the rules have already held it to the
-// spec's shape.
-export function isE2ee(value: unknown): value is E2ee {
-  if (typeof value !== 'object' || value === null) return false;
-  const { keyVersion, wraps } = value as Partial<E2ee>;
-  return typeof keyVersion === 'number' && typeof wraps === 'object' && wraps !== null;
-}
-
 /** The stored keys, or undefined for an account that has none. */
 export async function readKeys(owner: KeyOwner): Promise<E2ee | undefined> {
   const stored = (await getDoc(doc(owner.db, 'users', owner.uid))).data()?.e2ee;
   return isE2ee(stored) ? stored : undefined;
-}
-
-export function hasRecoveryWrap(e2ee: E2ee | undefined): boolean {
-  return Object.values(e2ee?.wraps ?? {}).some((wrap) => wrap.by === 'recovery');
-}
-
-function wrapsBy(e2ee: E2ee, by: Wrap['by']): [string, Wrap][] {
-  return Object.entries(e2ee.wraps).filter(([, wrap]) => wrap.by === by);
-}
-
-/** The first of `wraps` that `wrappingKey` opens, with its id, or undefined. */
-async function openAny(
-  wrappingKey: Uint8Array,
-  wraps: [string, Wrap][],
-  uid: string
-): Promise<{ accountKey: Uint8Array; wrapId: string } | undefined> {
-  for (const [wrapId, wrap] of wraps) {
-    try {
-      return { accountKey: await unwrapAccountKey(wrappingKey, wrap, uid), wrapId };
-    } catch {
-      // Another wrap may be the one; a key that opens none is the wrong key.
-    }
-  }
-  return undefined;
-}
-
-/**
- * What a password finds in the stored keys. `opened` is the usual sign-in. `needsRecovery`
- * is an account whose password was set somewhere that could not rewrap the key (Firebase's
- * own reset page, or ours failing after the password changed), so only the recovery key
- * opens it. `needsNewKeys` is an account with no keys at all, or none anything can open.
- */
-export type PasswordOutcome =
-  | { kind: 'opened'; accountKey: Uint8Array; wrapId: string; e2ee: E2ee }
-  | { kind: 'needsRecovery'; e2ee: E2ee }
-  | { kind: 'needsNewKeys'; e2ee: E2ee | undefined };
-
-export async function openWithPassword(
-  e2ee: E2ee | undefined,
-  uid: string,
-  masterKey: Uint8Array
-): Promise<PasswordOutcome> {
-  if (!e2ee) return { kind: 'needsNewKeys', e2ee };
-  const opened = await openAny(masterKey, wrapsBy(e2ee, 'password'), uid);
-  if (opened) return { kind: 'opened', ...opened, e2ee };
-  return hasRecoveryWrap(e2ee) ? { kind: 'needsRecovery', e2ee } : { kind: 'needsNewKeys', e2ee };
 }
 
 /**
@@ -122,22 +73,10 @@ export async function rewrapWithRecoveryKey(
   if (!opened) throw new WrongRecoveryKeyError('the recovery key opens no wrap');
 
   const passwordWrap = await wrapAccountKey(masterKey, opened.accountKey, owner.uid, 'password');
-  const written = await writeKeys(owner, (stored) => {
-    // The key opened above is the one at the version read; if it has been replaced since,
-    // its wrap would sit under the new version and open the wrong key.
-    if (!stored || stored.keyVersion !== e2ee.keyVersion) {
-      throw new KeysChangedError('the account key changed while the recovery key was asked for');
-    }
-    // The recovery wrap the user's key opened, which they have just shown they can use.
-    // Only that one: the rules take four wraps at most, and carrying every stored one
-    // beside the new password wrap could ask for five, a write refused every time. If it
-    // has gone meanwhile (a new recovery key made on another device), the stored ones stay.
-    const kept =
-      stored.wraps[opened.wrapId]?.by === 'recovery'
-        ? { [opened.wrapId]: stored.wraps[opened.wrapId] }
-        : Object.fromEntries(wrapsBy(stored, 'recovery').slice(0, 3));
-    return { ...stored, wraps: { [newWrapId()]: passwordWrap, ...kept } };
-  });
+  const passwordWrapId = newWrapId();
+  const written = await writeKeys(owner, (stored) =>
+    withRewrappedPassword(stored, e2ee, opened.wrapId, passwordWrapId, passwordWrap)
+  );
   return { accountKey: opened.accountKey, e2ee: written };
 }
 
@@ -161,26 +100,9 @@ export async function startNewKeys(
     [newWrapId()]: await wrapAccountKey(masterKey, accountKey, owner.uid, 'password'),
     [newWrapId()]: await wrapAccountKey(await recoveryWrappingKey(recoveryBytes), accountKey, owner.uid, 'recovery'),
   };
-  // One past the stored version, read again as it is written. The reset page passes no
-  // `decidedFrom`, and goes past a reset made elsewhere meanwhile rather than repeating
-  // it. A sign-in passes the keys it decided from, and stops if they moved: another
-  // device signing in to the same legacy account a moment earlier has just made keys and
-  // stored them, and writing over them would leave that device holding an account key,
-  // and the user a recovery key, that no longer open anything.
-  const e2ee = await writeKeys(owner, (stored) => {
-    if (decidedFrom && !sameKeys(stored, decidedFrom.e2ee)) {
-      throw new KeysChangedError('the stored keys changed after they were read');
-    }
-    return { ...stored, v: 1, kdf: KDF, keyVersion: (stored?.keyVersion ?? 0) + 1, wraps };
-  });
+  // Read again as it is written; see `withNewKeys` for `decidedFrom`.
+  const e2ee = await writeKeys(owner, (stored) => withNewKeys(stored, decidedFrom, wraps));
   return { accountKey, recoveryKey: encodeRecoveryKey(recoveryBytes), e2ee };
-}
-
-/** Whether `stored` is still the keys a decision was read from: the same version and wraps. */
-export function sameKeys(stored: E2ee | undefined, decidedFrom: E2ee | undefined): boolean {
-  if (!stored || !decidedFrom) return !stored && !decidedFrom;
-  const ids = (e2ee: E2ee) => Object.keys(e2ee.wraps).sort().join(' ');
-  return stored.keyVersion === decidedFrom.keyVersion && ids(stored) === ids(decidedFrom);
 }
 
 /**
@@ -196,12 +118,8 @@ export async function replaceRecoveryKey(owner: KeyOwner, accountKey: Uint8Array
     owner.uid,
     'recovery'
   );
-  await writeKeys(owner, (stored) => {
-    if (!stored || stored.keyVersion !== keyVersion) {
-      throw new KeysChangedError('the account key changed before the recovery key was replaced');
-    }
-    return { ...stored, wraps: { ...Object.fromEntries(wrapsBy(stored, 'password')), [newWrapId()]: recoveryWrap } };
-  });
+  const recoveryWrapId = newWrapId();
+  await writeKeys(owner, (stored) => withNewRecoveryWrap(stored, keyVersion, recoveryWrapId, recoveryWrap));
   return encodeRecoveryKey(recoveryBytes);
 }
 
