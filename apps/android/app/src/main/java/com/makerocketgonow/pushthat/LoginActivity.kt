@@ -224,8 +224,9 @@ class LoginActivity : AppCompatActivity() {
             }
             // Said before anything is replaced, since it cannot be undone.
             is Screen.Recovery -> AlertDialog.Builder(this, R.style.DeleteDialogStyle)
+                .setTitle(R.string.start_over_title)
                 .setMessage(R.string.start_over_warning)
-                .setPositiveButton(R.string.continue_) { _, _ -> viewModel.startOver() }
+                .setPositiveButton(R.string.start_over) { _, _ -> viewModel.startOver() }
                 .setNegativeButton(R.string.cancel, null)
                 .show()
             else -> Unit
