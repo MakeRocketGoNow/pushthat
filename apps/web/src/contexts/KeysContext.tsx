@@ -1,10 +1,12 @@
 import { FirebaseError } from 'firebase/app';
+import { getFirestore } from 'firebase/firestore';
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 
-import { auth } from '@/config/firebase';
+import { app, auth } from '@/config/firebase';
 import { useAuth } from '@/contexts/AuthContext';
 import { KeysChangedError, WrongRecoveryKeyError } from '@/services/accountKeys';
 import { clearAccountKey, loadAccountKey } from '@/services/keyStore';
+import { loadPushKeys, migratePushes } from '@/services/pushes';
 import * as signInService from '@/services/signIn';
 import { type KeySession, type KeysResult } from '@/services/signIn';
 
@@ -91,6 +93,20 @@ export function KeysProvider({ children }: { children: React.ReactNode }) {
       current = false;
     };
   }, [uid]);
+
+  // Once this device holds the key, the account's plaintext pushes are encrypted in place
+  // (docs/e2ee.md, Migration), in the background and once per account per page load: a
+  // pass cut short leaves the mark unset and the next load carries on. Here rather than in
+  // a page, so it runs whichever page the user lands on.
+  const migrated = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    if (step.name !== 'ready' || !uid || migrated.current === uid) return;
+    migrated.current = uid;
+    const db = getFirestore(app);
+    loadPushKeys(db, uid)
+      .then((keys) => keys && migratePushes(db, keys))
+      .catch((error) => console.error('The push migration stopped:', error));
+  }, [step.name, uid]);
 
   // A sign-in, a registration or an unlock: anything that may sign in partway through.
   const flow = useCallback(async (action: () => Promise<KeysResult>, signedInAlready: boolean) => {
