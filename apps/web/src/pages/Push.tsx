@@ -1,4 +1,3 @@
-import { FirebaseError } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
 import { addDoc, collection, getFirestore, serverTimestamp } from 'firebase/firestore';
 import {
@@ -15,20 +14,9 @@ import { useState } from 'react';
 import Button from '@/components/Button';
 import { LIMITS, formatMb } from '@/config/plan';
 import { usePlan } from '@/hooks/usePlan';
-import { PlanReport } from '@/services/plan';
+import { isRulesRefusal, limitMessage, refusalMessage } from '@/services/pushRefusal';
 
 import styles from './Push.module.css';
-
-/** The rules refuse a push past the month's limit as a permission error: the only one of the create rule's refusals this page's own documents can hit. */
-const isLimitRefusal = (error: unknown) => error instanceof FirebaseError && error.code === 'permission-denied';
-
-/** The sentence for a push past the month's limit, naming the number and, on Free, what Pro allows. */
-const limitMessage = (plan: PlanReport | undefined, type: 'url' | 'file') => {
-  const what = type === 'url' ? 'link' : 'file';
-  if (!plan) return `You have used this month's ${what} pushes.`;
-  const more = plan.tier === 'free' ? ` Pro allows ${LIMITS.pro[type].toLocaleString()}.` : '';
-  return `You have used this month's ${plan.limits[type].toLocaleString()} ${what} pushes.${more}`;
-};
 
 const generateSearchTokens = (text: string): string[] => {
   // Convert to lowercase and split into words
@@ -101,7 +89,7 @@ export default function Push() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isUploadSubmitting, setIsUploadSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const { plan, refresh: refreshPlan } = usePlan();
+  const { plan, refresh: refreshPlan, setPlan } = usePlan();
 
   const createPushDocument = (url: string, title: string, type: 'url' | 'file', ext?: string) => {
     const auth = getAuth();
@@ -164,9 +152,11 @@ export default function Push() {
       setUrl('');
     } catch (error) {
       console.error('Error saving link:', error);
-      // The limit reached on another device: read the plan again so the next try is stopped here.
-      if (isLimitRefusal(error)) void refreshPlan();
-      setError(isLimitRefusal(error) ? limitMessage(plan, 'url') : 'Failed to save link. Please try again.');
+      // The limit reached on another device, or a push this copy of PushThat cannot make
+      // (pushRefusal.ts); reading the plan again tells them apart and stops the next try here.
+      setError(
+        isRulesRefusal(error) ? await refusalMessage(plan, 'url', setPlan) : 'Failed to save link. Please try again.'
+      );
     } finally {
       setIsSubmitting(false);
     }
@@ -236,8 +226,9 @@ export default function Push() {
       // A push refused after its upload (the stale-plan case, or a limit reached in
       // another tab) would otherwise leave the object behind for good.
       if (uploaded) await deleteObject(uploaded).catch((e) => console.error('Error removing the upload:', e));
-      if (isLimitRefusal(error)) void refreshPlan();
-      setError(isLimitRefusal(error) ? limitMessage(plan, 'file') : 'Failed to upload file. Please try again.');
+      setError(
+        isRulesRefusal(error) ? await refusalMessage(plan, 'file', setPlan) : 'Failed to upload file. Please try again.'
+      );
     } finally {
       setIsUploadSubmitting(false);
     }
