@@ -138,7 +138,7 @@ Streaming encryption on upload means a 100 MB file never needs to be in memory t
 
 ## Search
 
-Every client queries `searchTokens` with `array-contains` (the Links page, `MainActivity`'s list, `PushListViewModel`) and writes them with the same prefix generator (`SearchTokenGenerator.swift`, its Android and web twins). That stays, with every token replaced by its blind index:
+Every client queries `searchTokens` with `array-contains` (the Links page, `MainActivity`'s list, `PushListViewModel`) and writes them with a prefix generator (`SearchTokenGenerator.swift`, `generateSearchTokens` on Android and the web, which differ as described below). That stays, with every token replaced by its blind index:
 
 ```
 token' = base64url(HMAC-SHA256(searchKey, token))[0:16]     // 96 bits
