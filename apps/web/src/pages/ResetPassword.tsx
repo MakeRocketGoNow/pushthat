@@ -4,6 +4,7 @@ import { Link, useSearchParams } from 'react-router';
 
 import Button from '@/components/Button';
 import GlowButton from '@/components/GlowButton';
+import { RecoveryKey } from '@/components/RecoveryKey';
 import {
   KeysChangedError,
   PasswordChangedError,
@@ -439,20 +440,6 @@ function NewRecoveryKey({
   deletion: Deletion;
   onDone: () => void;
 }) {
-  const [saved, setSaved] = useState(false);
-  const [copied, setCopied] = useState<'no' | 'yes' | 'failed'>('no');
-
-  const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(recoveryKey);
-      setCopied('yes');
-    } catch {
-      // No clipboard (an insecure context, or permission refused): say so, since the button
-      // would otherwise look as if it had worked, and the key is on screen to copy by hand.
-      setCopied('failed');
-    }
-  };
-
   return (
     <>
       <h2 tabIndex={-1} className={styles.title}>
@@ -473,16 +460,7 @@ function NewRecoveryKey({
           Some of your locked pushes could not be deleted. They stay in your list, where you can delete them.
         </p>
       )}
-      <code className={styles.recoveryKey}>{recoveryKey}</code>
-      <Button type="button" outline className={styles.button} onClick={copy}>
-        {copied === 'yes' ? 'Copied' : copied === 'failed' ? 'Copy failed, select the key above' : 'Copy'}
-      </Button>
-      <label className={styles.checkbox}>
-        <input type="checkbox" checked={saved} onChange={(e) => setSaved(e.target.checked)} />I saved it
-      </label>
-      <GlowButton type="button" className={styles.button} disabled={!saved} onClick={onDone}>
-        Continue
-      </GlowButton>
+      <RecoveryKey recoveryKey={recoveryKey} onDone={onDone} />
     </>
   );
 }
