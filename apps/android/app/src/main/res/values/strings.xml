@@ -76,5 +76,17 @@
     <string name="wrong_recovery_key">That recovery key does not open this account\'s keys.</string>
     <string name="unlock_body">PushThat now encrypts your pushes on your devices. Enter your password once to set it up here.</string>
     <string name="sign_out">Sign out</string>
+    <string name="change_password">Change password</string>
+    <string name="new_recovery_key">Show a new recovery key</string>
+    <string name="new_recovery_key_warning">Your old recovery key will stop working.</string>
+    <string name="current_password">Current password</string>
+    <string name="new_password">New password</string>
+    <string name="new_password_again">New password again</string>
+    <string name="passwords_differ">The new passwords do not match.</string>
+    <string name="changing_password">Changing your password…</string>
+    <string name="password_changed">Your password is changed.</string>
+    <string name="making_recovery_key">Making a new recovery key…</string>
+    <string name="key_settings_failed">That did not work. Please try again.</string>
+    <string name="keys_changed_here">Your encryption keys were changed on another device. Sign out and sign in again to use them here.</string>
     <string name="keys_changed">Your encryption keys were changed on another device while this one was setting up. Try again.</string>
 </resources>

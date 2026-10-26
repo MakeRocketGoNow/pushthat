@@ -1,13 +1,16 @@
 package com.makerocketgonow.pushthat.e2ee
 
 import android.content.Context
+import android.util.Log
 import com.google.firebase.Firebase
+import com.google.firebase.auth.EmailAuthProvider
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseAuthInvalidCredentialsException
 import com.google.firebase.auth.auth
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
+import java.security.GeneralSecurityException
 
 /**
  * Signing in, registering and recovering with the end-to-end keys (docs/e2ee.md, "Keys"
@@ -197,6 +200,96 @@ class AccountKeys(
     }
 
     // -------------------------------------------------------------------------------------
+    // Settings, on a signed-in install that holds the key
+
+    /** This install holds no account key, so it has nothing to rewrap. */
+    class NoAccountKeyException : Exception("this install holds no account key")
+
+    /**
+     * The spec's order: a new password wrap first, then the Firebase password, then the old
+     * wrap goes. A crash between any two leaves an account that opens with either password,
+     * never one that opens with neither.
+     */
+    suspend fun changePassword(currentPassword: String, newPassword: String) {
+        val user = auth.currentUser ?: throw IllegalStateException("not signed in")
+        val email = user.email ?: throw IllegalStateException("the account has no email")
+        val uid = user.uid
+        val device = withContext(Dispatchers.IO) { AccountKeyStore.load(appContext, uid) } ?: throw NoAccountKeyException()
+
+        val current = derive(email, currentPassword)
+        user.reauthenticate(EmailAuthProvider.getCredential(email, current.firebasePassword)).await()
+        val next = derive(email, newPassword)
+        val newWrap = withContext(Dispatchers.Default) {
+            E2ee.wrapAccountKey(next.masterKey, device.accountKey, uid, E2ee.BY_PASSWORD)
+        }
+        val newWrapId = E2ee.newWrapId()
+
+        var oldWrapIds: Set<String> = emptySet()
+        document.write(uid, email) { stored ->
+            // The wraps the current password opens to this install's key. None means the
+            // key here is not the account's any more (replaced by a reset elsewhere), and a
+            // wrap of it under the new password would open a key nothing uses.
+            val opened = stored?.wrapsBy(E2ee.BY_PASSWORD)?.filterValues { wrap ->
+                try {
+                    E2ee.unwrapAccountKey(current.masterKey, wrap, uid).contentEquals(device.accountKey)
+                } catch (_: GeneralSecurityException) {
+                    false
+                }
+            }.orEmpty()
+            if (stored == null || opened.isEmpty()) {
+                throw KeysChangedException("the current password opens none of the stored keys")
+            }
+            oldWrapIds = opened.keys
+            // One wrap the current password opens stays until the Firebase password has
+            // changed; password wraps nothing opens are from a password that is gone. The
+            // recovery wraps stay, as many as fit beside the two password wraps.
+            val keep = opened.entries.first()
+            val recovery = stored.wrapsBy(E2ee.BY_RECOVERY).entries.take(StoredKeys.MAX_WRAPS - 2)
+            stored.with(
+                mapOf(keep.toPair()) + recovery.associate { it.toPair() } + (newWrapId to newWrap)
+            )
+        }
+
+        user.updatePassword(next.firebasePassword).await()
+
+        // The password has changed by now, so a failure here is not the user's to see: an
+        // old wrap left behind opens with a password Firebase no longer accepts, and the
+        // next change removes it as one nothing opens.
+        try {
+            document.write(uid, email) { stored ->
+                val remaining = stored?.wraps?.filterKeys { it !in oldWrapIds } ?: return@write null
+                if (remaining.size == stored.wraps.size) null else stored.with(remaining)
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "The old password's wrap could not be removed", e)
+        }
+    }
+
+    /**
+     * A new recovery key in place of every recovery wrap, under this install's key, returned
+     * in its display form for the same screen as sign-up.
+     */
+    suspend fun replaceRecoveryKey(): String {
+        val user = auth.currentUser ?: throw IllegalStateException("not signed in")
+        val email = user.email ?: throw IllegalStateException("the account has no email")
+        val device = withContext(Dispatchers.IO) { AccountKeyStore.load(appContext, user.uid) } ?: throw NoAccountKeyException()
+        val recoveryBytes = E2ee.newRecoveryKey()
+        val recoveryWrap = withContext(Dispatchers.Default) {
+            E2ee.wrapAccountKey(E2ee.recoveryWrappingKey(recoveryBytes), device.accountKey, user.uid, E2ee.BY_RECOVERY)
+        }
+        document.write(user.uid, email) { stored ->
+            // keyVersion goes up with every new account key, so an equal one means this
+            // install's key is the account's.
+            if (stored == null || stored.keyVersion != device.keyVersion) {
+                throw KeysChangedException("this install's key is not the account's current one")
+            }
+            val password = stored.wrapsBy(E2ee.BY_PASSWORD).entries.take(StoredKeys.MAX_WRAPS - 1)
+            stored.with(password.associate { it.toPair() } + (E2ee.newWrapId() to recoveryWrap))
+        }
+        return E2ee.encodeRecoveryKey(recoveryBytes)
+    }
+
+    // -------------------------------------------------------------------------------------
     // Steps
 
     /**
@@ -281,4 +374,8 @@ class AccountKeys(
         withContext(Dispatchers.Default) { E2ee.deriveKeys(email, password) }
 
     private fun currentUid(): String = auth.currentUser?.uid ?: throw IllegalStateException("not signed in")
+
+    private companion object {
+        const val TAG = "AccountKeys"
+    }
 }

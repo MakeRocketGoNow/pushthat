@@ -49,6 +49,11 @@ import android.content.IntentFilter
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import androidx.appcompat.app.AlertDialog
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.repeatOnLifecycle
+import android.widget.EditText
+import android.widget.ScrollView
 import kotlinx.coroutines.launch
 
 // Move extractRootDomain to top-level
@@ -74,6 +79,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var pushAdapter: PushAdapter
     private var isSelectAllChecked = false
     private var planDialog: AlertDialog? = null
+    private lateinit var keySettings: KeySettingsViewModel
+    private var keySettingsDialog: AlertDialog? = null
     private lateinit var deleteProgressBar: ProgressBar
     private lateinit var searchLayout: View
     private lateinit var selectionLayout: View
@@ -212,6 +219,13 @@ class MainActivity : AppCompatActivity() {
         val toolbar = findViewById<Toolbar>(R.id.toolbar)
         setSupportActionBar(toolbar)
 
+        keySettings = ViewModelProvider(this)[KeySettingsViewModel::class.java]
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                keySettings.state.collect { renderKeySettings(it) }
+            }
+        }
+
         // Fetch initial push records
         loadPushRecords(true)
 
@@ -314,6 +328,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
+        dismissKeySettingsDialog()
         // Safely unregister broadcast receiver
         if (isReceiverRegistered) {
             try {
@@ -388,6 +403,20 @@ class MainActivity : AppCompatActivity() {
                 showPlan()
                 true
             }
+            R.id.nav_change_password -> {
+                showChangePassword()
+                true
+            }
+            R.id.nav_new_recovery_key -> {
+                // Said first: the old key stops working the moment the new one is written.
+                AlertDialog.Builder(this, R.style.DeleteDialogStyle)
+                    .setTitle(R.string.new_recovery_key)
+                    .setMessage(R.string.new_recovery_key_warning)
+                    .setPositiveButton(R.string.continue_) { _, _ -> keySettings.newRecoveryKey() }
+                    .setNegativeButton(R.string.cancel, null)
+                    .show()
+                true
+            }
             R.id.action_delete -> {
                 showDeleteConfirmation()
                 true
@@ -449,6 +478,86 @@ class MainActivity : AppCompatActivity() {
             dialog.setTitle(getString(title))
             dialog.setMessage(listOfNotNull(usage, standing, getString(R.string.plan_managed)).joinToString("\n\n"))
         }
+    }
+
+    /**
+     * Current, new and new again. The dialog stays open while what was typed is wrong, so
+     * its buttons are wired after `show()`: the builder's would close it on any tap.
+     */
+    private fun showChangePassword() {
+        val view = layoutInflater.inflate(R.layout.dialog_change_password, null)
+        val current = view.findViewById<EditText>(R.id.currentPasswordInput)
+        val new = view.findViewById<EditText>(R.id.newPasswordInput)
+        val again = view.findViewById<EditText>(R.id.newPasswordAgainInput)
+        val dialog = AlertDialog.Builder(this, R.style.DeleteDialogStyle)
+            .setTitle(R.string.change_password)
+            .setView(view)
+            .setPositiveButton(R.string.change_password, null)
+            .setNegativeButton(R.string.cancel, null)
+            .show()
+        dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+            // Not trimmed: the keys are derived from the password exactly as typed.
+            val currentPassword = current.text.toString()
+            val newPassword = new.text.toString()
+            when {
+                currentPassword.isEmpty() -> current.error = getString(R.string.password_required)
+                newPassword.length < LoginActivity.MIN_NEW_PASSWORD_LENGTH -> new.error = getString(R.string.password_rule)
+                newPassword != again.text.toString() -> again.error = getString(R.string.passwords_differ)
+                else -> {
+                    dialog.dismiss()
+                    keySettings.changePassword(currentPassword, newPassword)
+                }
+            }
+        }
+    }
+
+    /**
+     * The settings' progress, result and recovery key, one dialog at a time, shown again
+     * from the view model's state after a rotation. The recovery key cannot be dismissed
+     * but by "I saved it", as at sign-up.
+     */
+    private fun renderKeySettings(state: KeySettingsViewModel.State) {
+        dismissKeySettingsDialog()
+        val builder = AlertDialog.Builder(this, R.style.DeleteDialogStyle)
+        keySettingsDialog = when (state) {
+            KeySettingsViewModel.State.Idle -> null
+            is KeySettingsViewModel.State.Working -> builder
+                .setMessage(state.message)
+                .setCancelable(false)
+                .show()
+            is KeySettingsViewModel.State.Done -> builder
+                .setMessage(state.message)
+                .setPositiveButton(R.string.ok, null)
+                .setOnDismissListener { keySettings.acknowledge() }
+                .show()
+            is KeySettingsViewModel.State.Failed -> builder
+                .setMessage(state.message)
+                .setPositiveButton(R.string.ok, null)
+                .setOnDismissListener { keySettings.acknowledge() }
+                .show()
+            is KeySettingsViewModel.State.RecoveryKey -> {
+                val view = LayoutInflater.from(builder.context).inflate(R.layout.view_recovery_key, null)
+                val padding = (24 * resources.displayMetrics.density).toInt()
+                val scroll = ScrollView(builder.context).apply {
+                    setPadding(padding, padding, padding, padding)
+                    addView(view)
+                }
+                val dialog = builder.setView(scroll).setCancelable(false).show()
+                RecoveryKeyView.bind(view, state.recoveryKey) {
+                    dialog.dismiss()
+                    keySettings.acknowledge()
+                }
+                dialog
+            }
+        }
+    }
+
+    // Without its dismiss listener, which would take the dismissal for the user having seen
+    // the result: this runs when the state moves on, and when a rotation takes the window.
+    private fun dismissKeySettingsDialog() {
+        keySettingsDialog?.setOnDismissListener(null)
+        keySettingsDialog?.dismiss()
+        keySettingsDialog = null
     }
 
     /** An ISO 8601 instant from the server as a local date. Without java.time, which minSdk 24 lacks. */
