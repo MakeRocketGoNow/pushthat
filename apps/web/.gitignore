@@ -27,3 +27,6 @@ chrome-extension
 
 # Firebase
 .firebase
+
+# Local environment (see .env.example)
+.env
