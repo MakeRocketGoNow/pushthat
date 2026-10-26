@@ -146,35 +146,46 @@ class AuthViewModel: ObservableObject {
                 throw first
             }
         }
-        let uid = result.user.uid
-        let stored = try await AccountKeyService.read(uid: uid)
-
-        switch AccountKeyService.resolve(uid: uid, masterKey: keys.masterKey, stored: stored) {
-        case let .opened(accountKey, keyVersion):
-            var recoveryKey: String?
-            if legacy {
-                // An earlier migration wrote the keys and stopped before updatePassword, so
-                // the user may never have seen the recovery key: make one they will see.
-                recoveryKey = try await AccountKeyService.replaceRecoveryKey(uid: uid, email: email, accountKey: accountKey, keyVersion: keyVersion)
-                try await result.user.updatePassword(to: keys.firebasePassword)
-            }
-            try finish(uid: uid, accountKey: accountKey, keyVersion: keyVersion, recoveryKey: recoveryKey)
-
-        case let .needsRecovery(stored):
-            pendingRecovery = PendingRecovery(uid: uid, email: email, keys: keys, legacy: legacy, stored: stored)
-            isAuthenticated = true
-            keyGate = .recovery
-
-        case .needsNewKeys:
-            let new = try await AccountKeyService.startNewKeys(uid: uid, email: email, masterKey: keys.masterKey)
-            if legacy {
-                // After the keys are written, never before: a crash between leaves an
-                // account that still signs in with the raw password and finds its wrap.
-                try await result.user.updatePassword(to: keys.firebasePassword)
-            }
-            try finish(uid: uid, accountKey: new.accountKey, keyVersion: new.keyVersion, recoveryKey: new.recoveryKey)
-        }
+        try await resolveKeys(user: result.user, email: email, keys: keys, legacy: legacy)
         await updateFCMToken()
+    }
+
+    /// Reads the stored keys and acts on what they say. When a write finds the keys are no
+    /// longer the ones it decided from (another device migrated the same account a moment
+    /// before, say), it reads once more: the password most likely opens what that device
+    /// wrote. Once, so that two devices that keep racing end on an error, not a loop.
+    private func resolveKeys(user: User, email: String, keys: E2eeCrypto.DerivedKeys, legacy: Bool, retried: Bool = false) async throws {
+        let uid = user.uid
+        let stored = try await AccountKeyService.read(uid: uid)
+        do {
+            switch AccountKeyService.resolve(uid: uid, masterKey: keys.masterKey, stored: stored) {
+            case let .opened(accountKey, keyVersion):
+                var recoveryKey: String?
+                if legacy {
+                    // An earlier migration wrote the keys and stopped before updatePassword, so
+                    // the user may never have seen the recovery key: make one they will see.
+                    recoveryKey = try await AccountKeyService.replaceRecoveryKey(uid: uid, email: email, accountKey: accountKey, keyVersion: keyVersion)
+                    try await user.updatePassword(to: keys.firebasePassword)
+                }
+                try finish(uid: uid, accountKey: accountKey, keyVersion: keyVersion, recoveryKey: recoveryKey)
+
+            case let .needsRecovery(stored):
+                pendingRecovery = PendingRecovery(uid: uid, email: email, keys: keys, legacy: legacy, stored: stored)
+                isAuthenticated = true
+                keyGate = .recovery
+
+            case .needsNewKeys:
+                let new = try await AccountKeyService.startNewKeys(uid: uid, email: email, masterKey: keys.masterKey, decidedFrom: stored)
+                if legacy {
+                    // After the keys are written, never before: a crash between leaves an
+                    // account that still signs in with the raw password and finds its wrap.
+                    try await user.updatePassword(to: keys.firebasePassword)
+                }
+                try finish(uid: uid, accountKey: new.accountKey, keyVersion: new.keyVersion, recoveryKey: new.recoveryKey)
+            }
+        } catch AccountKeyService.KeyError.keysChanged where !retried {
+            try await resolveKeys(user: user, email: email, keys: keys, legacy: legacy, retried: true)
+        }
     }
 
     // MARK: - Register
@@ -194,8 +205,8 @@ class AuthViewModel: ObservableObject {
                 let result = try await self.auth.createUser(withEmail: email, password: keys.firebasePassword)
                 let uid = result.user.uid
                 // Creates the user document with the keys, or adds them to one a token
-                // write made first.
-                let new = try await AccountKeyService.startNewKeys(uid: uid, email: email, masterKey: keys.masterKey)
+                // write made first. A new account has no keys to have decided from.
+                let new = try await AccountKeyService.startNewKeys(uid: uid, email: email, masterKey: keys.masterKey, decidedFrom: nil)
                 try self.finish(uid: uid, accountKey: new.accountKey, keyVersion: new.keyVersion, recoveryKey: new.recoveryKey)
                 await self.updateFCMToken()
             }
@@ -211,10 +222,12 @@ class AuthViewModel: ObservableObject {
         isLoading = true
         Task {
             await runKeyFlow {
-                let opened = try await AccountKeyService.rewrapWithRecoveryKey(
-                    uid: pending.uid, email: pending.email, masterKey: pending.keys.masterKey,
-                    stored: pending.stored, recoveryText: recoveryKey
-                )
+                let opened = try await self.fromRecoveryPrompt {
+                    try await AccountKeyService.rewrapWithRecoveryKey(
+                        uid: pending.uid, email: pending.email, masterKey: pending.keys.masterKey,
+                        stored: pending.stored, recoveryText: recoveryKey
+                    )
+                }
                 try await self.updatePasswordIfLegacy(pending)
                 try self.finish(uid: pending.uid, accountKey: opened.accountKey, keyVersion: opened.keyVersion, recoveryKey: nil)
             }
@@ -229,11 +242,29 @@ class AuthViewModel: ObservableObject {
         isLoading = true
         Task {
             await runKeyFlow {
-                let new = try await AccountKeyService.startNewKeys(uid: pending.uid, email: pending.email, masterKey: pending.keys.masterKey)
+                // Decided from the keys this screen was shown for: replacing any others would
+                // take a key from a device that is using it.
+                let new = try await self.fromRecoveryPrompt {
+                    try await AccountKeyService.startNewKeys(uid: pending.uid, email: pending.email, masterKey: pending.keys.masterKey, decidedFrom: pending.stored)
+                }
                 try await self.updatePasswordIfLegacy(pending)
                 try self.finish(uid: pending.uid, accountKey: new.accountKey, keyVersion: new.keyVersion, recoveryKey: new.recoveryKey)
             }
             isLoading = false
+        }
+    }
+
+    /// A write from the recovery prompt, which acts on the keys read at sign-in. If another
+    /// device has changed them since, retrying here would fail the same way every time, and
+    /// the new keys may well open with the password: back to the password prompt, which
+    /// reads them again, with the keys-changed message.
+    private func fromRecoveryPrompt<T>(_ write: () async throws -> T) async throws -> T {
+        do {
+            return try await write()
+        } catch AccountKeyService.KeyError.keysChanged {
+            pendingRecovery = nil
+            keyGate = .unlock
+            throw AccountKeyService.KeyError.keysChanged
         }
     }
 

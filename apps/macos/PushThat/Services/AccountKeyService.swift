@@ -26,6 +26,12 @@ struct StoredE2ee {
         wraps.filter { $0.value.by == by }
     }
 
+    /// Whether two reads hold the same keys: the same version and the same wraps. Nil (no
+    /// keys) matches only nil.
+    static func same(_ a: StoredE2ee?, _ b: StoredE2ee?) -> Bool {
+        a?.keyVersion == b?.keyVersion && a.map { Set($0.wraps.keys) } == b.map { Set($0.wraps.keys) }
+    }
+
     /// The whole map with these wraps, keeping every other stored field.
     func with(keyVersion: Int? = nil, wraps: [String: E2eeCrypto.Wrap]) -> [String: Any] {
         AccountKeyService.e2eeMap(base: raw, keyVersion: keyVersion ?? self.keyVersion, wraps: wraps)
@@ -72,8 +78,13 @@ enum AccountKeyService {
     }
 
     /// The stored keys, or nil for an account with none (or none this client can read).
+    ///
+    /// From the server, never the cache: a sign-in decides from this whether the account
+    /// needs new keys, and a cached copy from before another device wrote them (the push
+    /// list's own reads fill the cache) would have it replace keys that device is using.
+    /// Sign-in needs the network anyway.
     static func read(uid: String) async throws -> StoredE2ee? {
-        let snapshot = try await userRef(uid).getDocument()
+        let snapshot = try await userRef(uid).getDocument(source: .server)
         return StoredE2ee(snapshot.data()?["e2ee"])
     }
 
@@ -166,10 +177,15 @@ enum AccountKeyService {
     /// A new account key and recovery key, with both wraps written together before the key
     /// is shown: a recovery wrap the user never saved costs nothing, and writing it later
     /// would leave an app closed on the key screen with no recovery wrap at all. The
-    /// version is one past the stored one, read again as it is written, so a reset
-    /// elsewhere in the meantime is passed rather than repeated; an account with no keys
-    /// starts at 1.
-    static func startNewKeys(uid: String, email: String, masterKey: Data) async throws -> NewKeys {
+    /// version is one past the stored one; an account with no keys starts at 1.
+    ///
+    /// `decidedFrom` is the read the caller chose new keys from (nil for a registration, or
+    /// an account that had none). If the transaction finds other keys, it throws
+    /// `keysChanged` rather than writing over them: two devices migrating the same legacy
+    /// account a moment apart would otherwise each write a key, and the first would keep
+    /// a key and a recovery key that no longer open anything. Going one version past
+    /// whatever is there, as this did before, does not prevent that; it only hides it.
+    static func startNewKeys(uid: String, email: String, masterKey: Data, decidedFrom: StoredE2ee?) async throws -> NewKeys {
         let accountKey = E2eeCrypto.newAccountKey()
         let recoveryBytes = E2eeCrypto.newRecoveryKey()
         let wraps = [
@@ -179,7 +195,8 @@ enum AccountKeyService {
             ),
         ]
         let written = try await write(uid: uid, email: email) { stored in
-            e2eeMap(base: stored?.raw ?? [:], keyVersion: (stored?.keyVersion ?? 0) + 1, wraps: wraps)
+            guard StoredE2ee.same(stored, decidedFrom) else { throw KeyError.keysChanged }
+            return e2eeMap(base: stored?.raw ?? [:], keyVersion: (stored?.keyVersion ?? 0) + 1, wraps: wraps)
         }
         return NewKeys(accountKey: accountKey, keyVersion: written.keyVersion, recoveryKey: try E2eeCrypto.encodeRecoveryKey(recoveryBytes))
     }
