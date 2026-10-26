@@ -34,7 +34,7 @@ struct PushRowView: View {
                     .foregroundColor(.primary)
 
                 HStack(spacing: 8) {
-                    if item.type == .file {
+                    if item.type == .file && !item.isLocked {
                         Label(item.ext?.uppercased() ?? "FILE", systemImage: "doc")
                             .font(.caption2)
                             .padding(.horizontal, 6)
@@ -67,15 +67,21 @@ struct PushRowView: View {
             }
         }
         .contextMenu {
-            Button(action: onTap) {
-                Label("Open", systemImage: "safari")
+            if !item.isLocked {
+                Button(action: onTap) {
+                    Label("Open", systemImage: "safari")
+                }
             }
 
-            Button(action: {
-                onCopy()
-                showCopiedToast = true
-            }) {
-                Label("Copy URL", systemImage: "doc.on.doc")
+            // An encrypted file push has no URL; its name is what there is to copy. A
+            // locked push has nothing.
+            if item.copyText != nil {
+                Button(action: {
+                    onCopy()
+                    showCopiedToast = true
+                }) {
+                    Label(item.url.isEmpty ? "Copy name" : "Copy URL", systemImage: "doc.on.doc")
+                }
             }
 
             if !isSelectionMode {
@@ -109,10 +115,7 @@ struct PushRowView: View {
     // MARK: - Computed Properties
 
     private var displayTitle: String {
-        if item.title.isEmpty {
-            return item.url
-        }
-        return item.title
+        item.displayTitle
     }
 
     private var relativeTime: String {
@@ -121,6 +124,9 @@ struct PushRowView: View {
     }
 
     private var faviconURL: URL? {
+        // A locked push shows the placeholder: there is no URL or name to show one for.
+        if item.isLocked { return nil }
+
         // Check for file extension icon first
         if let ext = item.ext, FileTypeIcons.supported.contains(ext.lowercased()) {
             return URL(string: "https://pushthat.link/files/\(ext.lowercased()).png")
@@ -141,9 +147,7 @@ struct PushRowView: View {
                 userId: "user1",
                 createdAt: Date(),
                 title: "GitHub: Let's build from here",
-                type: .url,
-                deviceName: "Mac",
-                searchTokens: []
+                type: .url
             ),
             isSelectionMode: false,
             isSelected: false,
@@ -161,8 +165,6 @@ struct PushRowView: View {
                 createdAt: Date().addingTimeInterval(-3600),
                 title: "Important Document.pdf",
                 type: .file,
-                deviceName: "Mac",
-                searchTokens: [],
                 ext: "pdf"
             ),
             isSelectionMode: true,

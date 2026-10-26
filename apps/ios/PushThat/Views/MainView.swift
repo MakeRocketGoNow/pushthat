@@ -1,6 +1,7 @@
 import SwiftUI
 import PhotosUI
 import UniformTypeIdentifiers
+import QuickLook
 
 struct MainView: View {
     @EnvironmentObject var authViewModel: AuthViewModel
@@ -54,6 +55,12 @@ struct MainView: View {
             } message: {
                 Text(viewModel.errorMessage)
             }
+            .alert(PushItem.lockedTitle, isPresented: $viewModel.showLockedNotice) {
+                Button("OK") {}
+            } message: {
+                Text(PushItem.lockedMessage)
+            }
+            .quickLookPreview($viewModel.previewURL)
             .confirmationDialog(
                 "Delete \(viewModel.selectedItems.count) item(s)?",
                 isPresented: $viewModel.showDeleteConfirmation,
@@ -92,6 +99,11 @@ struct MainView: View {
             .overlay {
                 if viewModel.isUploading {
                     uploadingOverlay
+                } else if viewModel.isOpeningFile {
+                    ProgressView()
+                        .controlSize(.large)
+                        .padding(24)
+                        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
                 }
             }
         }
@@ -201,7 +213,7 @@ struct MainView: View {
                     isSelectionMode: viewModel.isSelectionMode,
                     isSelected: viewModel.selectedItems.contains(item.id ?? ""),
                     onToggleSelection: { viewModel.toggleSelection(item) },
-                    onTap: { viewModel.openURL(item.url) },
+                    onTap: { viewModel.open(item) },
                     onLongPress: {
                         if viewModel.isSelectionMode {
                             viewModel.toggleSelection(item)
@@ -210,7 +222,7 @@ struct MainView: View {
                             viewModel.toggleSelection(item)
                         }
                     },
-                    onCopy: { viewModel.copyToClipboard(item.url) }
+                    onCopy: { viewModel.copyToClipboard(item) }
                 )
                 .onAppear {
                     // Infinite scroll trigger

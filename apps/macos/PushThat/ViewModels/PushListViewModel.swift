@@ -1,6 +1,7 @@
 import Foundation
 import FirebaseAuth
 import FirebaseFirestore
+import FirebaseStorage
 import Combine
 import SwiftUI
 import AppKit
@@ -21,6 +22,11 @@ class PushListViewModel: ObservableObject {
     @Published var showFilePicker = false
     @Published var selectedPhoto: PhotosPickerItem?
     @Published var isUploading = false
+
+    /// Set while an encrypted file is fetched and decrypted, which can take a while.
+    @Published var isOpeningFile = false
+    /// The tap on a locked push, which says why it cannot open.
+    @Published var showLockedNotice = false
 
     private let db = Firestore.firestore()
     private let pageSize = 10
@@ -45,15 +51,19 @@ class PushListViewModel: ObservableObject {
 
         isLoading = true
 
+        let keys = PushKeys.load(uid: userId)
+
         var query = db.collection("pushes")
             .whereField("userId", isEqualTo: userId)
             .order(by: "createdAt", descending: true)
             .limit(to: pageSize)
 
-        if !searchQuery.isEmpty {
+        // The blind token of the term's first word (docs/e2ee.md, "Search"); a term with no
+        // word in it is no search, and the list is unfiltered.
+        if let token = keys?.searchToken(for: searchQuery) {
             query = db.collection("pushes")
                 .whereField("userId", isEqualTo: userId)
-                .whereField("searchTokens", arrayContains: searchQuery.lowercased())
+                .whereField("searchTokens", arrayContains: token)
                 .order(by: "createdAt", descending: true)
                 .limit(to: pageSize)
         }
@@ -64,9 +74,7 @@ class PushListViewModel: ObservableObject {
 
         do {
             let snapshot = try await query.getDocuments()
-            let newItems = snapshot.documents.compactMap { doc -> PushItem? in
-                try? doc.data(as: PushItem.self)
-            }
+            let newItems = snapshot.documents.compactMap { PushItem(document: $0, keys: keys) }
 
             if isInitial {
                 pushItems = newItems
@@ -185,15 +193,53 @@ class PushListViewModel: ObservableObject {
 
     // MARK: - Actions
 
+    /// A tap on a row: a URL push opens its URL, a file push its file, a locked push says
+    /// why it cannot.
+    func open(_ item: PushItem) {
+        switch item.source {
+        case .locked:
+            showLockedNotice = true
+        case let .encrypted(file?, objectPath):
+            guard let objectPath else {
+                showError(PushFileOpener.OpenError.notDownloaded.localizedDescription)
+                return
+            }
+            openFile(file, objectPath: objectPath)
+        case .encrypted, .plaintext:
+            // A URL push, or a plaintext file push, which still has its download URL.
+            openURL(item.url)
+        }
+    }
+
     func openURL(_ urlString: String) {
         guard let url = URL(string: urlString) else { return }
         NSWorkspace.shared.open(url)
     }
 
-    func copyToClipboard(_ urlString: String) {
+    func copyToClipboard(_ item: PushItem) {
+        guard let text = item.copyText else { return }
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
-        pasteboard.setString(urlString, forType: .string)
+        pasteboard.setString(text, forType: .string)
+    }
+
+    private func openFile(_ file: PushFile, objectPath: String) {
+        guard !isOpeningFile else { return }
+        isOpeningFile = true
+        Task {
+            defer { isOpeningFile = false }
+            do {
+                let local = try await PushFileOpener.localFile(file: file, objectPath: objectPath, storage: Storage.storage())
+                NSWorkspace.shared.open(local)
+            } catch {
+                showError(error.localizedDescription)
+            }
+        }
+    }
+
+    private func showError(_ message: String) {
+        errorMessage = message
+        showError = true
     }
 
     // MARK: - Upload
