@@ -59,10 +59,15 @@ A run from any other branch runs the checks and deploys nothing.
 
 There is no key. GitHub gives each run an OIDC token that says which repository and branch
 it is; Google Cloud's Workload Identity Federation trades that token for a short-lived
-token for a deploy service account, and only a token from `main` of this repository is
-accepted. A pull request, a fork or another branch has nothing to trade. That keeps a
-long-lived credential out of GitHub's secrets, where a leaked one would deploy to
-production until someone noticed.
+token for a deploy service account. Only a token from `ci.yml`, run on `main` of this
+repository by a push or by hand, is accepted. A pull request, a fork, another branch or
+any other workflow has nothing to trade. That keeps a long-lived credential out of
+GitHub's secrets, where a leaked one would deploy to production until someone noticed.
+
+Naming the workflow and the event matters even on `main`: a `pull_request_target`
+workflow (the labeler is one) also runs on `main`, for a pull request someone else
+opened. The labeler can't ask for a token today, but the condition shouldn't depend on
+every future workflow remembering not to.
 
 The workflow reads two repository **variables** (not secrets: neither grants anything on
 its own), under Settings → Secrets and variables → Actions → Variables. Both are set:
@@ -82,7 +87,10 @@ repository's `main` branch to act as it. Each step says what it did; one that re
 
 `1434615723` is the repository's numeric id (`gh api repos/MakeRocketGoNow/pushthat --jq .id`):
 the condition checks the id rather than the name, so a repository that later takes the
-name can't inherit the trust.
+name can't inherit the trust. Renaming or moving `ci.yml` breaks the condition, and the
+deploy jobs then fail at sign-in until the provider is updated
+(`gcloud iam workload-identity-pools providers update-oidc pushthat --location global
+--workload-identity-pool github --attribute-condition "..."` with the new path).
 
 ```bash
 PROJECT_ID=push-that
@@ -113,10 +121,14 @@ do
 done
 
 # The functions run as the default compute account; deploying them means acting as it.
-gcloud iam service-accounts add-iam-policy-binding \
-  $PROJECT_NUMBER-compute@developer.gserviceaccount.com --quiet \
-  --member serviceAccount:$SA --role roles/iam.serviceAccountUser > /dev/null \
-  && echo "Granted acting as the functions' account"
+# The CLI also checks for acting as the App Engine default account before any functions
+# deploy, and stops without it (found on the first CI deploy).
+for account in $PROJECT_NUMBER-compute@developer.gserviceaccount.com $PROJECT_ID@appspot.gserviceaccount.com
+do
+  gcloud iam service-accounts add-iam-policy-binding $account --quiet \
+    --member serviceAccount:$SA --role roles/iam.serviceAccountUser > /dev/null \
+    && echo "Granted acting as $account"
+done
 
 gcloud iam workload-identity-pools create github --location global --display-name GitHub
 
@@ -124,7 +136,7 @@ gcloud iam workload-identity-pools providers create-oidc pushthat \
   --location global --workload-identity-pool github \
   --issuer-uri https://token.actions.githubusercontent.com \
   --attribute-mapping 'google.subject=assertion.sub,attribute.repository_id=assertion.repository_id,attribute.ref=assertion.ref' \
-  --attribute-condition "assertion.repository_id == '$REPO_ID' && assertion.ref == 'refs/heads/main'"
+  --attribute-condition "assertion.repository_id == '$REPO_ID' && assertion.ref == 'refs/heads/main' && assertion.workflow_ref.startsWith('MakeRocketGoNow/pushthat/.github/workflows/ci.yml@') && assertion.event_name in ['push', 'workflow_dispatch']"
 
 gcloud iam service-accounts add-iam-policy-binding $SA --quiet \
   --role roles/iam.workloadIdentityUser \
