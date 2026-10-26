@@ -18,6 +18,15 @@ Or from the command line, unsigned:
 xcodebuild -project PushThat.xcodeproj -scheme PushThat -destination 'platform=macOS' CODE_SIGNING_ALLOWED=NO build
 ```
 
+The `PushThatTests` target checks the encryption keys ([e2ee](e2ee.md)) byte for byte
+against `packages/push-test/vectors.json`. It compiles the one file it tests instead of
+loading the app, and the scheme does not build the app for testing, so the vectors are
+checked even while the app itself does not build (see the deployment target below):
+
+```bash
+xcodebuild -project PushThat.xcodeproj -scheme PushThat -destination 'platform=macOS' CODE_SIGNING_ALLOWED=NO test
+```
+
 The project carries no development team. To run it signed, select the project, then the
 `PushThat` and `PushThatShareExtension` targets in turn, Signing & Capabilities, and pick
 the same team for both: the share extension finds the signed-in account through a keychain

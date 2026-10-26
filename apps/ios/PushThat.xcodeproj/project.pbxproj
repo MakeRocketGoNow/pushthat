@@ -45,6 +45,10 @@
 		A100000B226B52E900000013 /* FirebaseFirestore in Frameworks */ = {isa = PBXBuildFile; productRef = A100000B226B52E900000014 /* FirebaseFirestore */; };
 		A100000B226B52E900000015 /* FirebaseStorage in Frameworks */ = {isa = PBXBuildFile; productRef = A100000B226B52E900000016 /* FirebaseStorage */; };
 		F81C67D32EE633C300F99C2F /* UploadService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F81C67D22EE633C300F99C2F /* UploadService.swift */; };
+		A1000020226B52E900000001 /* E2eeCrypto.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000020226B52E900000002 /* E2eeCrypto.swift */; };
+		A1000020226B52E900000003 /* E2eeCrypto.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000020226B52E900000002 /* E2eeCrypto.swift */; };
+		A1000021226B52E900000003 /* E2eeVectorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000021226B52E900000002 /* E2eeVectorTests.swift */; };
+		A1000021226B52E900000005 /* vectors.json in Resources */ = {isa = PBXBuildFile; fileRef = A1000021226B52E900000004 /* vectors.json */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -101,6 +105,10 @@
 		A1000009226B52E900000007 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		A100000F226B52E900000001 /* PushThat.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = PushThat.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		F81C67D22EE633C300F99C2F /* UploadService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UploadService.swift; sourceTree = "<group>"; };
+		A1000020226B52E900000002 /* E2eeCrypto.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = E2eeCrypto.swift; sourceTree = "<group>"; };
+		A1000021226B52E900000001 /* PushThatTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = PushThatTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		A1000021226B52E900000002 /* E2eeVectorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = E2eeVectorTests.swift; sourceTree = "<group>"; };
+		A1000021226B52E900000004 /* vectors.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; name = vectors.json; path = "../../packages/push-test/vectors.json"; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -126,6 +134,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		A1000021226B52E900000008 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -134,6 +149,7 @@
 			children = (
 				A1000011226B52E900000002 /* PushThat */,
 				A1000011226B52E900000003 /* PushThatShareExtension */,
+				A1000021226B52E900000006 /* PushThatTests */,
 				A1000011226B52E900000004 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -168,6 +184,7 @@
 			children = (
 				A100000F226B52E900000001 /* PushThat.app */,
 				A1000009226B52E900000004 /* PushThatShareExtension.appex */,
+				A1000021226B52E900000001 /* PushThatTests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -220,6 +237,7 @@
 				A1000005226B52E900000007 /* FileUploadUtils.swift */,
 				A1000005226B52E900000002 /* SearchTokenGenerator.swift */,
 				A1000005226B52E900000004 /* TitleScraperService.swift */,
+				A1000020226B52E900000002 /* E2eeCrypto.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -250,6 +268,15 @@
 				A1000008226B52E900000003 /* GoogleService-Info.plist */,
 			);
 			path = Resources;
+			sourceTree = "<group>";
+		};
+		A1000021226B52E900000006 /* PushThatTests */ = {
+			isa = PBXGroup;
+			children = (
+				A1000021226B52E900000002 /* E2eeVectorTests.swift */,
+				A1000021226B52E900000004 /* vectors.json */,
+			);
+			path = PushThatTests;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -303,6 +330,23 @@
 			productReference = A1000009226B52E900000004 /* PushThatShareExtension.appex */;
 			productType = "com.apple.product-type.app-extension";
 		};
+		A1000021226B52E90000000A /* PushThatTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A1000021226B52E90000000B /* Build configuration list for PBXNativeTarget "PushThatTests" */;
+			buildPhases = (
+				A1000021226B52E900000007 /* Sources */,
+				A1000021226B52E900000008 /* Frameworks */,
+				A1000021226B52E900000009 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = PushThatTests;
+			productName = PushThatTests;
+			productReference = A1000021226B52E900000001 /* PushThatTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -317,6 +361,9 @@
 						CreatedOnToolsVersion = 15.0;
 					};
 					A100000D226B52E900000002 = {
+						CreatedOnToolsVersion = 15.0;
+					};
+					A1000021226B52E90000000A = {
 						CreatedOnToolsVersion = 15.0;
 					};
 				};
@@ -339,6 +386,7 @@
 			targets = (
 				A100000D226B52E900000001 /* PushThat */,
 				A100000D226B52E900000002 /* PushThatShareExtension */,
+				A1000021226B52E90000000A /* PushThatTests */,
 			);
 		};
 /* End PBXProject section */
@@ -359,6 +407,14 @@
 			files = (
 				A1000008226B52E900000005 /* GoogleService-Info.plist in Resources */,
 				A1000009226B52E900000006 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A1000021226B52E900000009 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A1000021226B52E900000005 /* vectors.json in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -391,6 +447,7 @@
 				A1000007226B52E900000003 /* FileTypeIcons.swift in Sources */,
 				A1000007226B52E900000005 /* RelativeTimeFormatter.swift in Sources */,
 				A1000007226B52E900000007 /* URLValidator.swift in Sources */,
+				A1000020226B52E900000001 /* E2eeCrypto.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -401,6 +458,15 @@
 				A1000009226B52E900000001 /* ShareViewController.swift in Sources */,
 				A1000009226B52E900000008 /* SearchTokenGenerator.swift in Sources */,
 				A1000009226B52E900000009 /* FileUploadUtils.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A1000021226B52E900000007 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A1000021226B52E900000003 /* E2eeVectorTests.swift in Sources */,
+				A1000020226B52E900000003 /* E2eeCrypto.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -648,6 +714,38 @@
 			};
 			name = Release;
 		};
+		A1000021226B52E90000000C /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.makerocketgonow.pushthat.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		A1000021226B52E90000000D /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.makerocketgonow.pushthat.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -674,6 +772,15 @@
 			buildConfigurations = (
 				A1000018226B52E900000001 /* Debug */,
 				A1000018226B52E900000002 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		A1000021226B52E90000000B /* Build configuration list for PBXNativeTarget "PushThatTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A1000021226B52E90000000C /* Debug */,
+				A1000021226B52E90000000D /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
