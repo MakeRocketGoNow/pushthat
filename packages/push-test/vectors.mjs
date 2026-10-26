@@ -47,7 +47,7 @@ export const inputs = {
   // followed by U+0301 (combining acute), which NFC folds into U+00E9; a client that
   // skips the normalization derives a different key.
   email: " Example.User@Example.com ",
-  password: "Café latte, 2026!",
+  password: "Cafe\u0301 latte, 2026!",
   uid: "vector-uid-0001",
   accountKey: run(0x10, 32),
   passwordWrapNonce: run(0xa0, 12),
@@ -161,7 +161,7 @@ export const generate = async () => {
 // Two spaces, a trailing newline, and nothing outside ASCII: the one non-ASCII input is
 // written as an escape so the decomposed "e" + U+0301 is visible in the file.
 export const render = (vectors) =>
-  JSON.stringify(vectors, null, 2).replace(/[\u0080-￿]/g, (c) => "\\u" + c.charCodeAt(0).toString(16).padStart(4, "0")) + "\n";
+  JSON.stringify(vectors, null, 2).replace(/[\u0080-\uffff]/g, (c) => "\\u" + c.charCodeAt(0).toString(16).padStart(4, "0")) + "\n";
 
 const main = async () => {
   const text = render(await generate());

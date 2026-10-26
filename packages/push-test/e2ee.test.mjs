@@ -55,10 +55,10 @@ test("the email is NFC-normalized, trimmed of ASCII whitespace and ASCII-lowerca
   assert.equal(normalizeEmail(" Example.User@Example.com "), "example.user@example.com");
   assert.equal(normalizeEmail("\tA@B.C\r\n"), "a@b.c");
   // Only A-Z change: a non-ASCII capital stays, and a decomposed letter is composed.
-  assert.equal(normalizeEmail("Émile@example.com"), "Émile@example.com");
-  assert.equal(normalizeEmail("é@example.com"), "é@example.com");
+  assert.equal(normalizeEmail("\u00c9mile@example.com"), "\u00c9mile@example.com");
+  assert.equal(normalizeEmail("e\u0301@example.com"), "\u00e9@example.com");
   // Non-ASCII whitespace is not trimmed: it is part of the address as typed.
-  assert.equal(normalizeEmail(" a@b.c"), " a@b.c");
+  assert.equal(normalizeEmail("\u00a0a@b.c"), "\u00a0a@b.c");
 });
 
 test("the salt is SHA-256 over the labelled normalized email", async () => {
@@ -68,11 +68,11 @@ test("the salt is SHA-256 over the labelled normalized email", async () => {
 });
 
 test("the password is NFC-normalized and not trimmed", async () => {
-  const composed = await deriveKeys(inputs.email, "Café latte, 2026!");
-  const decomposed = await deriveKeys(inputs.email, "Café latte, 2026!");
+  const composed = await deriveKeys(inputs.email, "Caf\u00e9 latte, 2026!");
+  const decomposed = await deriveKeys(inputs.email, "Cafe\u0301 latte, 2026!");
   assert.equal(hex(composed.stretched), hex(decomposed.stretched));
   assert.equal(hex(composed.stretched), vectors.keys.stretched);
-  const padded = await deriveKeys(inputs.email, " Café latte, 2026!");
+  const padded = await deriveKeys(inputs.email, " Caf\u00e9 latte, 2026!");
   assert.notEqual(hex(padded.stretched), hex(composed.stretched));
 });
 
