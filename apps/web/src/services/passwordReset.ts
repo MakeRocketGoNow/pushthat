@@ -20,9 +20,8 @@ import {
   limit,
   orderBy,
   query,
-  setDoc,
+  runTransaction,
   startAfter,
-  updateDoc,
   where,
   writeBatch,
 } from 'firebase/firestore';
@@ -87,8 +86,6 @@ export interface ResetSession {
   uid: string;
   email: string;
   masterKey: Uint8Array;
-  /** Whether `users/{uid}` exists, since a write to a missing one is a create. */
-  userExists: boolean;
   /** The stored keys, or undefined for an account that has none yet. */
   e2ee: E2ee | undefined;
 }
@@ -134,7 +131,6 @@ export async function setNewPassword(oobCode: string, email: string, password: s
       uid: user.uid,
       email,
       masterKey: keys.masterKey,
-      userExists: snapshot.exists(),
       e2ee: isE2ee(stored) ? stored : undefined,
     };
   });
@@ -172,8 +168,17 @@ export async function rewrapWithRecoveryKey(session: ResetSession, recoveryText:
   if (!accountKey) throw new WrongRecoveryKeyError('the recovery key opens no wrap');
 
   const passwordWrap = await wrapAccountKey(session.masterKey, accountKey, session.uid, 'password');
-  const wraps: Record<string, Wrap> = { [newWrapId()]: passwordWrap, ...Object.fromEntries(recoveryWraps) };
-  await writeKeys(session, { ...e2ee, wraps });
+  await writeKeys(session, (stored) => {
+    // The account key opened above is the one at the version read when the password was
+    // set; if a reset elsewhere has replaced it since, its wrap would sit under the new
+    // version and open the wrong key, so this stops instead.
+    if (!stored || stored.keyVersion !== e2ee.keyVersion) {
+      throw new Error('the account key changed while the page was open');
+    }
+    const recoveryWraps = Object.entries(stored.wraps).filter(([, wrap]) => wrap.by === 'recovery');
+    const wraps: Record<string, Wrap> = { [newWrapId()]: passwordWrap, ...Object.fromEntries(recoveryWraps) };
+    return { ...stored, wraps };
+  });
 }
 
 /**
@@ -186,37 +191,45 @@ export async function rewrapWithRecoveryKey(session: ResetSession, recoveryText:
 export async function startNewKeys(session: ResetSession): Promise<string> {
   const accountKey = newAccountKey();
   const recoveryBytes = newRecoveryKey();
-  const keyVersion = session.e2ee ? session.e2ee.keyVersion + 1 : 1;
-  const e2ee: E2ee = {
-    ...session.e2ee,
+  const wraps = {
+    [newWrapId()]: await wrapAccountKey(session.masterKey, accountKey, session.uid, 'password'),
+    [newWrapId()]: await wrapAccountKey(await recoveryWrappingKey(recoveryBytes), accountKey, session.uid, 'recovery'),
+  };
+  // One past the stored version, read again as it is written, so a reset elsewhere in
+  // the meantime is passed rather than repeated.
+  await writeKeys(session, (stored) => ({
+    ...stored,
     v: 1,
     kdf: KDF,
-    keyVersion,
-    wraps: {
-      [newWrapId()]: await wrapAccountKey(session.masterKey, accountKey, session.uid, 'password'),
-      [newWrapId()]: await wrapAccountKey(
-        await recoveryWrappingKey(recoveryBytes),
-        accountKey,
-        session.uid,
-        'recovery'
-      ),
-    },
-  };
-  await writeKeys(session, e2ee);
+    keyVersion: (stored?.keyVersion ?? 0) + 1,
+    wraps,
+  }));
   return encodeRecoveryKey(recoveryBytes);
 }
 
-async function writeKeys(session: ResetSession, e2ee: E2ee): Promise<void> {
-  const ref = doc(reset().db, 'users', session.uid);
-  if (session.userExists) {
-    // A whole new map, not a merge, so the old password's wraps go.
-    await updateDoc(ref, { e2ee });
-  } else {
-    // As the web sign-up makes the document, with the keys.
-    await setDoc(ref, { email: session.email, createdAt: new Date(), e2ee });
-  }
-  session.userExists = true;
-  session.e2ee = e2ee;
+/**
+ * Writes the keys `build` makes from the stored ones, read again in the same transaction.
+ * The session's copy was read when the password was set, and the user may take minutes
+ * to find a recovery key; a whole map written from that copy would undo whatever changed
+ * `e2ee` meanwhile (`migratedAt` set, a wrap written by another device), which the rules'
+ * "keyVersion only goes up" cannot see at an equal version. The new map replaces the old
+ * one rather than merging into it, so the old password's wraps go.
+ */
+async function writeKeys(session: ResetSession, build: (stored: E2ee | undefined) => E2ee): Promise<void> {
+  const { db } = reset();
+  const ref = doc(db, 'users', session.uid);
+  session.e2ee = await runTransaction(db, async (transaction) => {
+    const snapshot = await transaction.get(ref);
+    const stored = snapshot.data()?.e2ee;
+    const e2ee = build(isE2ee(stored) ? stored : undefined);
+    if (snapshot.exists()) {
+      transaction.update(ref, { e2ee });
+    } else {
+      // As the web sign-up makes the document, with the keys.
+      transaction.set(ref, { email: session.email, createdAt: new Date(), e2ee });
+    }
+    return e2ee;
+  });
 }
 
 const DELETE_PAGE = 300;
