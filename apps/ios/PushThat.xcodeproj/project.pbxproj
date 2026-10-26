@@ -49,6 +49,7 @@
 		A1000020226B52E900000003 /* E2eeCrypto.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000020226B52E900000002 /* E2eeCrypto.swift */; };
 		A1000021226B52E900000003 /* E2eeVectorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000021226B52E900000002 /* E2eeVectorTests.swift */; };
 		A1000021226B52E900000005 /* vectors.json in Resources */ = {isa = PBXBuildFile; fileRef = A1000021226B52E900000004 /* vectors.json */; };
+		A1000020226B52E900000004 /* AccountKeyStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000020226B52E900000005 /* AccountKeyStore.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -109,6 +110,7 @@
 		A1000021226B52E900000001 /* PushThatTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = PushThatTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		A1000021226B52E900000002 /* E2eeVectorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = E2eeVectorTests.swift; sourceTree = "<group>"; };
 		A1000021226B52E900000004 /* vectors.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; name = vectors.json; path = "../../packages/push-test/vectors.json"; sourceTree = SOURCE_ROOT; };
+		A1000020226B52E900000005 /* AccountKeyStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountKeyStore.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -238,6 +240,7 @@
 				A1000005226B52E900000002 /* SearchTokenGenerator.swift */,
 				A1000005226B52E900000004 /* TitleScraperService.swift */,
 				A1000020226B52E900000002 /* E2eeCrypto.swift */,
+				A1000020226B52E900000005 /* AccountKeyStore.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -448,6 +451,7 @@
 				A1000007226B52E900000005 /* RelativeTimeFormatter.swift in Sources */,
 				A1000007226B52E900000007 /* URLValidator.swift in Sources */,
 				A1000020226B52E900000001 /* E2eeCrypto.swift in Sources */,
+				A1000020226B52E900000004 /* AccountKeyStore.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
