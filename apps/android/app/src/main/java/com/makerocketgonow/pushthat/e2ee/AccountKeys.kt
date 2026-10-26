@@ -137,24 +137,26 @@ class AccountKeys(
         val stored = document.read(uid)
         try {
             val opened = stored?.let { E2ee.openAny(masterKey, it.wraps, uid, E2ee.BY_PASSWORD) }
-            return when {
-                stored != null && opened != null -> {
-                    val (openedId, accountKey) = opened
-                    // A legacy sign-in that finds its wrap is a migration that stopped after
-                    // writing the keys and before the password change, so the user may never
-                    // have seen the recovery key: make a new one, then finish the change.
-                    val recoveryKey = if (legacy) {
-                        replaceRecoveryWraps(uid, email, accountKey, stored, keepPassword = openedId)
-                    } else {
-                        null
-                    }
-                    if (legacy) updatePassword(firebasePassword)
-                    keep(uid, accountKey, stored.keyVersion, recoveryKey)
+            // decide() returns the first three only with stored keys, and the opening two
+            // only with a wrap opened, hence the checks.
+            return when (StoredKeys.decide(stored, opened != null, legacy)) {
+                StoredKeys.Decision.OPEN -> {
+                    val (_, accountKey) = checkNotNull(opened)
+                    keep(uid, accountKey, checkNotNull(stored).keyVersion)
+                    Outcome.Ready(null)
+                }
+                StoredKeys.Decision.OPEN_AND_REPLACE_RECOVERY -> {
+                    val (openedId, accountKey) = checkNotNull(opened)
+                    val keys = checkNotNull(stored)
+                    val recoveryKey = replaceRecoveryWraps(uid, email, accountKey, keys, keepPassword = openedId)
+                    updatePassword(firebasePassword)
+                    keep(uid, accountKey, keys.keyVersion, recoveryKey)
                     Outcome.Ready(recoveryKey)
                 }
-                stored != null && stored.hasRecoveryWrap() ->
-                    Outcome.NeedsRecovery(Pending(uid, email, masterKey, firebasePassword, legacy, stored))
-                else -> startNewKeys(uid, email, masterKey, firebasePassword, legacy, decidedFrom = stored)
+                StoredKeys.Decision.ASK_FOR_RECOVERY ->
+                    Outcome.NeedsRecovery(Pending(uid, email, masterKey, firebasePassword, legacy, checkNotNull(stored)))
+                StoredKeys.Decision.START_NEW_KEYS ->
+                    startNewKeys(uid, email, masterKey, firebasePassword, legacy, decidedFrom = stored)
             }
         } catch (e: KeysChangedException) {
             if (retried) throw e
@@ -185,13 +187,10 @@ class AccountKeys(
         val passwordWrap = E2ee.wrapAccountKey(pending.masterKey, accountKey, pending.uid, E2ee.BY_PASSWORD)
         try {
             document.write(pending.uid, pending.email) { stored ->
-                if (stored == null || !sameKeys(stored, pending.stored)) {
+                if (stored == null || !StoredKeys.same(stored, pending.stored)) {
                     throw KeysChangedException("the stored keys changed while the recovery key was asked for")
                 }
-                val recovery = stored.wrapsBy(E2ee.BY_RECOVERY)
-                val kept = (recovery.filterKeys { it == openedId } + recovery).entries
-                    .take(StoredKeys.MAX_WRAPS - 1).associate { it.toPair() }
-                stored.with(mapOf(E2ee.newWrapId() to passwordWrap) + kept)
+                stored.with(mapOf(E2ee.newWrapId() to passwordWrap) + stored.keptForRecovery(openedId))
             }
         } catch (_: KeysChangedException) {
             // Another device changed the keys meanwhile; the password may open them now. If
@@ -259,14 +258,7 @@ class AccountKeys(
                 throw KeysChangedException("the current password opens none of the stored keys")
             }
             oldWrapIds = opened.keys
-            // One wrap the current password opens stays until the Firebase password has
-            // changed; password wraps nothing opens are from a password that is gone. The
-            // recovery wraps stay, as many as fit beside the two password wraps.
-            val keep = opened.entries.first()
-            val recovery = stored.wrapsBy(E2ee.BY_RECOVERY).entries.take(StoredKeys.MAX_WRAPS - 2)
-            stored.with(
-                mapOf(keep.toPair()) + recovery.associate { it.toPair() } + (newWrapId to newWrap)
-            )
+            stored.with(stored.keptForPasswordChange(opened.keys) + (newWrapId to newWrap))
         }
 
         user.updatePassword(next.firebasePassword).await()
@@ -302,8 +294,7 @@ class AccountKeys(
             if (stored == null || stored.keyVersion != device.keyVersion) {
                 throw KeysChangedException("this install's key is not the account's current one")
             }
-            val password = stored.wrapsBy(E2ee.BY_PASSWORD).entries.take(StoredKeys.MAX_WRAPS - 1)
-            stored.with(password.associate { it.toPair() } + (E2ee.newWrapId() to recoveryWrap))
+            stored.with(stored.keptForNewRecoveryKey(null) + (E2ee.newWrapId() to recoveryWrap))
         }
         val recoveryKey = E2ee.encodeRecoveryKey(recoveryBytes)
         // Kept until "I saved it", as at sign-up (AccountKeyStore). A failure here is only
@@ -347,7 +338,7 @@ class AccountKeys(
             Triple(accountKey, recoveryBytes, wraps)
         }
         val written = document.write(uid, email) { stored ->
-            if (!sameKeys(stored, decidedFrom)) throw KeysChangedException("the stored keys changed before new ones were written")
+            if (!StoredKeys.same(stored, decidedFrom)) throw KeysChangedException("the stored keys changed before new ones were written")
             if (stored == null) StoredKeys.fresh(wraps) else stored.with(wraps, stored.keyVersion + 1)
         }
         // Only after the keys are written: a crash between the two leaves an account that
@@ -377,18 +368,10 @@ class AccountKeys(
             if (stored == null || stored.keyVersion != decidedFrom.keyVersion) {
                 throw KeysChangedException("the account key changed before the recovery key was replaced")
             }
-            val password = stored.wrapsBy(E2ee.BY_PASSWORD)
-            val kept = (password.filterKeys { it == keepPassword } + password).entries
-                .take(StoredKeys.MAX_WRAPS - 1).associate { it.toPair() }
-            stored.with(kept + (E2ee.newWrapId() to recoveryWrap))
+            stored.with(stored.keptForNewRecoveryKey(keepPassword) + (E2ee.newWrapId() to recoveryWrap))
         }
         return E2ee.encodeRecoveryKey(recoveryBytes)
     }
-
-    // The same keys as decided from: the same version and the same wraps. Comparing the
-    // wraps too catches a rewrap on another device, which leaves the version as it was.
-    private fun sameKeys(stored: StoredKeys?, decidedFrom: StoredKeys?): Boolean =
-        stored?.keyVersion == decidedFrom?.keyVersion && stored?.wraps == decidedFrom?.wraps
 
     /** Allowed without reauthenticating straight after a sign-in, which is the only place it is called. */
     private suspend fun updatePassword(firebasePassword: String) {
