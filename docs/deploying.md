@@ -65,29 +65,38 @@ long-lived credential out of GitHub's secrets, where a leaked one would deploy t
 production until someone noticed.
 
 The workflow reads two repository **variables** (not secrets: neither grants anything on
-its own), under Settings → Secrets and variables → Actions → Variables:
+its own), under Settings → Secrets and variables → Actions → Variables. Both are set:
 
-| Variable                         | Value                                                                                 |
-| -------------------------------- | ------------------------------------------------------------------------------------- |
-| `GCP_WORKLOAD_IDENTITY_PROVIDER` | `projects/<project number>/locations/global/workloadIdentityPools/github/providers/pushthat` |
-| `GCP_DEPLOY_SERVICE_ACCOUNT`     | `github-deploy@push-that.iam.gserviceaccount.com`                                      |
+| Variable                         | Value                                                                                    |
+| -------------------------------- | ---------------------------------------------------------------------------------------- |
+| `GCP_WORKLOAD_IDENTITY_PROVIDER` | `projects/644804248017/locations/global/workloadIdentityPools/github/providers/pushthat` |
+| `GCP_DEPLOY_SERVICE_ACCOUNT`     | `github-deploy@push-that.iam.gserviceaccount.com`                                        |
 
 ### One-time setup
 
-Run these in Cloud Shell (or anywhere `gcloud` is signed in as a project owner). They
-create the service account, give it what a deploy needs, and trust this repository's
-`main` branch to act as it. `1434615723` is the repository's numeric id
-(`gh api repos/MakeRocketGoNow/pushthat --jq .id`): the condition checks the id rather than
-the name, so a repository that later takes the name can't inherit the trust.
+Open [Cloud Shell on `push-that`](https://console.cloud.google.com/home/dashboard?project=push-that&cloudshell=true)
+as a project owner and paste the block below. It turns on the two APIs the token exchange
+uses, creates the deploy service account, gives it what a deploy needs, and trusts this
+repository's `main` branch to act as it. Each step says what it did; one that reports
+"already exists" on a second run is fine.
+
+`1434615723` is the repository's numeric id (`gh api repos/MakeRocketGoNow/pushthat --jq .id`):
+the condition checks the id rather than the name, so a repository that later takes the
+name can't inherit the trust.
 
 ```bash
 PROJECT_ID=push-that
-PROJECT_NUMBER=$(gcloud projects describe $PROJECT_ID --format='value(projectNumber)')
+PROJECT_NUMBER=644804248017
 REPO_ID=1434615723
 SA=github-deploy@$PROJECT_ID.iam.gserviceaccount.com
+gcloud config set project $PROJECT_ID
 
-gcloud iam service-accounts create github-deploy --project $PROJECT_ID \
-  --display-name "GitHub Actions deploy"
+# The token exchange: STS trades GitHub's token, IAM Credentials mints the account's token.
+gcloud services enable sts.googleapis.com iamcredentials.googleapis.com
+
+gcloud iam service-accounts create github-deploy --display-name "GitHub Actions deploy"
+# A new account takes a few seconds to be visible to IAM bindings.
+sleep 15
 
 for role in \
   roles/firebase.admin \
@@ -99,34 +108,33 @@ for role in \
   roles/serviceusage.serviceUsageConsumer \
   roles/serviceusage.apiKeysViewer
 do
-  gcloud projects add-iam-policy-binding $PROJECT_ID --condition None \
-    --member serviceAccount:$SA --role $role
+  gcloud projects add-iam-policy-binding $PROJECT_ID --condition None --quiet \
+    --member serviceAccount:$SA --role $role > /dev/null && echo "Granted $role"
 done
 
 # The functions run as the default compute account; deploying them means acting as it.
 gcloud iam service-accounts add-iam-policy-binding \
-  $PROJECT_NUMBER-compute@developer.gserviceaccount.com --project $PROJECT_ID \
-  --member serviceAccount:$SA --role roles/iam.serviceAccountUser
+  $PROJECT_NUMBER-compute@developer.gserviceaccount.com --quiet \
+  --member serviceAccount:$SA --role roles/iam.serviceAccountUser > /dev/null \
+  && echo "Granted acting as the functions' account"
 
-gcloud iam workload-identity-pools create github --project $PROJECT_ID \
-  --location global --display-name GitHub
+gcloud iam workload-identity-pools create github --location global --display-name GitHub
 
-gcloud iam workload-identity-pools providers create-oidc pushthat --project $PROJECT_ID \
+gcloud iam workload-identity-pools providers create-oidc pushthat \
   --location global --workload-identity-pool github \
   --issuer-uri https://token.actions.githubusercontent.com \
   --attribute-mapping 'google.subject=assertion.sub,attribute.repository_id=assertion.repository_id,attribute.ref=assertion.ref' \
   --attribute-condition "assertion.repository_id == '$REPO_ID' && assertion.ref == 'refs/heads/main'"
 
-gcloud iam service-accounts add-iam-policy-binding $SA --project $PROJECT_ID \
+gcloud iam service-accounts add-iam-policy-binding $SA --quiet \
   --role roles/iam.workloadIdentityUser \
-  --member "principalSet://iam.googleapis.com/projects/$PROJECT_NUMBER/locations/global/workloadIdentityPools/github/attribute.repository_id/$REPO_ID"
-
-echo "GCP_WORKLOAD_IDENTITY_PROVIDER=projects/$PROJECT_NUMBER/locations/global/workloadIdentityPools/github/providers/pushthat"
-echo "GCP_DEPLOY_SERVICE_ACCOUNT=$SA"
+  --member "principalSet://iam.googleapis.com/projects/$PROJECT_NUMBER/locations/global/workloadIdentityPools/github/attribute.repository_id/$REPO_ID" \
+  > /dev/null && echo "Trusted main of MakeRocketGoNow/pushthat"
 ```
 
-Then set the two variables from what it printed, in the repository settings or with
-`gh variable set <NAME> -R MakeRocketGoNow/pushthat --body <value>`.
+If the project is ever recreated, its number changes: take the new one from
+`gcloud projects describe push-that --format='value(projectNumber)'` and update both the
+script and `GCP_WORKLOAD_IDENTITY_PROVIDER`.
 
 The role list is what the CLI touches for this project: hosting and both rules
 (`firebase.admin`), second-generation functions and their Cloud Run services, including
