@@ -36,7 +36,10 @@ private struct AccountSettingsModifier: ViewModifier {
                     #endif
             }
             .sheet(item: $shownRecoveryKey) { shown in
-                RecoveryKeyView(recoveryKey: shown.key) { shownRecoveryKey = nil }
+                RecoveryKeyView(recoveryKey: shown.key) {
+                    authViewModel.recoveryKeySaved()
+                    shownRecoveryKey = nil
+                }
                     // Closed only by "I saved it": the old key has stopped working already.
                     .interactiveDismissDisabled()
                     #if os(macOS)

@@ -50,7 +50,7 @@ class AuthViewModel: ObservableObject {
     init() {
         if let user = auth.currentUser {
             isAuthenticated = true
-            keyGate = AccountKeyStore.accountKey(for: user.uid) == nil ? .unlock : .ready
+            keyGate = Self.gate(for: AccountKeyStore.accountKey(for: user.uid))
         } else {
             // Signed out while the app was not running (see `sessionChanged`).
             AccountKeyStore.clearAccountKey()
@@ -84,9 +84,17 @@ class AuthViewModel: ObservableObject {
             return
         }
         isAuthenticated = true
-        if keyGate == .ready, AccountKeyStore.accountKey(for: user.uid) == nil {
-            keyGate = .unlock
+        if keyGate == .ready {
+            keyGate = Self.gate(for: AccountKeyStore.accountKey(for: user.uid))
         }
+    }
+
+    /// The screen a session opens on, from what the Keychain holds: the password prompt
+    /// with no key, the recovery key screen while a recovery key waits for "I saved it",
+    /// the push list otherwise.
+    private static func gate(for stored: StoredAccountKey?) -> KeyGate {
+        guard let stored else { return .unlock }
+        return stored.unsavedRecoveryKey.map { .recoveryKey($0) } ?? .ready
     }
 
     // MARK: - Sign in
@@ -233,8 +241,28 @@ class AuthViewModel: ObservableObject {
         try await user.updatePassword(to: pending.keys.firebasePassword)
     }
 
-    /// "I saved it".
+    /// "I saved it", on the recovery key screen and on Settings' sheet: the stored key is
+    /// saved again without the recovery key, and the app opens on what the Keychain holds.
+    /// No key there means the save in `finish` failed, so the password prompt finds it again.
     func recoveryKeySaved() {
+        guard let user = auth.currentUser else {
+            keyGate = .ready
+            return
+        }
+        guard var stored = AccountKeyStore.accountKey(for: user.uid) else {
+            keyGate = .unlock
+            return
+        }
+        if stored.unsavedRecoveryKey != nil {
+            stored.unsavedRecoveryKey = nil
+            do {
+                try AccountKeyStore.save(stored)
+            } catch {
+                // The worst this leaves is the same recovery key shown again on the next
+                // launch, which is better than keeping the user on this screen.
+                print("The confirmed recovery key could not be removed from the Keychain: \(error)")
+            }
+        }
         keyGate = .ready
     }
 
@@ -242,8 +270,21 @@ class AuthViewModel: ObservableObject {
 
     /// Keeps the account key and opens the app, or the recovery key screen first. The
     /// master key and auth key go out of scope with the caller's `keys`.
+    ///
+    /// When there is a recovery key, its wrap is on the server by now, so a failed Keychain
+    /// save still shows it: it is the only copy the user will get. The error is shown too,
+    /// and "I saved it" then finds no key and asks for the password.
     private func finish(uid: String, accountKey: Data, keyVersion: Int, recoveryKey: String?) throws {
-        try AccountKeyStore.save(StoredAccountKey(uid: uid, keyVersion: keyVersion, key: accountKey))
+        do {
+            try AccountKeyStore.save(StoredAccountKey(uid: uid, keyVersion: keyVersion, key: accountKey, unsavedRecoveryKey: recoveryKey))
+        } catch {
+            guard let recoveryKey else { throw error }
+            showError(Self.message(for: error))
+            pendingRecovery = nil
+            isAuthenticated = true
+            keyGate = .recoveryKey(recoveryKey)
+            return
+        }
         _ = try? AccountKeyStore.deviceId()
         pendingRecovery = nil
         isAuthenticated = true
@@ -334,12 +375,23 @@ class AuthViewModel: ObservableObject {
     }
 
     /// Show a new recovery key: every recovery wrap replaced with one under a new key,
-    /// returned in its display form for the same screen sign-up shows.
+    /// returned in its display form for the same screen sign-up shows. Kept beside the key
+    /// until "I saved it" (`recoveryKeySaved`), as sign-up's is: the old key has stopped
+    /// working by now, so an app closed on the sheet would otherwise leave none.
     func newRecoveryKey() async throws -> String {
         guard let user = auth.currentUser, let email = user.email,
-              let device = AccountKeyStore.accountKey(for: user.uid)
+              var device = AccountKeyStore.accountKey(for: user.uid)
         else { throw AccountKeyService.KeyError.noKeys }
-        return try await AccountKeyService.replaceRecoveryKey(uid: user.uid, email: email, accountKey: device.key, keyVersion: device.keyVersion)
+        let recoveryKey = try await AccountKeyService.replaceRecoveryKey(uid: user.uid, email: email, accountKey: device.key, keyVersion: device.keyVersion)
+        device.unsavedRecoveryKey = recoveryKey
+        do {
+            try AccountKeyStore.save(device)
+        } catch {
+            // The server has the new wrap already, so the key is shown regardless; only a
+            // relaunch before "I saved it" would lose it.
+            print("The new recovery key could not be kept until it is confirmed: \(error)")
+        }
+        return recoveryKey
     }
 
     // MARK: - Sign out

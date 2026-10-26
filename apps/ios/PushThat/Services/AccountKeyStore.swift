@@ -9,6 +9,14 @@ struct StoredAccountKey: Codable, Equatable {
     let uid: String
     let keyVersion: Int
     let key: Data
+    /// A recovery key the server already has a wrap for and the user has not yet confirmed
+    /// with "I saved it", in its display form. Kept beside the key from the moment the key
+    /// is stored, so that an app killed (or quit) on the recovery key screen shows the key
+    /// again on the next launch instead of opening with a recovery key nobody saw. Kept in
+    /// memory only, it was lost that way. It adds nothing to what this item already gives
+    /// away: whoever can read it holds the account key itself. Items written before this
+    /// field decode it as nil.
+    var unsavedRecoveryKey: String? = nil
 }
 
 /// The device's key store (docs/e2ee.md, "Where keys live on each device"): Keychain
