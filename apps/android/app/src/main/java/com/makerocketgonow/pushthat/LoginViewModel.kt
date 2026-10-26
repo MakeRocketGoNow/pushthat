@@ -7,6 +7,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.firebase.Firebase
 import com.google.firebase.FirebaseException
+import com.google.firebase.auth.FirebaseAuthRecentLoginRequiredException
 import com.google.firebase.auth.auth
 import com.makerocketgonow.pushthat.e2ee.AccountKeyStore
 import com.makerocketgonow.pushthat.e2ee.AccountKeys
@@ -115,6 +116,15 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
                 State(screenFor(step()))
             } catch (e: CancellationException) {
                 throw e
+            } catch (e: FirebaseAuthRecentLoginRequiredException) {
+                // An account from before the encryption finishes by changing its Firebase
+                // password, which Firebase allows only for a few minutes after a sign-in. A
+                // recovery or start-over that took longer fails there, and would fail the
+                // same way on every retry from the recovery prompt. So the pending state
+                // goes and the unlock prompt asks for the password, which signs in afresh;
+                // the keys written before the failure open with it, so it finishes from there.
+                Log.w(TAG, "A sign-in step needs a fresh sign-in", e)
+                State(Screen.Form, error = getApplication<Application>().getString(R.string.password_again_to_finish))
             } catch (e: Exception) {
                 Log.w(TAG, "A sign-in step failed", e)
                 _state.value.copy(working = null, error = messageFor(e))
