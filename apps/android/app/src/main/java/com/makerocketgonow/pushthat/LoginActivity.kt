@@ -24,6 +24,7 @@ import com.google.firebase.auth.auth
 import com.makerocketgonow.pushthat.LoginViewModel.Screen
 import com.makerocketgonow.pushthat.e2ee.AccountKeyStore
 import com.makerocketgonow.pushthat.e2ee.MIN_NEW_PASSWORD_LENGTH
+import com.makerocketgonow.pushthat.e2ee.signOut
 import kotlinx.coroutines.launch
 
 /**
@@ -217,8 +218,7 @@ class LoginActivity : AppCompatActivity() {
             Screen.Form -> {
                 if (unlockEmail() != null) {
                     // Sign out, from the unlock prompt: back to the plain form.
-                    AccountKeyStore.clear(this)
-                    auth.signOut()
+                    signOut(this, auth)
                     passwordInput.text.clear()
                     render(viewModel.state.value)
                     return
