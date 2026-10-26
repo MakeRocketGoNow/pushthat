@@ -4,10 +4,10 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "deploy": "npm run test:rules && npm run build && firebase deploy",
+    "deploy": "npm run test:rules && npm run build && firebase deploy --only hosting,firestore,storage",
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "build:chrome": "tsc && vite build  -c vite.chrome.config.js",
+    "build:chrome": "vite build -c vite.chrome.config.ts",
     "lint": "eslint .",
     "preview": "vite preview",
     "preview:firebase": "firebase emulators:start",
