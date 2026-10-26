@@ -152,7 +152,8 @@ export async function rewrapWithRecoveryKey(
  */
 export async function startNewKeys(
   owner: KeyOwner,
-  masterKey: Uint8Array
+  masterKey: Uint8Array,
+  decidedFrom?: { e2ee: E2ee | undefined }
 ): Promise<{ accountKey: Uint8Array; recoveryKey: string; e2ee: E2ee }> {
   const accountKey = newAccountKey();
   const recoveryBytes = newRecoveryKey();
@@ -160,16 +161,26 @@ export async function startNewKeys(
     [newWrapId()]: await wrapAccountKey(masterKey, accountKey, owner.uid, 'password'),
     [newWrapId()]: await wrapAccountKey(await recoveryWrappingKey(recoveryBytes), accountKey, owner.uid, 'recovery'),
   };
-  // One past the stored version, read again as it is written, so a reset elsewhere in
-  // the meantime is passed rather than repeated.
-  const e2ee = await writeKeys(owner, (stored) => ({
-    ...stored,
-    v: 1,
-    kdf: KDF,
-    keyVersion: (stored?.keyVersion ?? 0) + 1,
-    wraps,
-  }));
+  // One past the stored version, read again as it is written. The reset page passes no
+  // `decidedFrom`, and goes past a reset made elsewhere meanwhile rather than repeating
+  // it. A sign-in passes the keys it decided from, and stops if they moved: another
+  // device signing in to the same legacy account a moment earlier has just made keys and
+  // stored them, and writing over them would leave that device holding an account key,
+  // and the user a recovery key, that no longer open anything.
+  const e2ee = await writeKeys(owner, (stored) => {
+    if (decidedFrom && !sameKeys(stored, decidedFrom.e2ee)) {
+      throw new KeysChangedError('the stored keys changed after they were read');
+    }
+    return { ...stored, v: 1, kdf: KDF, keyVersion: (stored?.keyVersion ?? 0) + 1, wraps };
+  });
   return { accountKey, recoveryKey: encodeRecoveryKey(recoveryBytes), e2ee };
+}
+
+/** Whether `stored` is still the keys a decision was read from: the same version and wraps. */
+export function sameKeys(stored: E2ee | undefined, decidedFrom: E2ee | undefined): boolean {
+  if (!stored || !decidedFrom) return !stored && !decidedFrom;
+  const ids = (e2ee: E2ee) => Object.keys(e2ee.wraps).sort().join(' ');
+  return stored.keyVersion === decidedFrom.keyVersion && ids(stored) === ids(decidedFrom);
 }
 
 /**

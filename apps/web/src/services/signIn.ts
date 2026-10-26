@@ -6,6 +6,7 @@ import { app, auth } from '@/config/firebase';
 
 import {
   type KeyOwner,
+  KeysChangedError,
   openWithPassword,
   readKeys,
   replaceRecoveryKey,
@@ -86,6 +87,18 @@ export async function signIn(email: string, password: string): Promise<KeysResul
   const keys = await deriveKeys(email, password);
   const { user, legacy } = await signInEitherWay(email, password, keys);
   const owner: KeyOwner = { db: getFirestore(app), uid: user.uid, email };
+  try {
+    return await openKeys(owner, user, keys, legacy);
+  } catch (error) {
+    // The keys changed between the read and the write: another device made or rewrapped
+    // them a moment ago. What it wrote is what this password should open, so read again
+    // and decide again, once.
+    if (!(error instanceof KeysChangedError)) throw error;
+    return openKeys(owner, user, keys, legacy);
+  }
+}
+
+async function openKeys(owner: KeyOwner, user: User, keys: DerivedKeys, legacy: boolean): Promise<KeysResult> {
   const outcome = await openWithPassword(await readKeys(owner), user.uid, keys.masterKey);
 
   switch (outcome.kind) {
@@ -103,7 +116,7 @@ export async function signIn(email: string, password: string): Promise<KeysResul
       return { kind: 'needsRecovery', session: { owner, user, keys, legacy, e2ee: outcome.e2ee } };
     case 'needsNewKeys': {
       // A legacy account's first sign-in, or an account whose keys nothing opens.
-      const { accountKey, recoveryKey } = await startNewKeys(owner, keys.masterKey);
+      const { accountKey, recoveryKey } = await startNewKeys(owner, keys.masterKey, { e2ee: outcome.e2ee });
       return finish({ user, keys, legacy }, accountKey, recoveryKey);
     }
   }
@@ -114,7 +127,7 @@ export async function register(email: string, password: string): Promise<KeysRes
   const keys = await deriveKeys(email, password);
   const { user } = await createUserWithEmailAndPassword(auth, email, keys.firebasePassword);
   const owner: KeyOwner = { db: getFirestore(app), uid: user.uid, email };
-  const { accountKey, recoveryKey } = await startNewKeys(owner, keys.masterKey);
+  const { accountKey, recoveryKey } = await startNewKeys(owner, keys.masterKey, { e2ee: undefined });
   return finish({ user, keys, legacy: false }, accountKey, recoveryKey);
 }
 
@@ -126,10 +139,14 @@ export async function recover(session: KeySession, recoveryText: string): Promis
 
 /**
  * Without the recovery key: a new account key one version up, under which the pushes
- * encrypted before cannot be read. The caller has said so to the user first.
+ * encrypted before cannot be read. The caller has said so to the user first, about the
+ * keys the session read; if they have changed since (another device found the recovery
+ * key), this throws `KeysChangedError` rather than undo that.
  */
 export async function startOver(session: KeySession): Promise<KeysResult> {
-  const { accountKey, recoveryKey } = await startNewKeys(session.owner, session.keys.masterKey);
+  const { accountKey, recoveryKey } = await startNewKeys(session.owner, session.keys.masterKey, {
+    e2ee: session.e2ee,
+  });
   return finish(session, accountKey, recoveryKey);
 }
 

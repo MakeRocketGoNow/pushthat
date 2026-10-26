@@ -167,9 +167,11 @@ export function KeysProvider({ children }: { children: React.ReactNode }) {
     } catch (error) {
       console.error('Starting new keys failed:', error);
       setStep(
-        needsSignInAgain(error)
-          ? { name: 'unlock', error: SIGN_IN_AGAIN }
-          : { name: 'withoutRecovery', session, error: 'Your new keys could not be saved. Try again.' }
+        error instanceof KeysChangedError
+          ? { name: 'unlock', error: KEYS_CHANGED }
+          : needsSignInAgain(error)
+            ? { name: 'unlock', error: SIGN_IN_AGAIN }
+            : { name: 'withoutRecovery', session, error: 'Your new keys could not be saved. Try again.' }
       );
     }
   }, [step]);
