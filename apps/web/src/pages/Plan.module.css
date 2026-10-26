@@ -75,3 +75,8 @@
 .meterFillFull {
   background: var(--color-error);
 }
+
+/* A device id is 22 characters with no spaces, which would otherwise push a narrow screen sideways */
+.deviceId {
+  overflow-wrap: anywhere;
+}

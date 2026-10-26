@@ -5,6 +5,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router';
 import Button from '@/components/Button';
 import { LIMITS, formatMb } from '@/config/plan';
 import { usePlan } from '@/hooks/usePlan';
+import { deviceId } from '@/services/keyStore';
 import { PlanReport, errorText, planApi } from '@/services/plan';
 
 import styles from './Plan.module.css';
@@ -292,7 +293,45 @@ export default function Plan() {
           </p>
         </section>
       )}
+
+      <Encrypted />
     </div>
+  );
+}
+
+/**
+ * The "Encrypted" line (docs/e2ee.md, Saying so): that the pushes are encrypted, this
+ * device's id, and where to read what that means. On the Plan page because the web app has
+ * no settings page and this is the page about the account. The id is what this install
+ * puts on its pushes in place of the device's model name, so showing it lets someone see
+ * all the server is told about the device. IndexedDB can refuse (a private window in some browsers), and the line then goes without
+ * the id rather than not at all.
+ */
+function Encrypted() {
+  const [id, setId] = useState<string | null>(null);
+  useEffect(() => {
+    let current = true;
+    deviceId()
+      .then((made) => current && setId(made))
+      .catch((error) => console.error('Could not read the device id:', error));
+    return () => {
+      current = false;
+    };
+  }, []);
+
+  return (
+    <section className={styles.section}>
+      <h2>Encrypted</h2>
+      <p>
+        Your pushes are encrypted on your devices with a key made from your password, and only they can read them.{' '}
+        <Link to="/security">How it works</Link>.
+      </p>
+      {id && (
+        <p className={styles.muted}>
+          This device: <code className={styles.deviceId}>{id}</code>
+        </p>
+      )}
+    </section>
   );
 }
 
