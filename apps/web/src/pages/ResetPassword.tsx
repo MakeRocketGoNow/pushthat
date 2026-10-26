@@ -5,6 +5,7 @@ import { Link, useSearchParams } from 'react-router';
 import Button from '@/components/Button';
 import GlowButton from '@/components/GlowButton';
 import {
+  KeysChangedError,
   PasswordChangedError,
   ResetSession,
   WrongRecoveryKeyError,
@@ -190,7 +191,9 @@ export function ResetPassword() {
                 (error) =>
                   error instanceof WrongRecoveryKeyError
                     ? 'That is not the recovery key for this account. Check it and try again.'
-                    : 'Your keys could not be saved. Try again.'
+                    : error instanceof KeysChangedError
+                      ? 'Your keys were changed on another device since this page opened. Sign in with your newest password.'
+                      : 'Your keys could not be saved. Try again.'
               )
             }
             onWithout={() => {

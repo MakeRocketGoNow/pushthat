@@ -94,6 +94,13 @@ export interface ResetSession {
 export class WrongRecoveryKeyError extends Error {}
 
 /**
+ * The account key was replaced elsewhere (another reset) while this page waited for the
+ * recovery key. The key it opened is no longer the account's, and the stored keys are not
+ * read again, so a retry here fails the same way every time.
+ */
+export class KeysChangedError extends Error {}
+
+/**
  * A step after Firebase took the new password failed. The link is used up by then, so
  * the page must not tell the user to try it again: the password is changed, and the keys
  * are left for the next sign-in to sort out.
@@ -185,7 +192,7 @@ export async function rewrapWithRecoveryKey(session: ResetSession, recoveryText:
     // set; if a reset elsewhere has replaced it since, its wrap would sit under the new
     // version and open the wrong key, so this stops instead.
     if (!stored || stored.keyVersion !== e2ee.keyVersion) {
-      throw new Error('the account key changed while the page was open');
+      throw new KeysChangedError('the account key changed while the page was open');
     }
     // The recovery wrap the user's key opened, which they have just shown they can use.
     // Only that one: the rules take four wraps at most, and carrying every stored one
