@@ -456,6 +456,24 @@ describe('the shape of an encrypted push', () => {
   test('with search tokens that are not a list', () => assertFails(create(encryptedPush({ searchTokens: 'a' }))));
   test('for someone else', () => assertFails(create(encryptedPush({ userId: 'bob' }))));
 
+  // The account's current key: a device left holding the key a reset replaced must not
+  // keep adding pushes nobody can open.
+  const withKeyVersion = (keyVersion) =>
+    seed({ createdAt: anchoredOnFirst, e2ee: { v: 1, kdf: 'pbkdf2-sha256-600000', keyVersion, wraps: {} } });
+  test("under the account's current key version", async () => {
+    await withKeyVersion(2);
+    await assertSucceeds(create(encryptedPush({ keyVersion: 2 })));
+    await assertSucceeds(create(encryptedFile({ keyVersion: 2 })));
+  });
+  test('under a key version a reset has replaced', async () => {
+    await withKeyVersion(2);
+    await assertFails(create(encryptedPush({ keyVersion: 1 })));
+  });
+  test('under a key version the account does not have yet', async () => {
+    await withKeyVersion(2);
+    await assertFails(create(encryptedPush({ keyVersion: 3 })));
+  });
+
   test('with an envelope of version 1, as a number', () => assertSucceeds(create(encryptedPush({ enc: envelope }))));
   test('with a version that is a string', () => assertFails(create(encryptedPush({ enc: { ...envelope, v: '1' } }))));
   test('with an envelope that is not a map', () => assertFails(create(encryptedPush({ enc: 'ciphertext' }))));
@@ -681,6 +699,16 @@ describe('migrating a plaintext push', () => {
   test('a URL push given an objectPath', async () => {
     await seedPush({});
     await assertFails(updateDoc(pushRef(), migration({ objectPath })));
+  });
+  test("under the account's current key version", async () => {
+    await seed({ e2ee: { v: 1, kdf: 'pbkdf2-sha256-600000', keyVersion: 2, wraps: {} } });
+    await seedPush({});
+    await assertSucceeds(updateDoc(pushRef(), migration({ keyVersion: 2 })));
+  });
+  test('under a key version a reset has replaced', async () => {
+    await seed({ e2ee: { v: 1, kdf: 'pbkdf2-sha256-600000', keyVersion: 2, wraps: {} } });
+    await seedPush({});
+    await assertFails(updateDoc(pushRef(), migration({ keyVersion: 1 })));
   });
   test('a file push without an objectPath', async () => {
     await seedPush(legacyFile);

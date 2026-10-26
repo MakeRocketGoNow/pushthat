@@ -167,11 +167,26 @@ service cloud.firestore {
         && isEnvelope(data.enc)
         && data.keyVersion is int
         && data.keyVersion >= 1
+        && isCurrentKeyVersion(data)
         && isBoundedString(data.deviceId, 64)
         && hasValidSearchTokens(data)
         && (data.type == 'file'
           ? isOwnObjectPath(data.objectPath, data.userId)
           : !('objectPath' in data));
+    }
+
+    // A push is encrypted under the account's current key. A reset without the recovery
+    // key raises e2ee.keyVersion and deletes the pushes made under the old one, and a
+    // device still holding the old key (its ID token lives up to an hour after the reset)
+    // would otherwise keep adding locked rows that delete has already passed. An account
+    // with no keys on its document yet has nothing to compare with. The user document is
+    // the one the usage check reads, and a document read twice in one evaluation is
+    // billed once.
+    function isCurrentKeyVersion(data) {
+      let user = getCurrentUser(data.userId);
+      return user == null
+        || !('e2ee' in user.data)
+        || data.keyVersion == user.data.e2ee.get('keyVersion', 0);
     }
 
     // The keys an encrypted push may have. expiresAt is onNewPushCreated's, so a create
