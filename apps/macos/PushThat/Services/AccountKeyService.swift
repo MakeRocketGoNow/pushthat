@@ -286,8 +286,19 @@ enum AccountKeyService {
                 current.insert(id)
             }
             wraps[newWrapId] = newWrap
-            // Room for the new wrap: password wraps nothing opens any more go first.
-            for (id, wrap) in stored.wraps where wraps.count > maxWraps && wrap.by == E2eeCrypto.Wrap.password && !current.contains(id) {
+            // Room for the new wrap, least needed first: password wraps nothing opens (their
+            // password is gone), then the current password's beyond one (it only has to
+            // last until Firebase has the new password), then recovery wraps. Pruning only
+            // the first kind, as this did, left 1 password + 3 recovery wraps (what a
+            // recovery can leave) at five, which the rules refuse, so the change could never
+            // succeed. Several recovery wraps come only from clients racing, and nothing
+            // says which of their keys the user holds, so the order among them is just a
+            // stable one; dropping one is better than a password that cannot change.
+            let password = stored.wraps(by: E2eeCrypto.Wrap.password).keys.sorted()
+            let room = password.filter { !current.contains($0) }
+                + password.filter { current.contains($0) }.dropFirst()
+                + stored.wraps(by: E2eeCrypto.Wrap.recovery).keys.sorted().reversed()
+            for id in room where wraps.count > maxWraps {
                 wraps[id] = nil
             }
             return stored.with(wraps: wraps)
