@@ -55,9 +55,9 @@
         <item name="android:padding">16dp</item>
     </style>
 
-    <!-- The sign-in screen's buttons, for views shared with screens on the MaterialComponents
-         theme: parented on AppCompat's button so they look as the sign-in screen's own
-         buttons do, whichever theme inflates them. -->
+    <!-- The sign-in screen's buttons, used there and by views shared with screens on the
+         MaterialComponents theme: parented on AppCompat's button so they look the same
+         whichever theme inflates them. -->
     <style name="Widget.LinkShare.PrimaryButton" parent="Widget.AppCompat.Button">
         <item name="android:background">@drawable/button_background</item>
         <item name="android:textColor">@color/color_on_primary</item>
