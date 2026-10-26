@@ -268,9 +268,22 @@ class AuthViewModel: ObservableObject {
         }
     }
 
+    /// The legacy account's move to the derived password, once the keys are written.
+    ///
+    /// Firebase takes a password change only shortly after a sign-in, and the recovery
+    /// prompt can stay up past that (the user looking for the key). Then it refuses with
+    /// `requiresRecentLogin`, and every retry from the prompt would too. The keys are written
+    /// by then and open with the password, so the password prompt finishes the job: its
+    /// sign-in is fresh, finds the wrap just written, and makes the password change.
     private func updatePasswordIfLegacy(_ pending: PendingRecovery) async throws {
         guard pending.legacy, let user = auth.currentUser, user.uid == pending.uid else { return }
-        try await user.updatePassword(to: pending.keys.firebasePassword)
+        do {
+            try await user.updatePassword(to: pending.keys.firebasePassword)
+        } catch let error as NSError where error.domain == AuthErrorDomain && error.code == AuthErrorCode.requiresRecentLogin.rawValue {
+            pendingRecovery = nil
+            keyGate = .unlock
+            throw Problem("Enter your password again to finish.")
+        }
     }
 
     /// "I saved it", on the recovery key screen and on Settings' sheet: the stored key is
