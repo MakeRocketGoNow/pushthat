@@ -130,10 +130,15 @@ test("the subkeys as non-extractable CryptoKeys seal, open and blind exactly as 
   assert.deepEqual(await openPush(keys.metaKey, inputs.uid, inputs.pushId, vectors.push.enc), JSON.parse(inputs.pushPlaintext));
   assert.deepEqual(await blindIndex(keys.searchKey, vectors.search.tokens), vectors.search.blind);
   // The file key and the wrapping keys take a CryptoKey the same way.
-  const fk = await crypto.subtle.importKey("raw", inputs.fk, { name: "AES-GCM" }, false, ["encrypt", "decrypt"]);
+  const aesGcm = (raw) => crypto.subtle.importKey("raw", raw, { name: "AES-GCM" }, false, ["encrypt", "decrypt"]);
+  const fk = await aesGcm(inputs.fk);
   const empty = await encryptFile(fk, inputs.np, new Uint8Array(0));
   assert.equal(hex(empty), vectors.emptyFile.encrypted);
   assert.equal((await decryptFile(fk, empty, inputs.np)).length, 0);
+  const masterKey = await aesGcm(fromHex(vectors.keys.masterKey));
+  const wrap = await wrapAccountKey(masterKey, inputs.accountKey, inputs.uid, "password", inputs.passwordWrapNonce);
+  assert.equal(wrap.ct, vectors.account.passwordWrap.ct);
+  assert.equal(hex(await unwrapAccountKey(masterKey, wrap, inputs.uid)), hex(inputs.accountKey));
 });
 
 test("a password wrap round-trips and matches the vector", async () => {
