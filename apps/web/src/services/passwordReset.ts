@@ -1,5 +1,6 @@
 import { initializeApp } from 'firebase/app';
 import {
+  type ActionCodeSettings,
   type Auth,
   confirmPasswordReset,
   inMemoryPersistence,
@@ -37,8 +38,26 @@ import { type E2ee, deriveKeys } from './e2ee';
 export { KeysChangedError, WrongRecoveryKeyError } from './accountKeys';
 
 /**
- * The password reset (docs/e2ee.md, Password reset), which the reset email's action URL
- * brings to `/reset`. Firebase's own page would set the Firebase password to what the user
+ * The settings every client sends a reset email with (`sendPasswordResetEmail` here,
+ * `ActionCodeSettings` on iOS and macOS). The reset itself happens on Firebase's hosted
+ * page: the template's action URL that would bring it to `/reset` cannot be changed on
+ * this project (`EMAIL_TEMPLATE_UPDATE_NOT_ALLOWED`, in the console and through the API
+ * alike; a verified sender domain does not lift it), and `handleCodeInApp` does not help,
+ * because the hosted handler forwards a click to the continue URL with the code only for
+ * email-link sign-in; for a password reset it always shows its own form (read from the
+ * handler's script, `/__/auth/action.js`). So `url` is the sign-in page, which the hosted
+ * form's Continue button leads to once the password is set, and that sign-in finds a
+ * password that opens none of the stored wraps and asks for the recovery key: the same
+ * recovery step `/reset` would have run, one screen later (docs/e2ee.md, Password reset).
+ * The domain must be on the Authentication allow-list, which pushthat.link is.
+ */
+export const resetActionCodeSettings = {
+  url: 'https://pushthat.link/login',
+} satisfies ActionCodeSettings;
+
+/**
+ * The password reset (docs/e2ee.md, Password reset), which the reset email's link brings
+ * to `/reset`. Firebase's own page would set the Firebase password to what the user
  * types, and a client that signs in with `authKey` could not sign in after it, so this
  * page takes the code and does the reset itself: it derives the new password's keys,
  * gives Firebase `authKey`, and then rewraps the account key under the new `masterKey`

@@ -64,14 +64,16 @@ A run from any other branch runs the checks and deploys nothing.
   what keeps one account out of another's files (`storage.rules` is). Without it, opening
   a file on the web fails with "This file could not be decrypted." and a CORS error in
   the console; the apps are not affected.
-- **The password reset email's action URL**, a console setting: Authentication →
-  Templates → Password reset → edit → Customize action URL, set to
-  `https://pushthat.link/reset` (see [end-to-end encryption](e2ee.md), Password reset).
-  The page sets the Firebase password to the key derived from the new password, which a
-  client from before phase 3 of that plan does not know, so flip it only once the clients
-  that sign in with the derived key are released everywhere; until then Firebase's own
-  page keeps resetting passwords as it does today. Firebase uses the one action URL for
-  every email template, and the page refuses links that are not password resets.
+- **The password reset email's action URL cannot be set.** The plan in
+  [end-to-end encryption](e2ee.md) (Password reset) was the console's Authentication →
+  Templates → Password reset → Customize action URL, pointed at
+  `https://pushthat.link/reset`. Firebase refuses that change on this project:
+  `EMAIL_TEMPLATE_UPDATE_NOT_ALLOWED`, from the console and from the Identity Toolkit API
+  alike; a verified sender domain does not lift it, and a Firebase support case is the
+  only known way to. Nothing is done in the console: resets run on Firebase's hosted form,
+  whose Continue button leads to the web sign-in, and the sign-in asks for the recovery
+  key. If the lock is ever lifted, set the URL and the `/reset` page takes over; nothing
+  else changes.
 
 ## How CI signs in to Google Cloud
 

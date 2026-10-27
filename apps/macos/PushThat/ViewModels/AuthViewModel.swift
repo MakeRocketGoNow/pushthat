@@ -484,7 +484,18 @@ class AuthViewModel: ObservableObject {
         isLoading = true
         Task {
             do {
-                try await auth.sendPasswordReset(withEmail: email)
+                // The reset happens on Firebase's hosted form: the template's action URL
+                // that would bring the link to the web app's /reset page cannot be changed
+                // on this project (EMAIL_TEMPLATE_UPDATE_NOT_ALLOWED), and handleCodeInApp
+                // would not help, since the hosted handler forwards only email-link
+                // sign-ins, never a reset. The continue URL gives that form a Continue
+                // button to the web sign-in, where a password that opens none of the
+                // stored wraps is met with the recovery key prompt, the same recovery step
+                // one screen later (docs/e2ee.md, Password reset). The web app keeps the
+                // same address in services/passwordReset.ts.
+                let settings = ActionCodeSettings()
+                settings.url = URL(string: "https://pushthat.link/login")
+                try await auth.sendPasswordReset(withEmail: email, actionCodeSettings: settings)
                 showError("Password reset email sent")
             } catch {
                 showError(error.localizedDescription)

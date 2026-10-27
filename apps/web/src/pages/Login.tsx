@@ -9,6 +9,7 @@ import GlowButton from '@/components/GlowButton';
 import { auth } from '@/config/firebase';
 import { useAuth } from '@/contexts/AuthContext';
 import { useKeys } from '@/contexts/KeysContext';
+import { resetActionCodeSettings } from '@/services/passwordReset';
 import { MIN_PASSWORD_LENGTH, WrongPasswordError } from '@/services/signIn';
 
 import styles from './Login.module.css';
@@ -97,7 +98,7 @@ export default function Login() {
     }
 
     try {
-      await sendPasswordResetEmail(auth, email);
+      await sendPasswordResetEmail(auth, email, resetActionCodeSettings);
       setIsResetEmailSent(true);
     } catch (error) {
       setError('Failed to send reset email');
