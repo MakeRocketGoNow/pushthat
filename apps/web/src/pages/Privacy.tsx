@@ -89,7 +89,8 @@ export default function Privacy() {
         it, when, whether it is a link or a file, which of your devices sent it, the encrypted Push Content, and
         scrambled search tokens made with your key, which let a search find a push without revealing the words searched
         for. The size of a file you push can be seen roughly from its encrypted form. We also keep how many pushes your
-        account has made each month. We refer to this as “Account and Push Information.” It does not include Push
+        account has made each month, and your account's encryption key, itself encrypted so that only your password or
+        your recovery key can unlock it. We refer to this as “Account and Push Information.” It does not include Push
         Content in any readable form.
       </p>
 
