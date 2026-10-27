@@ -90,7 +90,7 @@ export default function Privacy() {
         it, when, whether it is a link or a file, which of your devices sent it, the encrypted Push Content, and
         scrambled search tokens made with your key, which let a search find a push without revealing the words searched
         for. The size of a file you push can be seen roughly from its encrypted form. We also keep how many pushes your
-        account has made each month, and your account's encryption key, itself encrypted so that only your password or
+        account has made each month, and your account’s encryption key, itself encrypted so that only your password or
         your recovery key can unlock it. An account made before end-to-end encryption may also still hold the model
         names of the devices that pushed from it, which pushes used to carry. We refer to this as “Account and Push
         Information.” It does not include Push Content in any readable form.
@@ -109,7 +109,7 @@ export default function Privacy() {
       </p>
 
       <p>
-        We use Account and Push Information to deliver your pushes to your devices, to apply your plan's monthly limits,
+        We use Account and Push Information to deliver your pushes to your devices, to apply your plan’s monthly limits,
         and to delete files when their retention period ends.
       </p>
 
