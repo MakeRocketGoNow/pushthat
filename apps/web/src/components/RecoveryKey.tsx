@@ -11,7 +11,16 @@ import styles from './RecoveryKey.module.css';
  * sign-up, a legacy account's first sign-in and the password reset page all show it
  * here; each puts its own heading and words above it.
  */
-export function RecoveryKey({ recoveryKey, onDone }: { recoveryKey: string; onDone: () => void }) {
+export function RecoveryKey({
+  recoveryKey,
+  onSavedChange,
+  onDone,
+}: {
+  recoveryKey: string;
+  /** Told when "I saved it" is ticked or unticked; the reset page asks before a tab closes until then. */
+  onSavedChange?: (saved: boolean) => void;
+  onDone: () => void;
+}) {
   const [saved, setSaved] = useState(false);
   const [copied, setCopied] = useState<'no' | 'yes' | 'failed'>('no');
 
@@ -33,7 +42,15 @@ export function RecoveryKey({ recoveryKey, onDone }: { recoveryKey: string; onDo
         {copied === 'yes' ? 'Copied' : copied === 'failed' ? 'Copy failed, select the key above' : 'Copy'}
       </Button>
       <label className={styles.checkbox}>
-        <input type="checkbox" checked={saved} onChange={(e) => setSaved(e.target.checked)} />I saved it
+        <input
+          type="checkbox"
+          checked={saved}
+          onChange={(e) => {
+            setSaved(e.target.checked);
+            onSavedChange?.(e.target.checked);
+          }}
+        />
+        I saved it
       </label>
       <GlowButton type="button" className={styles.button} disabled={!saved} onClick={onDone}>
         Continue
