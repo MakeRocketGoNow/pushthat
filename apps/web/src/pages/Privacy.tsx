@@ -177,8 +177,8 @@ export default function Privacy() {
 
       <p>
         If you reset your password without your recovery key, the pushes made before the reset can no longer be
-        decrypted by you or by us. They stay in your account as locked entries until you delete them, which the App
-        offers to do in one step, or, for files, until their retention period ends.
+        decrypted by you or by us. They stay in your account as locked entries until you delete them, or, for files,
+        until their retention period ends.
       </p>
 
       <p>

@@ -117,9 +117,9 @@ export function Security() {
 
       <p>
         Without it, the pushes you made before the reset cannot be read again, by you or by us: they were encrypted with
-        a key that only your old password or the recovery key could unlock. Your account gets new keys, and you can
-        delete the old pushes in one step or keep them in your list as locked rows. Files are deleted within{' '}
-        {LIMITS.pro.keepDays} days either way.
+        a key that only your old password or the recovery key could unlock. Your account gets new keys, and the old
+        pushes stay in your list as locked rows that you can delete. Files are deleted within {LIMITS.pro.keepDays} days
+        either way.
       </p>
 
       <h5>OLD VERSIONS OF THE APPS</h5>

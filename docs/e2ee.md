@@ -206,7 +206,7 @@ So a reset runs on Firebase's hosted form, and the clients send the email with t
 
 That sign-in gets in through the raw-password fallback (Migration), since the hosted form set the raw new password, and `updatePassword(authKey)` follows once the recovery key is entered or the user starts over, as for a legacy account. So the fallback stays after every old account has moved: it can go only once the template's action URL is unlocked and `/reset` sets `authKey` itself. It is also why the raw password reaches Firebase Authentication on a reset and on any sign-in whose `authKey` is refused, such as a mistyped password, which the privacy policy and `/security` say.
 
-Without the recovery key, the app says plainly that the pushes made before this reset cannot be read, generates a fresh account key with `keyVersion + 1`, and offers to delete the old pushes in one step; a user who declines sees them in the list as locked rows that can be deleted but never opened. Files expire on their own within 30 days either way.
+Without the recovery key, the app says plainly that the pushes made before this reset cannot be read, generates a fresh account key with `keyVersion + 1`, and offers to delete the old pushes in one step; a user who declines sees them in the list as locked rows that can be deleted but never opened. Files expire on their own within 30 days either way. Only `/reset` makes that offer, and it is not reached today; the sign-in prompt every reset reaches starts over without it, so the old pushes stay as locked rows until the user deletes them.
 
 The email is the salt, so an email change would be a rewrap like a password change. The apps have no email change today and this does not add one.
 
