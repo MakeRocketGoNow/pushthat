@@ -1,7 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /// <reference types="chrome"/>
 /// <reference lib="webworker" />
-/// <reference types="vite/client" />
 import { User } from 'firebase/auth';
 import {
   arrayUnion,
