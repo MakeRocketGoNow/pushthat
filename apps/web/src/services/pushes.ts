@@ -334,8 +334,8 @@ const ENCRYPTED_KEYS = new Set([
 /**
  * The single update that encrypts a plaintext push in place (docs/e2ee.md, Migration), as
  * field paths and values, or undefined for one the rules could never take: a type they do
- * not know, or a file push whose title does not name one object in the owner's folder
- * (none, or one with a "/"). In place rather than recreated, because a create would notify
+ * not know, a file push whose title does not name one object in the owner's folder (none,
+ * or one with a "/"), or one too long to seal within `enc.ct`'s bound. In place rather than recreated, because a create would notify
  * every device and count against the month.
  */
 async function migrationOf(
@@ -361,14 +361,20 @@ async function migrationOf(
     // The bytes are in Storage as they were uploaded and expire within 30 days; re-encrypting
     // them would need a download and an upload, so the push says to read them as they are.
     const envelope: FileEnvelope = { name: title, mime: '', size: 0, ext, legacyPlain: true };
-    set('enc', await sealPush(keys.metaKey, keys.uid, snapshot.id, envelope));
+    const enc = await sealPush(keys.metaKey, keys.uid, snapshot.id, envelope);
+    if (enc.ct.length > MAX_CT_LENGTH) return undefined;
+    set('enc', enc);
     set('searchTokens', await blind(keys, title));
     // The path the title named, which onPushRecordDeleted has been deleting with the push;
     // the rules hold the migration to exactly this.
     set('objectPath', `uploads/${keys.uid}/${title}`);
   } else {
     const envelope: UrlEnvelope = { url: stringOr(data.url), title, ext };
-    set('enc', await sealPush(keys.metaKey, keys.uid, snapshot.id, envelope));
+    // A push made before the rules bounded the URL can be too long to seal within enc.ct's
+    // bound; the rules would refuse it every time, so it is one they can never take.
+    const enc = await sealPush(keys.metaKey, keys.uid, snapshot.id, envelope);
+    if (enc.ct.length > MAX_CT_LENGTH) return undefined;
+    set('enc', enc);
     set('searchTokens', await blind(keys, urlSearchText(envelope)));
   }
   set('keyVersion', keys.keyVersion);
