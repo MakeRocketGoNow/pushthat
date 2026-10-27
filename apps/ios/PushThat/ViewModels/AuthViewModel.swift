@@ -130,6 +130,12 @@ class AuthViewModel: ObservableObject {
 
     /// Signs in with `base64url(authKey)`, falling back to the raw password for an account
     /// that has not moved yet, then finds the account key (docs/e2ee.md, "Migration").
+    ///
+    /// The fallback stays after every old account has moved, because password resets depend
+    /// on it. A reset runs on Firebase's hosted form (docs/e2ee.md, "Password reset"), which
+    /// sets the raw new password as the Firebase password, so the first sign-in after any
+    /// reset gets in this way and then moves the account back to `authKey`. It can go only
+    /// once a reset sets `authKey` itself, which needs the reset email's action URL unlocked.
     private func signInWithKeys(email: String, password: String) async throws {
         let keys = try await Self.derive(email: email, password: password)
 

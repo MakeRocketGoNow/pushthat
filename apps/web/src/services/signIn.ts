@@ -63,6 +63,12 @@ const isWrongPassword = (error: unknown) => error instanceof FirebaseError && WR
  * is the sign-in that moves it over. Only a wrong password tries again; a network error
  * or Firebase's too-many-attempts stop here, since the second try would fail the same way
  * and count as one more attempt.
+ *
+ * The fallback stays after every old account has moved, because password resets depend on
+ * it. A reset runs on Firebase's hosted form (docs/e2ee.md, "Password reset"), which sets
+ * the raw new password as the Firebase password, so the first sign-in after any reset gets
+ * in this way and then moves the account back to `authKey`. It can go only once a reset
+ * sets `authKey` itself, which needs the reset email's action URL unlocked.
  */
 async function signInEitherWay(email: string, password: string, keys: DerivedKeys) {
   try {
