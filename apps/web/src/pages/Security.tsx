@@ -136,7 +136,8 @@ export function Security() {
       <p>
         Each install of PushThat makes a random device ID, which the web app shows on the <Link to="/plan">Plan</Link>{' '}
         page. It goes with every push so that the device that sent one does not notify itself, and it says nothing about
-        the device: it replaced the device&rsquo;s model name, which pushes used to carry.
+        the device: it replaced the device&rsquo;s name (the one you gave it, its model name, or the browser&rsquo;s
+        user agent), which pushes used to carry.
       </p>
 
       <h5>QUESTIONS</h5>
