@@ -176,7 +176,7 @@ class PreparedPush(
         fun prepare(keys: PushKeys, pushId: String, content: PushContent, objectPath: String? = null): PreparedPush {
             require((content.type == PushContent.TYPE_FILE) == (objectPath != null)) { "objectPath is for file pushes" }
             val cut = if (content is PushContent.Url && content.title.length > MAX_TITLE_LENGTH) {
-                content.copy(title = content.title.take(MAX_TITLE_LENGTH))
+                content.copy(title = cutTitle(content.title))
             } else {
                 content
             }
@@ -184,6 +184,16 @@ class PreparedPush(
             if (enc.ct.length > MAX_CT_LENGTH) throw PushTooLargeException()
             val tokens = E2ee.blindIndex(keys.searchKey, E2ee.searchTokens(cut.searchText))
             return PreparedPush(pushId, keys.uid, cut.type, enc, tokens, keys.keyVersion, keys.deviceId, objectPath)
+        }
+
+        /**
+         * [title] cut to [MAX_TITLE_LENGTH] UTF-16 units, less a high surrogate the cut left
+         * without its pair: UTF-8 has no encoding for a lone one and writes it as "?", so an
+         * emoji at the cut came back as a question mark.
+         */
+        fun cutTitle(title: String): String {
+            val cut = title.take(MAX_TITLE_LENGTH)
+            return if (cut.isNotEmpty() && cut.last().isHighSurrogate()) cut.dropLast(1) else cut
         }
 
         fun fromJson(json: String): PreparedPush {

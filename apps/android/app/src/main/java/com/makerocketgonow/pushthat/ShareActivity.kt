@@ -552,7 +552,7 @@ class TitleScrapingWorker(
                     if (push.type != PushContent.TYPE_URL) return Result.success()
                     val title = scrapeTitle(push.url)
                     if (title.isNullOrBlank() || title == push.title) return Result.success()
-                    mapOf("title" to title.take(PreparedPush.MAX_TITLE_LENGTH))
+                    mapOf("title" to PreparedPush.cutTitle(title))
                 }
                 PushDocument.Read.Locked, null -> return Result.success()
             }
