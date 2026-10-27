@@ -44,7 +44,9 @@ jobs:
       # ever rises, so nothing is remembered or bumped by hand, but it counts this workflow's
       # runs and so starts at 1, below the codes Play already has from the app's releases by
       # hand. The offset puts the first run above them. Never lower it: a code Play has seen
-      # is refused for good. Worked out in the shell because expressions have no arithmetic.
+      # is refused for good. Renaming or moving this file starts the run number over at 1,
+      # so raise the offset past the last code Play has when you do. Worked out in the shell
+      # because expressions have no arithmetic.
       - name: Pick the version code
         run: echo "PUSHTHAT_VERSION_CODE=$((GITHUB_RUN_NUMBER + 100))" >> "$GITHUB_ENV"
       # 25 because gradle/gradle-daemon-jvm.properties asks for it; the app itself
