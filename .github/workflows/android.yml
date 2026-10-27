@@ -120,6 +120,11 @@ jobs:
 
       # Both formats, because they are for different places. Play takes only the bundle and
       # re-signs it per device; the APK is what `adb install` and a sideload take.
+      #
+      # The repository is public, so anyone signed in to GitHub can download a run's
+      # artifacts. The default 90 days would leave every closed-testing build open to them;
+      # three is long enough to sideload a build for a quick check, and Play keeps its own
+      # copy of the bundle for anything later.
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: steps.publishable.outputs.ready == 'true'
         with:
@@ -128,6 +133,7 @@ jobs:
             apps/android/app/build/outputs/bundle/release/*.aab
             apps/android/app/build/outputs/apk/release/*.apk
           if-no-files-found: error
+          retention-days: 3
 
       # Play names a release after `versionName` alone when nothing is supplied, so every
       # release of one version would read the same and the list would give no way to tell
