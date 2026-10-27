@@ -113,10 +113,12 @@ jobs:
           PUSHTHAT_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           PUSHTHAT_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           PUSHTHAT_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        # A trap rather than a closing `rm`: the step runs under `bash -e`, so a failed build
+        # would exit before reaching it and leave the keystore on disk.
         run: |
+          trap 'rm -f "$RUNNER_TEMP/release.jks"' EXIT
           echo "$KEYSTORE" | base64 -d > "$RUNNER_TEMP/release.jks"
           PUSHTHAT_KEYSTORE_PATH="$RUNNER_TEMP/release.jks" ./gradlew bundleRelease assembleRelease
-          rm -f "$RUNNER_TEMP/release.jks"
 
       # Both formats, because they are for different places. Play takes only the bundle and
       # re-signs it per device; the APK is what `adb install` and a sideload take.
