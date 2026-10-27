@@ -83,27 +83,38 @@ class ShareActivity : AppCompatActivity() {
         // prompt rather than pushing: there is nothing to encrypt with, and a plaintext push
         // is what the encryption exists to stop. The share itself is not kept.
         val user = auth.currentUser
-        val keys = user?.let { AccountKeyStore.pushKeys(this, it.uid) }
-        if (keys == null) {
+        if (user == null || !AccountKeyStore.hasKey(this, user.uid)) {
             startActivity(Intent(this, LoginActivity::class.java))
             finish()
             return
         }
 
-        try {
-            // Handle shared content
-            if (intent?.action == Intent.ACTION_SEND) {
-                when (intent.type) {
-                    "text/plain" -> shareLink(intent, keys)
-                    else -> shareFile(intent, keys)
+        // The key is opened off the main thread, a Keystore call, as in MainActivity. One the
+        // file says is there and that does not open has been cleared by then, and the share
+        // goes to the password prompt like a missing key.
+        val uid = user.uid
+        lifecycleScope.launch {
+            val keys = withContext(Dispatchers.IO) { AccountKeyStore.pushKeys(this@ShareActivity, uid) }
+            if (keys == null) {
+                startActivity(Intent(this@ShareActivity, LoginActivity::class.java))
+                finish()
+                return@launch
+            }
+            try {
+                // Handle shared content
+                if (intent?.action == Intent.ACTION_SEND) {
+                    when (intent.type) {
+                        "text/plain" -> shareLink(intent, keys)
+                        else -> shareFile(intent, keys)
+                    }
+                } else {
+                    Log.w(TAG, "Received intent with action: ${intent?.action} and type: ${intent?.type}")
+                    finish()
                 }
-            } else {
-                Log.w(TAG, "Received intent with action: ${intent?.action} and type: ${intent?.type}")
+            } catch (e: Exception) {
+                Log.e(TAG, "Error in onCreate", e)
                 finish()
             }
-        } catch (e: Exception) {
-            Log.e(TAG, "Error in onCreate", e)
-            finish()
         }
     }
 
