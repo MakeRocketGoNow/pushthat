@@ -214,7 +214,7 @@ function Pricing() {
   return (
     <section className={clsx(styles.section, styles.pricing)} id="pricing">
       <h2 className={styles.sectionTitle}>Pricing</h2>
-      <p className={styles.intro}>Free is enough for a few links a day. Pro is for people who live in it.</p>
+      <p className={styles.intro}>Free is enough for a link or two most days. Pro is for people who live in it.</p>
       <div className={styles.tiers}>
         <div className={styles.tier}>
           <h3>Free</h3>
