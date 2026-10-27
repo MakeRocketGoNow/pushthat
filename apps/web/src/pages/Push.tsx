@@ -17,7 +17,7 @@ export default function Push() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isUploadSubmitting, setIsUploadSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const { plan, refresh: refreshPlan, setPlan } = usePlan();
+  const { plan, refresh: refreshPlan } = usePlan();
   const { keys } = usePushKeys();
 
   const handleLinkSubmit = async (e: React.FormEvent) => {
@@ -67,7 +67,7 @@ export default function Push() {
       // PushThat cannot make (pushRefusal.ts); the plan read again stops the next try here.
       setError(
         isRulesRefusal(error)
-          ? await refusalMessage(plan, 'url', setPlan, () => keyIsStale(getFirestore(), keys))
+          ? await refusalMessage(plan, 'url', refreshPlan, () => keyIsStale(getFirestore(), keys))
           : error instanceof PushTooLongError
             ? 'That link is too long to push.'
             : 'Failed to save link. Please try again.'
@@ -125,7 +125,7 @@ export default function Push() {
       console.error('Error saving file:', error);
       setError(
         isRulesRefusal(error)
-          ? await refusalMessage(plan, 'file', setPlan, () => keyIsStale(getFirestore(), keys))
+          ? await refusalMessage(plan, 'file', refreshPlan, () => keyIsStale(getFirestore(), keys))
           : error instanceof PushTooLongError
             ? 'That file name is too long to push.'
             : 'Failed to upload file. Please try again.'

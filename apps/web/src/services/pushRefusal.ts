@@ -3,7 +3,7 @@ import { FirebaseError } from 'firebase/app';
 import { LIMITS } from '@/config/plan';
 
 import { isExtensionPage } from './extension';
-import { PlanReport, planApi } from './plan';
+import { PlanReport } from './plan';
 
 /**
  * What the Push page says when the Firestore rules refuse a push. The rules say no as a
@@ -48,20 +48,19 @@ export const outdatedMessage = () =>
     : 'PushThat refused this push. Reload the page to update PushThat, then try again.';
 
 /**
- * The sentence for a push the rules refused. The plan is read afresh and handed to
- * `setPlan`, so the page's next check before sending sees the count that refused this one.
- * If it cannot be read, the plan the page already had decides. `keyIsStale` is the page's
- * check of the account's key version; a check that fails counts as not stale.
+ * The sentence for a push the rules refused. `reread` is the page's read of the plan
+ * (`usePlan`'s `refresh`), which also keeps what it read, so the page's next check before
+ * sending sees the count that refused this one. If it cannot read, the plan the page
+ * already had decides. `keyIsStale` is the page's check of the account's key version; a
+ * check that fails counts as not stale.
  */
 export async function refusalMessage(
   known: PlanReport | undefined,
   type: 'url' | 'file',
-  setPlan: (plan: PlanReport) => void,
+  reread: () => Promise<PlanReport | undefined>,
   keyIsStale: () => Promise<boolean>
 ): Promise<string> {
-  const fresh = await planApi.getPlan().catch(() => undefined);
-  if (fresh) setPlan(fresh);
-  const plan = fresh ?? known;
+  const plan = (await reread().catch(() => undefined)) ?? known;
   if (plan && atLimit(plan, type)) return limitMessage(plan, type);
   if (await keyIsStale().catch(() => false)) return STALE_KEY_MESSAGE;
   return outdatedMessage();

@@ -23,17 +23,21 @@ export function usePlan() {
     setPlanState(next);
   }, []);
 
-  const refresh = useCallback(async () => {
-    if (!user) return;
+  // Answers what it read, even a read a later one has overtaken: the caller asked about the
+  // plan as it stands now, and only the state is kept from going backwards.
+  const refresh = useCallback(async (): Promise<PlanReport | undefined> => {
+    if (!user) return undefined;
     const mine = ++sequence.current;
     try {
       const read = await planApi.getPlan();
-      if (mine !== sequence.current) return;
-      setPlanState(read);
-      setError(null);
+      if (mine === sequence.current) {
+        setPlanState(read);
+        setError(null);
+      }
+      return read;
     } catch (err) {
-      if (mine !== sequence.current) return;
-      setError(errorText(err, 'Your plan could not be read right now.'));
+      if (mine === sequence.current) setError(errorText(err, 'Your plan could not be read right now.'));
+      return undefined;
     }
   }, [user]);
 
