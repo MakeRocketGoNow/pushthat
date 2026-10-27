@@ -103,13 +103,15 @@ enum FileUploadUtils {
 
     // MARK: - File Size Validation
 
-    /// Check if data exceeds the tier's maximum file size: 100 MB on Pro, 25 MB on Free, which the Storage rules enforce.
+    /// Check if data exceeds the tier's maximum file size: 100 MB on Pro, 25 MB on Free, which the Storage rules
+    /// enforce. `>=`, as the rule has it: a file of exactly the limit is refused there. The rule measures the
+    /// encrypted object, 12 bytes and 16 a MiB larger than the file, so that is what is compared.
     static func exceedsMaxFileSize(_ data: Data, isPro: Bool) -> Bool {
         return exceedsMaxFileSize(bytes: Int64(data.count), isPro: isPro)
     }
 
     static func exceedsMaxFileSize(bytes: Int64, isPro: Bool) -> Bool {
-        return bytes > PlanService.maxFileBytes(isPro: isPro)
+        return E2eeCrypto.encryptedFileSize(bytes) >= PlanService.maxFileBytes(isPro: isPro)
     }
 
     /// The sentence for a file over the tier's size, naming the limit. Nothing more: a pointer to the

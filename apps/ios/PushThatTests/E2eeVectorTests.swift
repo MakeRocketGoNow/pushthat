@@ -400,6 +400,16 @@ final class E2eeVectorTests: XCTestCase {
         XCTAssertEqual(try Data(contentsOf: opened), try Data(contentsOf: plain))
     }
 
+    /// The size checked against the tier's limit is the one the Storage rules measure: the
+    /// vectors' encrypted lengths, without encrypting anything.
+    func testEncryptedFileSizeIsTheSizeOfTheObject() throws {
+        let file = try section("file")
+        let empty = try section("emptyFile")
+        XCTAssertEqual(E2eeCrypto.encryptedFileSize(Int64(try XCTUnwrap(file["length"] as? Int))), Int64(try XCTUnwrap(file["encryptedLength"] as? Int)))
+        XCTAssertEqual(E2eeCrypto.encryptedFileSize(0), Int64(try string(empty, "encrypted").count / 2))
+        XCTAssertEqual(E2eeCrypto.encryptedFileSize(Int64(E2eeCrypto.chunkSize)), Int64(12 + E2eeCrypto.chunkSize + 16))
+    }
+
     func testEmptyFileVector() throws {
         let empty = try section("emptyFile")
         let fk = try bytes(empty, "fk")

@@ -396,6 +396,14 @@ extension E2eeCrypto {
     static let fileHeaderLength = 12
     static let fileKeyLength = 32
 
+    /// The size of a file of `plaintextBytes` once encrypted: the header and one tag per
+    /// chunk, the empty file's one included. What the Storage rules measure against the
+    /// tier's limit, so what the limit is checked against before an upload.
+    static func encryptedFileSize(_ plaintextBytes: Int64) -> Int64 {
+        let chunks = max(1, (plaintextBytes + Int64(chunkSize) - 1) / Int64(chunkSize))
+        return Int64(fileHeaderLength) + plaintextBytes + Int64(tagLength) * chunks
+    }
+
     static func newFileKey() -> Data { randomBytes(fileKeyLength) }
     static func newFilePrefix() -> Data { randomBytes(filePrefixLength) }
     static func newObjectId() -> String { base64url(randomBytes(16)) }
