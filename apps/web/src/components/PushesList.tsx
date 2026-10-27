@@ -79,6 +79,9 @@ export default function PushesList({
 }: PushesListProps) {
   const [lowResImages, setLowResImages] = useState<Set<string>>(new Set());
   const [opening, setOpening] = useState<string | undefined>(undefined);
+  // What opening a row has to say (a locked push, a file that did not decrypt), shown above
+  // the list as the app shows its other errors, not in a browser dialog.
+  const [notice, setNotice] = useState<string | undefined>(undefined);
 
   // An encrypted file has no URL to follow: it is read through the SDK, decrypted in the
   // tab (about twice its size in memory at the peak, docs/e2ee.md, Files) and saved. A
@@ -90,20 +93,17 @@ export default function PushesList({
       save(await downloadFile(getStorage(), file), file.envelope.name);
     } catch (error) {
       console.error('Error opening file:', error);
-      window.alert('This file could not be decrypted.');
+      setNotice('This file could not be decrypted.');
     } finally {
       setOpening(undefined);
     }
   };
 
-  const handleOpen = (push: Push, event: React.MouseEvent) => {
-    if (push.locked) {
-      event.preventDefault();
-      window.alert(LOCKED_MESSAGE);
-    } else if (push.file) {
-      event.preventDefault();
-      void openFile(push, push.file);
-    }
+  // A row with no URL to follow: a locked push, or an encrypted file.
+  const handleOpen = (push: Push) => {
+    setNotice(undefined);
+    if (push.locked) setNotice(LOCKED_MESSAGE);
+    else if (push.file) void openFile(push, push.file);
   };
 
   const handleSelect = (pushId: string, event: React.MouseEvent) => {
@@ -149,22 +149,22 @@ export default function PushesList({
   }
 
   return (
-    <ul className={styles.pushesList}>
-      {pushes.map((push) => {
-        const icon = ICONS.find((icon) => push.ext === icon.split('.')[0]);
-        const isSelected = selectedPushes.has(push.id);
-        // A locked push has nothing to show a picture of.
-        const fallbackSrc = push.locked ? '/pushthat-mono.svg' : getFallbackImageSrc(push, icon);
-
-        return (
-          <li key={push.id} className={styles.pushItem}>
-            <a
-              href={push.locked || push.file ? '#' : push.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className={styles.pushLink}
-              onClick={(e) => handleOpen(push, e)}
-            >
+    <>
+      {notice && (
+        <div className={styles.notice} role="alert">
+          {notice}
+        </div>
+      )}
+      <ul className={styles.pushesList}>
+        {pushes.map((push) => {
+          const icon = ICONS.find((icon) => push.ext === icon.split('.')[0]);
+          const isSelected = selectedPushes.has(push.id);
+          // A locked push, or a file with no icon of its own, has no host to ask for a
+          // favicon (and an empty one would still ask Google).
+          const fallbackSrc =
+            push.locked || (!icon && !push.url) ? '/pushthat-mono.svg' : getFallbackImageSrc(push, icon);
+          const content = (
+            <>
               <div
                 className={clsx(styles.pushIcon, isSelected && styles.selected)}
                 onClick={(e) => handleSelect(push.id, e)}
@@ -195,10 +195,32 @@ export default function PushesList({
                 </span>
                 <div className={styles.pushMeta}>{new Date(push.createdAt).toLocaleString()}</div>
               </div>
-            </a>
-          </li>
-        );
-      })}
-    </ul>
+            </>
+          );
+
+          return (
+            <li key={push.id} className={styles.pushItem}>
+              {/* A link only where there is a page to go to: a locked push and an encrypted
+                  file are opened here, by a button, which a middle-click or a screen reader
+                  does not take for a link to this page. */}
+              {push.locked || push.file ? (
+                <button
+                  type="button"
+                  className={clsx(styles.pushLink, styles.pushButton)}
+                  onClick={() => handleOpen(push)}
+                  aria-busy={opening === push.id}
+                >
+                  {content}
+                </button>
+              ) : (
+                <a href={push.url} target="_blank" rel="noopener noreferrer" className={styles.pushLink}>
+                  {content}
+                </a>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    </>
   );
 }
