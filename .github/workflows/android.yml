@@ -20,9 +20,10 @@ on:
   workflow_dispatch:
 
 # A second push to a pull request makes the first one's build pointless, so don't pay to
-# finish it. Only pull requests are cancelled: a `main` build and a `workflow_dispatch`
-# build both use up a version code, and neither should be thrown away because something
-# else started.
+# finish it. Elsewhere a run that has started always finishes, and runs go one at a time,
+# so two uploads never race on Play. GitHub still keeps only the newest waiting run and
+# drops one queued behind it, which is fine: the newer build supersedes it, and a skipped
+# version code costs nothing.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
