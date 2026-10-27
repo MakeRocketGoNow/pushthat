@@ -24,6 +24,7 @@ import com.google.firebase.auth.auth
 import com.makerocketgonow.pushthat.LoginViewModel.Screen
 import com.makerocketgonow.pushthat.e2ee.AccountKeyStore
 import com.makerocketgonow.pushthat.e2ee.MIN_NEW_PASSWORD_LENGTH
+import com.makerocketgonow.pushthat.e2ee.forgetSession
 import com.makerocketgonow.pushthat.e2ee.signOut
 import kotlinx.coroutines.launch
 
@@ -67,7 +68,7 @@ class LoginActivity : AppCompatActivity() {
         // account disabled), and Firebase then signs out on its own. Every launch without a
         // session comes through here (MainActivity and ShareActivity send it), so the key
         // goes here rather than waiting for the next sign-in to overwrite it.
-        if (user == null) AccountKeyStore.clear(this)
+        if (user == null) forgetSession(this)
 
         // Signed in with the key here: straight to the list. Signed in without it (an install
         // that updated while signed in, or a sign-in that stopped partway), the form asks

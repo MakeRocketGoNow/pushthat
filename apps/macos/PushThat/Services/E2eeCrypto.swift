@@ -10,7 +10,8 @@ import Security
 ///
 /// This file is the same in `apps/ios` and `apps/macos` (a copy each, as the apps are
 /// forks) and uses nothing but Foundation, CryptoKit, CommonCrypto and Security, so the
-/// test bundle compiles it on its own without the app or Firebase.
+/// test bundle compiles it on its own without the app or Firebase. The notification
+/// service extension and the share extension compile it too, for the same reason.
 enum E2eeCrypto {
     static let kdf = "pbkdf2-sha256-600000"
     static let pbkdf2Iterations: UInt32 = 600_000
@@ -25,6 +26,9 @@ enum E2eeCrypto {
         case badLength
         case notARecoveryKey
         case unknownWrap
+        case unknownEnvelope
+        case notAFile
+        case prefixMismatch
     }
 
     struct DerivedKeys {
@@ -301,5 +305,262 @@ enum E2eeCrypto {
     static func recoveryWrappingKey(_ recoveryBytes: Data) throws -> Data {
         guard recoveryBytes.count == recoveryKeyLength else { throw CryptoError.badLength }
         return hkdfOneBlock(ikm: recoveryBytes, label: "pushthat/recovery/v1")
+    }
+}
+
+// MARK: - The push envelope
+
+extension E2eeCrypto {
+    /// `enc` on a push document: AES-256-GCM under `metaKey`, `n` the 12-byte nonce and `ct`
+    /// the ciphertext with its tag, both base64 with padding (docs/e2ee.md, "The push
+    /// envelope").
+    struct Envelope: Equatable {
+        static let version = 1
+
+        let v: Int
+        let n: String
+        let ct: String
+
+        var firestoreData: [String: Any] { ["v": v, "n": n, "ct": ct] }
+
+        /// An envelope as a document holds it, or nil for anything not shaped like one.
+        /// `v` is read as any integer type, since Firestore's SDK hands back an `Int` and
+        /// the REST API (the notification service extension) a string.
+        init?(firestore value: Any?) {
+            guard let map = value as? [String: Any],
+                  let n = map["n"] as? String,
+                  let ct = map["ct"] as? String
+            else { return nil }
+            let v: Int
+            switch map["v"] {
+            case let int as Int: v = int
+            case let int as Int64: v = Int(int)
+            case let string as String:
+                guard let int = Int(string) else { return nil }
+                v = int
+            default: return nil
+            }
+            self.init(v: v, n: n, ct: ct)
+        }
+
+        init(v: Int, n: String, ct: String) {
+            self.v = v
+            self.n = n
+            self.ct = ct
+        }
+    }
+
+    /// The rules' bound on `enc.ct` (`isEnvelope` in apps/web/firestore.rules). A push
+    /// whose ciphertext is longer is refused here, before the write the rules would refuse.
+    static let maxEnvelopeCiphertextLength = 16384
+
+    static func pushAad(userId: String, pushId: String) -> Data {
+        utf8("pushthat/push/v1:" + userId + ":" + pushId)
+    }
+
+    /// The nonce parameter exists for the vectors; callers never pass one.
+    static func sealPush(metaKey: Data, userId: String, pushId: String, plaintext: Data, nonce: Data = randomBytes(nonceLength)) throws -> Envelope {
+        let ct = try aesGcmSeal(key: metaKey, nonce: nonce, plaintext: plaintext, aad: pushAad(userId: userId, pushId: pushId))
+        return Envelope(v: Envelope.version, n: base64(nonce), ct: base64(ct))
+    }
+
+    /// Throws on an envelope of another version, a bad tag, or a ciphertext moved from
+    /// another document (the AAD names the document).
+    static func openPush(metaKey: Data, userId: String, pushId: String, enc: Envelope) throws -> Data {
+        guard enc.v == Envelope.version else { throw CryptoError.unknownEnvelope }
+        return try aesGcmOpen(key: metaKey, nonce: fromBase64(enc.n), ciphertext: fromBase64(enc.ct), aad: pushAad(userId: userId, pushId: pushId))
+    }
+}
+
+// MARK: - The blind index
+
+extension E2eeCrypto {
+    /// `base64url(HMAC-SHA256(searchKey, utf8(token)))`, first 16 characters: 96 bits
+    /// exactly, so nothing is cut mid-character. The tokens come from
+    /// `SearchTokenGenerator`, which holds the rule every client tokenizes by.
+    static func blindToken(searchKey: Data, token: String) -> String {
+        String(base64url(hmacSha256(key: searchKey, message: utf8(token))).prefix(16))
+    }
+
+    static func blindIndex(searchKey: Data, tokens: [String]) -> [String] {
+        tokens.map { blindToken(searchKey: searchKey, token: $0) }
+    }
+}
+
+// MARK: - Files
+
+extension E2eeCrypto {
+    static let chunkSize = 1024 * 1024
+    static let fileMagic = Data("PTE1".utf8)
+    static let filePrefixLength = 8
+    static let fileHeaderLength = 12
+    static let fileKeyLength = 32
+
+    /// The size of a file of `plaintextBytes` once encrypted: the header and one tag per
+    /// chunk, the empty file's one included. What the Storage rules measure against the
+    /// tier's limit, so what the limit is checked against before an upload.
+    static func encryptedFileSize(_ plaintextBytes: Int64) -> Int64 {
+        let chunks = max(1, (plaintextBytes + Int64(chunkSize) - 1) / Int64(chunkSize))
+        return Int64(fileHeaderLength) + plaintextBytes + Int64(tagLength) * chunks
+    }
+
+    static func newFileKey() -> Data { randomBytes(fileKeyLength) }
+    static func newFilePrefix() -> Data { randomBytes(filePrefixLength) }
+    static func newObjectId() -> String { base64url(randomBytes(16)) }
+
+    static func fileHeader(prefix: Data) throws -> Data {
+        guard prefix.count == filePrefixLength else { throw CryptoError.badLength }
+        return fileMagic + prefix
+    }
+
+    static func be32(_ n: Int) -> Data {
+        let value = UInt32(n)
+        return Data([UInt8(value >> 24 & 0xFF), UInt8(value >> 16 & 0xFF), UInt8(value >> 8 & 0xFF), UInt8(value & 0xFF)])
+    }
+
+    private static func chunkNonce(prefix: Data, index: Int) -> Data { prefix + be32(index) }
+
+    private static func chunkAad(index: Int, final: Bool) -> Data {
+        utf8("pushthat/file/v1") + be32(index) + Data([final ? 1 : 0])
+    }
+
+    /// One sealed chunk: every chunk but the last is exactly 1 MiB, and only the empty
+    /// file has an empty final chunk, as the reference's `sealChunk` checks.
+    static func sealChunk(fk: Data, prefix: Data, index: Int, chunk: Data, final: Bool) throws -> Data {
+        guard final ? chunk.count <= chunkSize : chunk.count == chunkSize else { throw CryptoError.badLength }
+        guard !(final && index > 0 && chunk.isEmpty) else { throw CryptoError.badLength }
+        return try aesGcmSeal(key: fk, nonce: chunkNonce(prefix: prefix, index: index), plaintext: chunk, aad: chunkAad(index: index, final: final))
+    }
+
+    static func openChunk(fk: Data, prefix: Data, index: Int, sealed: Data, final: Bool) throws -> Data {
+        let plain = sealed.count - tagLength
+        guard final ? plain <= chunkSize : plain == chunkSize else { throw CryptoError.badLength }
+        return try aesGcmOpen(key: fk, nonce: chunkNonce(prefix: prefix, index: index), ciphertext: sealed, aad: chunkAad(index: index, final: final))
+    }
+
+    struct ChunkRange: Equatable {
+        let index: Int
+        let start: Int64
+        let end: Int64
+        let final: Bool
+    }
+
+    /// The reference's `chunkLayout`: where each sealed chunk of an encrypted object of
+    /// `length` bytes starts and ends. Every chunk but the last is 1 MiB + 16 on disk, so
+    /// the boundaries follow from the length alone. A last chunk shorter than its tag, or
+    /// an empty final chunk after a full one (what an encryptor that does not hold a chunk
+    /// back would write), is not a file: every client refuses the same second encoding.
+    static func chunkLayout(length: Int64) throws -> [ChunkRange] {
+        let header = Int64(fileHeaderLength)
+        let tag = Int64(tagLength)
+        guard length >= header + tag else { throw CryptoError.notAFile }
+        let sealedSize = Int64(chunkSize + tagLength)
+        let body = length - header
+        let count = (body + sealedSize - 1) / sealedSize
+        let last = body - (count - 1) * sealedSize
+        guard last >= tag, !(count > 1 && last == tag) else { throw CryptoError.notAFile }
+        return (0..<count).map { i in
+            let start = header + i * sealedSize
+            let final = i == count - 1
+            return ChunkRange(index: Int(i), start: start, end: final ? length : start + sealedSize, final: final)
+        }
+    }
+
+    /// Encrypts what `read` gives, 1 MiB at a time, into what `write` takes. `read(n)`
+    /// returns up to n bytes and empty data at the end. One chunk is held back: the end of
+    /// the source is only known when a read comes back empty, and the last full chunk of a
+    /// file whose size is a multiple of 1 MiB has to be sealed as final, since an empty
+    /// final chunk after it is refused by every decryptor.
+    static func encryptFile(fk: Data, prefix: Data, read: (Int) throws -> Data, write: (Data) throws -> Void) throws {
+        guard fk.count == fileKeyLength else { throw CryptoError.badLength }
+        try write(fileHeader(prefix: prefix))
+        var current = try readFull(chunkSize, read)
+        var index = 0
+        while true {
+            let next = current.count == chunkSize ? try readFull(chunkSize, read) : Data()
+            let final = next.isEmpty
+            try autoreleasepool {
+                try write(sealChunk(fk: fk, prefix: prefix, index: index, chunk: current, final: final))
+            }
+            if final { return }
+            current = next
+            index += 1
+        }
+    }
+
+    /// A read that only comes back short at the end of the source, whatever the source
+    /// hands back per call.
+    private static func readFull(_ count: Int, _ read: (Int) throws -> Data) throws -> Data {
+        var out = Data()
+        while out.count < count {
+            let part = try autoreleasepool { try read(count - out.count) }
+            if part.isEmpty { break }
+            out.append(part)
+        }
+        return out
+    }
+
+    /// Encrypts the file at `source` into a new file at `destination`, never holding more
+    /// than two chunks of it. A failure removes what was written.
+    static func encryptFile(fk: Data, prefix: Data, source: URL, destination: URL) throws {
+        let input = try FileHandle(forReadingFrom: source)
+        defer { try? input.close() }
+        try encryptFile(fk: fk, prefix: prefix, read: { try input.read(upToCount: $0) ?? Data() }, to: destination)
+    }
+
+    /// The same from bytes already in memory (a photo the picker handed over as data), so
+    /// that the ciphertext goes to disk rather than becoming a second copy beside them.
+    static func encryptFile(fk: Data, prefix: Data, data: Data, destination: URL) throws {
+        var offset = 0
+        try encryptFile(fk: fk, prefix: prefix, read: { count in
+            let end = min(offset + count, data.count)
+            defer { offset = end }
+            return data.subdata(in: data.startIndex + offset..<data.startIndex + end)
+        }, to: destination)
+    }
+
+    private static func encryptFile(fk: Data, prefix: Data, read: (Int) throws -> Data, to destination: URL) throws {
+        guard FileManager.default.createFile(atPath: destination.path, contents: nil) else { throw CocoaError(.fileWriteUnknown) }
+        do {
+            let output = try FileHandle(forWritingTo: destination)
+            defer { try? output.close() }
+            try encryptFile(fk: fk, prefix: prefix, read: read, write: { try output.write(contentsOf: $0) })
+        } catch {
+            try? FileManager.default.removeItem(at: destination)
+            throw error
+        }
+    }
+
+    /// Decrypts the object at `source` into `destination`, chunk by chunk by
+    /// `chunkLayout`. The magic must be there and the header's prefix must be the
+    /// envelope's `np`, which ties the object to its push. Any failure removes the partial
+    /// output: a file that does not open is never left behind looking like one that did.
+    static func decryptFile(fk: Data, np: Data, source: URL, destination: URL) throws {
+        do {
+            guard np.count == filePrefixLength, fk.count == fileKeyLength else { throw CryptoError.badLength }
+            let input = try FileHandle(forReadingFrom: source)
+            defer { try? input.close() }
+            let length = try input.seekToEnd()
+            let layout = try chunkLayout(length: Int64(length))
+            try input.seek(toOffset: 0)
+            let header = try input.read(upToCount: fileHeaderLength) ?? Data()
+            guard header.count == fileHeaderLength, header.prefix(fileMagic.count) == fileMagic else { throw CryptoError.notAFile }
+            let prefix = Data(header.suffix(filePrefixLength))
+            guard prefix == np else { throw CryptoError.prefixMismatch }
+
+            guard FileManager.default.createFile(atPath: destination.path, contents: nil) else { throw CocoaError(.fileWriteUnknown) }
+            let output = try FileHandle(forWritingTo: destination)
+            defer { try? output.close() }
+            for range in layout {
+                try autoreleasepool {
+                    let sealed = try readFull(Int(range.end - range.start)) { try input.read(upToCount: $0) ?? Data() }
+                    guard sealed.count == Int(range.end - range.start) else { throw CryptoError.notAFile }
+                    try output.write(contentsOf: openChunk(fk: fk, prefix: prefix, index: range.index, sealed: sealed, final: range.final))
+                }
+            }
+        } catch {
+            try? FileManager.default.removeItem(at: destination)
+            throw error
+        }
     }
 }

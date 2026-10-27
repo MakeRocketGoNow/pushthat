@@ -1,87 +1,19 @@
-import { getAuth } from 'firebase/auth';
-import { addDoc, collection, getFirestore, serverTimestamp } from 'firebase/firestore';
-import {
-  StorageError,
-  StorageReference,
-  deleteObject,
-  getDownloadURL,
-  getStorage,
-  ref,
-  uploadBytes,
-} from 'firebase/storage';
+import { getFirestore } from 'firebase/firestore';
+import { getStorage } from 'firebase/storage';
 import { useState } from 'react';
 
 import Button from '@/components/Button';
 import { LIMITS, formatMb } from '@/config/plan';
 import { usePlan } from '@/hooks/usePlan';
+import { usePushKeys } from '@/hooks/usePushKeys';
 import { isRulesRefusal, limitMessage, refusalMessage } from '@/services/pushRefusal';
+import { PushTooLongError, createFilePush, createUrlPush, encryptedSize, keyIsStale } from '@/services/pushes';
 
 import styles from './Push.module.css';
 
-const generateSearchTokens = (text: string): string[] => {
-  // Convert to lowercase and split into words
-  const words = text
-    .toLowerCase()
-    .replace(/[^\w\s]/g, '') // Remove special characters
-    .split(/\s+/); // Split on whitespace
-
-  const tokens = new Set<string>();
-
-  // Add full words
-  words.forEach((word) => {
-    if (word) tokens.add(word);
-  });
-
-  // Add partial matches (substrings)
-  words.forEach((word) => {
-    for (let i = 1; i <= word.length; i++) {
-      tokens.add(word.substring(0, i));
-    }
-  });
-
-  return Array.from(tokens);
-};
-
-const generateUniqueFileName = (originalName: string, attempt: number = 0): string => {
-  const lastDotIndex = originalName.lastIndexOf('.');
-  if (lastDotIndex === -1) {
-    return attempt === 0 ? originalName : `${originalName} (${attempt})`;
-  }
-
-  const nameWithoutExt = originalName.slice(0, lastDotIndex);
-  const extension = originalName.slice(lastDotIndex);
-  return attempt === 0 ? originalName : `${nameWithoutExt} (${attempt})${extension}`;
-};
-
-const checkFileExists = async (storageRef: StorageReference): Promise<boolean> => {
-  try {
-    await getDownloadURL(storageRef);
-    return true;
-  } catch (error: unknown) {
-    if ((error as StorageError).code === 'storage/object-not-found') {
-      return false;
-    }
-    throw error;
-  }
-};
-
-const getUniqueStorageRef = async (
-  storage: ReturnType<typeof getStorage>,
-  userId: string,
-  fileName: string
-): Promise<StorageReference> => {
-  let attempt = 0;
-  let uniqueFileName = fileName;
-  let storageRef = ref(storage, `uploads/${userId}/${uniqueFileName}`);
-
-  while (await checkFileExists(storageRef)) {
-    attempt++;
-    uniqueFileName = generateUniqueFileName(fileName, attempt);
-    storageRef = ref(storage, `uploads/${userId}/${uniqueFileName}`);
-  }
-
-  return storageRef;
-};
+// The keys are read from IndexedDB as the page mounts, which takes a moment; a push sent
+// before then, or in a browser that refuses IndexedDB, is stopped with this.
+const NO_KEYS = 'Your encryption key is not ready on this device. Reload the page and try again.';
 
 export default function Push() {
   const [url, setUrl] = useState('');
@@ -90,31 +22,17 @@ export default function Push() {
   const [isUploadSubmitting, setIsUploadSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { plan, refresh: refreshPlan, setPlan } = usePlan();
-
-  const createPushDocument = (url: string, title: string, type: 'url' | 'file', ext?: string) => {
-    const auth = getAuth();
-
-    // Generate search tokens from both URL and title
-    const searchText = `${url} ${title}`;
-    const searchTokens = generateSearchTokens(searchText);
-
-    return {
-      url,
-      userId: auth.currentUser?.uid,
-      createdAt: serverTimestamp(),
-      title,
-      type,
-      deviceName: navigator.userAgent,
-      searchTokens, // Add searchTokens field
-      ...(ext && { ext }),
-    };
-  };
+  const { keys } = usePushKeys();
 
   const handleLinkSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
 
     if (!url) return;
+    if (!keys) {
+      setError(NO_KEYS);
+      return;
+    }
 
     // Said before anything is sent: at 50 a month a Free account reaches this routinely.
     // The plan read once per mount can be stale, so the refusal below is handled too.
@@ -142,20 +60,21 @@ export default function Push() {
       // fetched it for us would learn the URL, which is what the push keeps from it
       // (docs/e2ee.md, Titles). The list shows the URL until the first phone or Mac to
       // receive the push scrapes the title and writes it back.
-      const db = getFirestore();
-      const push = createPushDocument(url, '', 'url');
-
-      const docRef = await addDoc(collection(db, 'pushes'), push);
-      console.log('Link saved with ID:', docRef.id);
+      const id = await createUrlPush(getFirestore(), keys, url, '');
+      console.log('Link saved with ID:', id);
 
       // Clear form after successful submission
       setUrl('');
     } catch (error) {
       console.error('Error saving link:', error);
-      // The limit reached on another device, or a push this copy of PushThat cannot make
-      // (pushRefusal.ts); reading the plan again tells them apart and stops the next try here.
+      // The limit reached on another device, a key a reset replaced, or a push this copy of
+      // PushThat cannot make (pushRefusal.ts); the plan read again stops the next try here.
       setError(
-        isRulesRefusal(error) ? await refusalMessage(plan, 'url', setPlan) : 'Failed to save link. Please try again.'
+        isRulesRefusal(error)
+          ? await refusalMessage(plan, 'url', setPlan, () => keyIsStale(getFirestore(), keys))
+          : error instanceof PushTooLongError
+            ? 'That link is too long to push.'
+            : 'Failed to save link. Please try again.'
       );
     } finally {
       setIsSubmitting(false);
@@ -167,13 +86,18 @@ export default function Push() {
     setError(null);
 
     if (!file) return;
+    if (!keys) {
+      setError(NO_KEYS);
+      return;
+    }
 
     // The tier's file size, which the Storage rules enforce; said here before the upload
     // starts. Without the plan read (offline, say) the larger limit is assumed and the
     // rules have the last word.
     const limits = plan?.limits ?? LIMITS.pro;
-    // `>=`, as the Storage rule has it: a file of exactly the limit is refused there.
-    if (file.size >= limits.fileBytes) {
+    // `>=`, as the Storage rule has it: a file of exactly the limit is refused there. The
+    // rule measures the encrypted object, a few bytes a megabyte larger than the file.
+    if (encryptedSize(file.size) >= limits.fileBytes) {
       setError(
         `File size must be under ${formatMb(limits.fileBytes)}${plan?.tier === 'free' ? ` on the free plan (${formatMb(LIMITS.pro.fileBytes)} on Pro)` : ''}.`
       );
@@ -190,31 +114,11 @@ export default function Push() {
 
     setIsUploadSubmitting(true);
 
-    let uploaded: StorageReference | null = null;
     try {
-      const auth = getAuth();
-      const storage = getStorage();
-      const db = getFirestore();
-
-      if (!auth.currentUser?.uid) {
-        throw new Error('User not authenticated');
-      }
-
-      const ext = file.name.split('.').pop()?.toLowerCase() || '';
-
-      // Get a unique storage reference
-      const storageRef = await getUniqueStorageRef(storage, auth.currentUser.uid, file.name);
-
-      const snapshot = await uploadBytes(storageRef, file);
-      uploaded = snapshot.ref;
-      const downloadUrl = await getDownloadURL(snapshot.ref);
-
-      // Use the final file name from the storage reference for the title
-      const finalFileName = storageRef.name.split('/').pop() || file.name;
-      const push = createPushDocument(downloadUrl, finalFileName, 'file', ext);
-
-      const docRef = await addDoc(collection(db, 'pushes'), push);
-      console.log('File saved with ID:', docRef.id);
+      // Encrypted in the tab, stored under a random name; a refused push takes its upload
+      // with it (createFilePush), since nothing else would ever name the object.
+      const id = await createFilePush(getFirestore(), getStorage(), keys, file);
+      console.log('File saved with ID:', id);
 
       // Clear form after successful submission
       setFile(null);
@@ -223,11 +127,12 @@ export default function Push() {
       if (fileInput) fileInput.value = '';
     } catch (error) {
       console.error('Error saving file:', error);
-      // A push refused after its upload (the stale-plan case, or a limit reached in
-      // another tab) would otherwise leave the object behind for good.
-      if (uploaded) await deleteObject(uploaded).catch((e) => console.error('Error removing the upload:', e));
       setError(
-        isRulesRefusal(error) ? await refusalMessage(plan, 'file', setPlan) : 'Failed to upload file. Please try again.'
+        isRulesRefusal(error)
+          ? await refusalMessage(plan, 'file', setPlan, () => keyIsStale(getFirestore(), keys))
+          : error instanceof PushTooLongError
+            ? 'That file name is too long to push.'
+            : 'Failed to upload file. Please try again.'
       );
     } finally {
       setIsUploadSubmitting(false);

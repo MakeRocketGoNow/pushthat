@@ -1,6 +1,7 @@
 import Foundation
 import FirebaseAuth
 import FirebaseFirestore
+import FirebaseStorage
 import Combine
 import SwiftUI
 import PhotosUI
@@ -21,6 +22,13 @@ class PushListViewModel: ObservableObject {
     @Published var selectedPhoto: PhotosPickerItem?
     @Published var isUploading = false
 
+    /// Set while an encrypted file is fetched and decrypted, which can take a while.
+    @Published var isOpeningFile = false
+    /// The tap on a locked push, which says why it cannot open.
+    @Published var showLockedNotice = false
+    /// The decrypted file QuickLook shows.
+    @Published var previewURL: URL?
+
     private let db = Firestore.firestore()
     private let pageSize = 10
     private var lastDocument: DocumentSnapshot?
@@ -35,6 +43,13 @@ class PushListViewModel: ObservableObject {
 
     init() {
         Task { await loadPushes() }
+        // The list is what opens once the account key is on this device, at start and right
+        // after a sign-in or unlock, so it is where the plaintext pushes start moving.
+        if let uid = Auth.auth().currentUser?.uid {
+            Task.detached(priority: .background) {
+                await PushMigration.shared.runIfNeeded(uid: uid)
+            }
+        }
         setupPushNotificationListener()
     }
 
@@ -52,15 +67,19 @@ class PushListViewModel: ObservableObject {
 
         isLoading = true
 
+        let keys = PushKeys.load(uid: userId)
+
         var query = db.collection("pushes")
             .whereField("userId", isEqualTo: userId)
             .order(by: "createdAt", descending: true)
             .limit(to: pageSize)
 
-        if !searchQuery.isEmpty {
+        // The blind token of the term's first word (docs/e2ee.md, "Search"); a term with no
+        // word in it is no search, and the list is unfiltered.
+        if let token = keys?.searchToken(for: searchQuery) {
             query = db.collection("pushes")
                 .whereField("userId", isEqualTo: userId)
-                .whereField("searchTokens", arrayContains: searchQuery.lowercased())
+                .whereField("searchTokens", arrayContains: token)
                 .order(by: "createdAt", descending: true)
                 .limit(to: pageSize)
         }
@@ -71,8 +90,9 @@ class PushListViewModel: ObservableObject {
 
         do {
             let snapshot = try await query.getDocuments()
-            let newItems = snapshot.documents.compactMap { doc -> PushItem? in
-                try? doc.data(as: PushItem.self)
+            let newItems = snapshot.documents.compactMap { PushItem(document: $0, keys: keys) }
+            if let keys {
+                scrapeUntitled(newItems, keys: keys)
             }
 
             if isInitial {
@@ -192,13 +212,68 @@ class PushListViewModel: ObservableObject {
 
     // MARK: - Actions
 
+    /// A tap on a row: a URL push opens its URL, a file push its file, a locked push says
+    /// why it cannot.
+    func open(_ item: PushItem) {
+        switch item.source {
+        case .locked:
+            showLockedNotice = true
+        case let .encrypted(file?, objectPath):
+            guard let objectPath else {
+                showError(PushFileOpener.OpenError.notDownloaded.localizedDescription)
+                return
+            }
+            openFile(file, objectPath: objectPath)
+        case .encrypted, .plaintext:
+            // A URL push, or a plaintext file push, which still has its download URL.
+            openURL(item.url)
+        }
+    }
+
     func openURL(_ urlString: String) {
         guard let url = URL(string: urlString) else { return }
         UIApplication.shared.open(url)
     }
 
-    func copyToClipboard(_ urlString: String) {
-        UIPasteboard.general.string = urlString
+    func copyToClipboard(_ item: PushItem) {
+        guard let text = item.copyText else { return }
+        UIPasteboard.general.string = text
+    }
+
+    private func openFile(_ file: PushFile, objectPath: String) {
+        guard !isOpeningFile else { return }
+        isOpeningFile = true
+        Task {
+            defer { isOpeningFile = false }
+            do {
+                let local = try await PushFileOpener.localFile(file: file, objectPath: objectPath, storage: Storage.storage())
+                previewURL = local
+            } catch {
+                showError(error.localizedDescription)
+            }
+        }
+    }
+
+    private func showError(_ message: String) {
+        errorMessage = message
+        showError = true
+    }
+
+    /// Untitled URL pushes get their page's title, whichever device made them
+    /// (`TitleScraperService`). In the background: the list does not wait for any page.
+    private func scrapeUntitled(_ items: [PushItem], keys: PushKeys) {
+        for item in items where item.type == .url && item.title.isEmpty {
+            guard case .encrypted = item.source, let id = item.id else { continue }
+            let url = item.url
+            let ext = item.ext ?? ""
+            let userId = item.userId
+            let keyVersion = item.keyVersion
+            Task.detached(priority: .utility) {
+                await TitleScraperService.shared.scrapeAndUpdate(
+                    pushId: id, userId: userId, keyVersion: keyVersion, url: url, ext: ext, keys: keys
+                )
+            }
+        }
     }
 
     // MARK: - Upload

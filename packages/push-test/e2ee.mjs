@@ -286,20 +286,25 @@ export const openPush = async (metaKey, userId, pushId, enc) =>
 // ---------------------------------------------------------------------------------------
 // The blind index
 
-// The rule the reference tokenizes by, which is the iOS generator's (SearchTokenGenerator
-// .swift) with two things pinned that Swift leaves to its String: the text is NFC first,
-// so a composed search term finds a decomposed title, and a prefix is a count of code
-// points, which every platform can take cheaply, where Swift counts grapheme clusters.
-// Words are split on anything that is not a letter, a combining mark or a digit; marks
-// stay in the word, as they do in Swift's `alphanumerics`. The web app and Android run a
-// different rule today (docs/e2ee.md, the blind index), and phase 4 has to settle on one.
-// The set is returned in first-seen order so the vectors read in the order the spec's
-// example lists them.
+// The rule every client tokenizes by (docs/e2ee.md, Search), which is the iOS generator's
+// as it was before the blind index, with two things pinned that Swift leaves to its
+// String: the text is NFC first, so a composed search term finds a decomposed title, and a
+// prefix is a count of code points, which every platform can take cheaply, where Swift
+// counts grapheme clusters. Words are split on anything that is not a letter, a combining
+// mark or a digit; marks stay in the word, as they do in Swift's `alphanumerics`. The set
+// is returned in first-seen order so the vectors read in the order the spec's example
+// lists them, and cut at the rules' bound on `searchTokens`, which only a title and URL
+// of thousands of characters reach.
+export const MAX_SEARCH_TOKENS = 3000;
+
 export const searchTokens = (text) => {
   const tokens = new Set();
   for (const word of text.normalize("NFC").toLowerCase().split(/[^\p{L}\p{M}\p{N}]+/u)) {
     const points = Array.from(word);
-    for (let i = 1; i <= points.length; i++) tokens.add(points.slice(0, i).join(""));
+    for (let i = 1; i <= points.length; i++) {
+      if (tokens.size === MAX_SEARCH_TOKENS) return Array.from(tokens);
+      tokens.add(points.slice(0, i).join(""));
+    }
   }
   return Array.from(tokens);
 };

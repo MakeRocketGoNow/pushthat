@@ -30,7 +30,7 @@
     <string name="file_too_large">File size must be less than %1$d MB on your plan</string>
     <string name="file_upload_error">Failed to upload file. Please try again.</string>
 
-    <string name="new_push">New Push</string>
+    <string name="new_push">New push</string>
     <string name="default_notification_channel_id">push_that_default_channel</string>
     <string name="default_notification_channel_name">Push That Notifications</string>
     <string name="open_push">Open</string>
@@ -95,5 +95,11 @@
     <string name="key_settings_failed">That did not work. Please try again.</string>
     <string name="keys_changed_here">Your encryption keys were changed on another device. Sign out and sign in again to use them here.</string>
     <string name="password_again_to_finish">Enter your password again to finish.</string>
+    <!-- Pushes encrypted under the account key (docs/e2ee.md, phase 4), word for word with
+         the other apps. -->
+    <string name="locked_push">Locked push</string>
+    <string name="locked_push_message">This push was encrypted with a key this account no longer has. It can be deleted but not opened.</string>
+    <string name="file_decrypt_failed">This file could not be decrypted.</string>
+    <string name="file_push_body">File</string>
     <string name="keys_changed">Your encryption keys were changed on another device while this one was setting up. Try again.</string>
 </resources>

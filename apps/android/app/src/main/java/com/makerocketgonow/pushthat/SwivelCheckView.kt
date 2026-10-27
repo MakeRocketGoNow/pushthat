@@ -70,14 +70,17 @@ class SwivelCheckView @JvmOverloads constructor(
 
     override fun toggle() = setChecked(!isChecked)
 
-    fun loadFavicon(url: String, fileExt: String? = null) {
+    /**
+     * The icon for [fileExt] when there is one, else [url]'s favicon. A push with neither
+     * (an encrypted file of an unknown type, a locked push) gets the placeholder: there is
+     * no host to ask for, and a locked push's URL is not known at all.
+     */
+    fun loadFavicon(url: String?, fileExt: String? = null) {
         // Check if there's a file extension and it matches our supported icons
-        Log.d("SwivelCheckView", "Loading favicon for $url with extension $fileExt")
         if (!fileExt.isNullOrBlank()) {
             Log.d("SwivelCheckView", "File extension is not null or blank")
             val iconName = SUPPORTED_FILE_ICONS.find { it == "${fileExt.lowercase()}.png" }
             if (iconName != null) {
-                Log.d("SwivelCheckView", "File extension is supported")
                 // Load file type icon from PushThat CDN
                 Glide.with(context)
                     .load("https://pushthat.link/files/${iconName}")
@@ -94,8 +97,15 @@ class SwivelCheckView @JvmOverloads constructor(
         }
 
         // If no file extension or unsupported, fall back to favicon
-        val uri = Uri.parse(url)
-        val faviconUrl = "https://www.google.com/s2/favicons?domain=${Uri.encode(uri.host)}&sz=256"
+        val host = url?.let { Uri.parse(it).host }
+        if (host.isNullOrEmpty()) {
+            Glide.with(context).clear(frontImageView)
+            frontImageView.setImageResource(R.drawable.default_favicon)
+            backImageView.setImageResource(R.drawable.ic_check_circle)
+            backImageView.setColorFilter(context.getColor(R.color.checkmark_color))
+            return
+        }
+        val faviconUrl = "https://www.google.com/s2/favicons?domain=${Uri.encode(host)}&sz=256"
 
         Glide.with(context)
             .load(faviconUrl)

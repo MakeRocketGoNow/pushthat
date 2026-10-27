@@ -55,6 +55,7 @@ class AuthViewModel: ObservableObject {
         } else {
             // Signed out while the app was not running (see `sessionChanged`).
             AccountKeyStore.clearAccountKey()
+            PushFileOpener.clear()
         }
 
         // Listen for auth state changes
@@ -73,11 +74,12 @@ class AuthViewModel: ObservableObject {
         guard let user else {
             // Not only the app's own "Sign out" ends a session: Firebase drops it when the
             // tokens are revoked (a password changed on another device) or the account is
-            // disabled. The key goes with it, as `signOut()` takes it, so that no key is
-            // left behind for whoever signs in next. Checked against the live session, since
+            // disabled. The key goes with it, and the last decrypted file, as `signOut()`
+            // takes them, so that neither is left behind for whoever signs in next. Checked against the live session, since
             // this runs from a queued task and a sign-in may have landed since.
             if auth.currentUser == nil {
                 AccountKeyStore.clearAccountKey()
+                PushFileOpener.clear()
             }
             isAuthenticated = false
             keyGate = .ready
@@ -457,10 +459,11 @@ class AuthViewModel: ObservableObject {
 
     // MARK: - Sign out
 
-    /// Clears the account key first, so that a sign-out that fails partway never leaves a
-    /// key behind for whoever signs in next. The device id stays: it is the install's.
+    /// Clears the account key and the last decrypted file first, so that a sign-out that
+    /// fails partway never leaves either behind for whoever signs in next. The device id stays: it is the install's.
     func signOut() {
         AccountKeyStore.clearAccountKey()
+        PushFileOpener.clear()
         pendingRecovery = nil
         do {
             try auth.signOut()

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- What PushFiles hands to a viewer: a decrypted file push, and nothing else in the cache
+     (not the encrypted downloads, not the uploads being encrypted). -->
+<paths>
+    <cache-path name="opened" path="opened/" />
+</paths>

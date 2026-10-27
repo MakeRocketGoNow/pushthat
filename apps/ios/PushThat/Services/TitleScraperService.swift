@@ -1,29 +1,38 @@
 import Foundation
 import FirebaseFirestore
 
-/// Service for scraping webpage titles
-/// Matches the Android TitleScrapingWorker behavior
+/// Fills in the title of an encrypted URL push from the page itself (docs/e2ee.md,
+/// "Titles"). No server fetches it, since a server that fetched the URL would know it: a
+/// push goes out with an empty title and a native device writes the title back, for its
+/// own pushes and for one it received untitled (a web push, which has no way to read a
+/// cross-origin page).
+///
+/// The app calls it for every untitled URL push the list shows, whoever made it, which
+/// covers the share extension's pushes (the extension is gone before a page could answer)
+/// and those received while the app was not running (the notification service extension
+/// has neither the time nor Firestore to do it). Each push is tried once per process, so
+/// a page with no title is not fetched on every refresh.
 actor TitleScraperService {
     static let shared = TitleScraperService()
 
     private let db = Firestore.firestore()
+    private var attempted = Set<String>()
 
     private init() {}
 
-    /// Scrape the title from a URL and update the Firestore document
-    func scrapeAndUpdate(documentId: String, url: String) async {
-        guard let title = await scrapeTitle(from: url) else { return }
-
-        // Update the document with the new title
-        let searchTokens = SearchTokenGenerator.generate(from: title)
-
+    /// Scrapes the page's title and rewrites the push's envelope with it: exactly `enc` and
+    /// `searchTokens`, only under the push's own key version (`PushDocuments.retitle`). A
+    /// failure is logged; the push keeps showing its URL.
+    func scrapeAndUpdate(pushId: String, userId: String, keyVersion: Int?, url: String, ext: String, keys: PushKeys) async {
+        guard keyVersion == keys.keyVersion, attempted.insert(pushId).inserted else { return }
+        guard let title = await scrapeTitle(from: url), !title.isEmpty else { return }
         do {
-            try await db.collection("pushes").document(documentId).updateData([
-                "title": title,
-                "searchTokens": searchTokens
-            ])
+            try await PushDocuments.retitle(
+                firestore: db, keys: keys, pushId: pushId, userId: userId,
+                keyVersion: keyVersion, url: url, ext: ext, title: title
+            )
         } catch {
-            print("Failed to update title: \(error)")
+            print("Failed to update title: \(type(of: error))")
         }
     }
 
@@ -46,7 +55,8 @@ actor TitleScraperService {
 
             return extractTitle(from: html)
         } catch {
-            print("Failed to scrape title: \(error)")
+            // The error's type only: a URLError carries the page's full URL.
+            print("Failed to scrape title: \(type(of: error))")
             return nil
         }
     }

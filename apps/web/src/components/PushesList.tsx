@@ -1,9 +1,10 @@
 // cspell:ignore pproj indd flac
 import clsx from 'clsx';
+import { getStorage } from 'firebase/storage';
 import { Dispatch, SetStateAction, useState } from 'react';
 
 import { CheckIcon } from '@/components/icons/CheckIcon';
-import { Push } from '@/types/pushes';
+import { LOCKED_MESSAGE, type Push, type PushFile, downloadFile } from '@/services/pushes';
 
 import styles from './PushesList.module.css';
 
@@ -44,6 +45,31 @@ const ICONS = [
   'apk.svg',
 ];
 
+const faviconOf = (url: string | undefined): string => {
+  let host = '';
+  try {
+    host = url ? new URL(url).hostname : '';
+  } catch (error) {
+    console.error('Error parsing URL:', error);
+  }
+  return `https://www.google.com/s2/favicons?domain=${encodeURIComponent(host)}&sz=256`;
+};
+
+/**
+ * Hands a decrypted file to the browser as a download. The object URL is revoked once the
+ * save has had time to start, or a 100 MB Blob would be held for the life of the tab. Not
+ * at once: Safari, and Firefox in some versions, cancel a download whose URL goes away
+ * before they have begun reading it, which is why FileSaver.js waits 40 seconds too.
+ */
+const save = (blob: Blob, name: string) => {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = name;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(url), 40_000);
+};
+
 export default function PushesList({
   pushes,
   error,
@@ -52,6 +78,33 @@ export default function PushesList({
   onSelectedPushesChange,
 }: PushesListProps) {
   const [lowResImages, setLowResImages] = useState<Set<string>>(new Set());
+  const [opening, setOpening] = useState<string | undefined>(undefined);
+
+  // An encrypted file has no URL to follow: it is read through the SDK, decrypted in the
+  // tab (about twice its size in memory at the peak, docs/e2ee.md, Files) and saved. A
+  // failure says so and saves nothing, rather than a file cut short.
+  const openFile = async (push: Push, file: PushFile) => {
+    if (opening) return;
+    setOpening(push.id);
+    try {
+      save(await downloadFile(getStorage(), file), file.envelope.name);
+    } catch (error) {
+      console.error('Error opening file:', error);
+      window.alert('This file could not be decrypted.');
+    } finally {
+      setOpening(undefined);
+    }
+  };
+
+  const handleOpen = (push: Push, event: React.MouseEvent) => {
+    if (push.locked) {
+      event.preventDefault();
+      window.alert(LOCKED_MESSAGE);
+    } else if (push.file) {
+      event.preventDefault();
+      void openFile(push, push.file);
+    }
+  };
 
   const handleSelect = (pushId: string, event: React.MouseEvent) => {
     event.preventDefault();
@@ -100,11 +153,18 @@ export default function PushesList({
       {pushes.map((push) => {
         const icon = ICONS.find((icon) => push.ext === icon.split('.')[0]);
         const isSelected = selectedPushes.has(push.id);
-        const fallbackSrc = getFallbackImageSrc(push, icon);
+        // A locked push has nothing to show a picture of.
+        const fallbackSrc = push.locked ? '/pushthat-mono.svg' : getFallbackImageSrc(push, icon);
 
         return (
           <li key={push.id} className={styles.pushItem}>
-            <a href={push.url} target="_blank" rel="noopener noreferrer" className={styles.pushLink}>
+            <a
+              href={push.locked || push.file ? '#' : push.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className={styles.pushLink}
+              onClick={(e) => handleOpen(push, e)}
+            >
               <div
                 className={clsx(styles.pushIcon, isSelected && styles.selected)}
                 onClick={(e) => handleSelect(push.id, e)}
@@ -122,7 +182,7 @@ export default function PushesList({
                   />
                 ) : (
                   <img
-                    src={push.favicon}
+                    src={faviconOf(push.url)}
                     alt=""
                     className={styles.favicon}
                     onLoad={(e) => handleImageLoad(e, push.id)}
@@ -130,7 +190,9 @@ export default function PushesList({
                 )}
               </div>
               <div className={styles.pushContent}>
-                <span className={styles.pushTitle}>{push.title || push.url}</span>
+                <span className={styles.pushTitle}>
+                  {opening === push.id ? `Decrypting ${push.title}…` : push.title || push.url}
+                </span>
                 <div className={styles.pushMeta}>{new Date(push.createdAt).toLocaleString()}</div>
               </div>
             </a>

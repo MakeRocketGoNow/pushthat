@@ -3,7 +3,6 @@ import FirebaseAuth
 import FirebaseStorage
 import FirebaseFirestore
 import UniformTypeIdentifiers
-import UIKit
 
 /// Errors that can occur during file upload
 enum FileUploadError: LocalizedError {
@@ -106,9 +105,14 @@ enum FileUploadUtils {
     // MARK: - File Size Validation
 
     /// Check if data exceeds the tier's maximum file size: 100 MB on Pro, 25 MB on Free, which the Storage rules
-    /// enforce. `>=`, as the rule has it: a file of exactly the limit is refused there.
+    /// enforce. `>=`, as the rule has it: a file of exactly the limit is refused there. The rule measures the
+    /// encrypted object, 12 bytes and 16 a MiB larger than the file, so that is what is compared.
     static func exceedsMaxFileSize(_ data: Data, isPro: Bool) -> Bool {
-        return Int64(data.count) >= PlanService.maxFileBytes(isPro: isPro)
+        return exceedsMaxFileSize(bytes: Int64(data.count), isPro: isPro)
+    }
+
+    static func exceedsMaxFileSize(bytes: Int64, isPro: Bool) -> Bool {
+        return E2eeCrypto.encryptedFileSize(bytes) >= PlanService.maxFileBytes(isPro: isPro)
     }
 
     /// The sentence for a file over the tier's size, naming the limit. Nothing more: a pointer to the
@@ -151,32 +155,20 @@ enum FileUploadUtils {
 
     // MARK: - URL Push Document
 
-    /// Create a push document for a URL in Firestore
+    /// Creates an encrypted URL push (docs/e2ee.md, "The push envelope") and returns it, so
+    /// a caller can scrape the title for it. The title starts empty and the list shows the
+    /// URL until it is known; `ext` is the URL path's extension, as before.
+    @discardableResult
     static func createURLPushDocument(
         firestore: Firestore,
         url: String,
         userId: String
-    ) async throws {
-        let deviceName = await UIDevice.current.name
-        let title = url // Will be updated by title scraper
-        let searchTokens = SearchTokenGenerator.generate(from: title)
-        let ext = URL(string: url)?.pathExtension
-
-        var pushData: [String: Any] = [
-            "url": url,
-            "userId": userId,
-            "createdAt": FieldValue.serverTimestamp(),
-            "title": title,
-            "type": "url",
-            "deviceName": deviceName,
-            "searchTokens": searchTokens
-        ]
-
-        if let ext = ext, !ext.isEmpty {
-            pushData["ext"] = ext
-        }
-
-        try await firestore.collection("pushes").addDocument(data: pushData)
+    ) async throws -> PreparedPush {
+        let keys = try PushDocuments.keys(for: userId)
+        let ext = URL(string: url)?.pathExtension ?? ""
+        let push = try PushDocuments.prepareURLPush(firestore: firestore, keys: keys, url: url, ext: ext)
+        try await PushDocuments.create(push, firestore: firestore)
+        return push
     }
 
     /// Callback-based version for share extension compatibility
@@ -198,8 +190,10 @@ enum FileUploadUtils {
 
     // MARK: - Complete Upload Flow
 
-    /// Upload file data to Firebase Storage and create a Firestore document
-    /// - Returns: The download URL on success
+    /// Encrypts the file with its own key, uploads the ciphertext under a random name, and
+    /// creates the encrypted push that carries the key (docs/e2ee.md, "Files"). The bytes
+    /// are sealed a chunk at a time into a temporary file, so the ciphertext is never a
+    /// second copy of the file in memory.
     static func uploadFileAndCreateDocument(
         data: Data,
         fileName: String,
@@ -207,32 +201,32 @@ enum FileUploadUtils {
         type: String = "file",
         storage: Storage,
         firestore: Firestore
-    ) async throws -> String {
-        // Get unique storage path
-        let (storagePath, finalFileName) = await getUniqueStorageRef(
-            storage: storage,
-            userId: userId,
-            fileName: fileName
-        )
+    ) async throws {
+        let keys = try PushDocuments.keys(for: userId)
+        try await PushDocuments.uploadFilePush(
+            keys: keys, name: fileName, mime: mimeType(for: fileName), size: Int64(data.count),
+            storage: storage, firestore: firestore
+        ) { fk, prefix, destination in
+            try E2eeCrypto.encryptFile(fk: fk, prefix: prefix, data: data, destination: destination)
+        }
+    }
 
-        // Upload to Storage
-        let storageRef = storage.reference().child(storagePath)
-        let metadata = StorageMetadata()
-        metadata.contentType = mimeType(for: fileName)
-
-        _ = try await storageRef.putDataAsync(data, metadata: metadata)
-        let downloadURL = try await storageRef.downloadURL()
-
-        // Create Firestore document
-        try await createPushDocument(
-            firestore: firestore,
-            downloadURL: downloadURL.absoluteString,
-            fileName: finalFileName,
-            userId: userId,
-            type: type
-        )
-
-        return downloadURL.absoluteString
+    /// The same, streaming from a file on disk instead of bytes in memory.
+    static func uploadFileAndCreateDocument(
+        fileURL: URL,
+        fileName: String,
+        userId: String,
+        storage: Storage,
+        firestore: Firestore
+    ) async throws {
+        let keys = try PushDocuments.keys(for: userId)
+        let size = (try? fileURL.resourceValues(forKeys: [.fileSizeKey]).fileSize).flatMap { $0 }.map(Int64.init) ?? 0
+        try await PushDocuments.uploadFilePush(
+            keys: keys, name: fileName, mime: mimeType(for: fileName), size: size,
+            storage: storage, firestore: firestore
+        ) { fk, prefix, destination in
+            try E2eeCrypto.encryptFile(fk: fk, prefix: prefix, source: fileURL, destination: destination)
+        }
     }
 
     /// Callback-based version for share extension compatibility
@@ -243,11 +237,11 @@ enum FileUploadUtils {
         type: String = "file",
         storage: Storage,
         firestore: Firestore,
-        completion: @escaping (Result<String, Error>) -> Void
+        completion: @escaping (Result<Void, Error>) -> Void
     ) {
         Task {
             do {
-                let url = try await uploadFileAndCreateDocument(
+                try await uploadFileAndCreateDocument(
                     data: data,
                     fileName: fileName,
                     userId: userId,
@@ -255,111 +249,10 @@ enum FileUploadUtils {
                     storage: storage,
                     firestore: firestore
                 )
-                completion(.success(url))
+                completion(.success(()))
             } catch {
                 completion(.failure(error))
             }
-        }
-    }
-
-    /// Create a push document in Firestore
-    static func createPushDocument(
-        firestore: Firestore,
-        downloadURL: String,
-        fileName: String,
-        userId: String,
-        type: String = "file"
-    ) async throws {
-        let deviceName = await UIDevice.current.name
-        let ext = (fileName as NSString).pathExtension
-        let searchTokens = SearchTokenGenerator.generate(from: fileName)
-
-        var pushData: [String: Any] = [
-            "url": downloadURL,
-            "userId": userId,
-            "createdAt": FieldValue.serverTimestamp(),
-            "title": fileName,
-            "type": type,
-            "deviceName": deviceName,
-            "searchTokens": searchTokens
-        ]
-
-        if !ext.isEmpty {
-            pushData["ext"] = ext
-        }
-
-        try await firestore.collection("pushes").addDocument(data: pushData)
-    }
-
-    // MARK: - Unique Filename Generation
-
-    /// Generate a unique filename by appending (1), (2), etc. if the original exists
-    /// Handles cases where the name already has a number suffix like "file (1).jpg"
-    static func generateUniqueFileName(originalName: String, attempt: Int) -> String {
-        if attempt == 0 {
-            return originalName
-        }
-
-        let name = (originalName as NSString).deletingPathExtension
-        let ext = (originalName as NSString).pathExtension
-
-        // Check if name already ends with a number pattern like " (1)" or " (2)"
-        // If so, extract base name and add attempt to existing number
-        let pattern = #"^(.+) \((\d+)\)$"#
-        if let regex = try? NSRegularExpression(pattern: pattern),
-           let match = regex.firstMatch(in: name, range: NSRange(name.startIndex..., in: name)),
-           let baseRange = Range(match.range(at: 1), in: name),
-           let numRange = Range(match.range(at: 2), in: name),
-           let existingNum = Int(name[numRange]) {
-            let baseName = String(name[baseRange])
-            let newNum = existingNum + attempt
-            if ext.isEmpty {
-                return "\(baseName) (\(newNum))"
-            } else {
-                return "\(baseName) (\(newNum)).\(ext)"
-            }
-        }
-
-        // No existing number suffix, just append the attempt
-        if ext.isEmpty {
-            return "\(name) (\(attempt))"
-        } else {
-            return "\(name) (\(attempt)).\(ext)"
-        }
-    }
-
-    /// Check if a file exists at the given storage path
-    static func checkFileExists(storage: Storage, storagePath: String) async -> Bool {
-        let ref = storage.reference().child(storagePath)
-        do {
-            _ = try await ref.getMetadata()
-            return true
-        } catch {
-            return false
-        }
-    }
-
-    /// Get a unique storage reference, trying original name first then (1), (2), etc.
-    static func getUniqueStorageRef(storage: Storage, userId: String, fileName: String) async -> (storagePath: String, finalFileName: String) {
-        var attempt = 0
-
-        while true {
-            let uniqueFileName = generateUniqueFileName(originalName: fileName, attempt: attempt)
-            let storagePath = "uploads/\(userId)/\(uniqueFileName)"
-
-            let exists = await checkFileExists(storage: storage, storagePath: storagePath)
-            if !exists {
-                return (storagePath, uniqueFileName)
-            }
-            attempt += 1
-        }
-    }
-
-    /// Callback-based version for share extension compatibility
-    static func getUniqueStorageRef(storage: Storage, userId: String, fileName: String, completion: @escaping (String, String) -> Void) {
-        Task {
-            let result = await getUniqueStorageRef(storage: storage, userId: userId, fileName: fileName)
-            completion(result.storagePath, result.finalFileName)
         }
     }
 
