@@ -73,6 +73,12 @@ are not.
 - The app works in light and dark mode. Use the semantic colors in `res/values/colors.xml`
   and `res/values-night/colors.xml`, never a literal.
 - New styles go in `themes.xml`.
+- A change someone would notice on their phone updates the release note,
+  `store/whatsnew/whatsnew-en-US`, in the same pull request. CI uploads that file as the
+  build's "What's new", so a change without it ships under the previous note. Write it for
+  the person holding the phone, not as a commit subject, and keep it under Play's 500
+  characters. A bug fix nobody saw, a refactor or a test changes nothing there. See
+  [docs/android.md](docs/android.md#release-notes).
 
 ## The iOS and macOS apps
 
@@ -113,7 +119,8 @@ functions' suites deliver signed events to the webhook over HTTP and point
 
 CI (`.github/workflows/ci.yml`) runs the functions' unit tests, the web app's lint, key
 vectors and builds, the Android unit tests and the encryption reference's tests on every
-pull request.
+pull request. `.github/workflows/android.yml` builds the Android release bundle, and on
+`main` uploads it to Play as a draft ([docs/android.md](docs/android.md#shipping-to-play)).
 The emulator suites run only in the deploy that follows a merge, and the Xcode builds not
 at all, so run them yourself when a change reaches the rules, the functions or the Apple
 apps: by the time CI runs them, the change is on `main`.
@@ -136,5 +143,12 @@ tag through the API (`gh api repos/<owner>/<action>/git/ref/tags/<tag>`, then th
 object's commit if the type is `tag`), not by copying a SHA from a release page.
 
 Actions outside `actions/*` and verified publishers must also be on the allow-list in the
-repository's Actions settings, which today names `gradle/actions/*` and
-`google-github-actions/auth`. A run that uses anything else is refused before it starts.
+repository's Actions settings, which today names `gradle/actions/*`,
+`google-github-actions/auth` and `r0adkll/upload-google-play`. A run that uses anything
+else is refused before it starts.
+
+A secret that signs or publishes lives on an Environment that accepts only `main`, never
+on the repository: a pull request runs its own copy of the workflow, so a repository
+secret is one any branch can read. The Android release job uses the `play` Environment
+([docs/android.md](docs/android.md#shipping-to-play)). A job that needs such a secret
+declares the Environment, and a job that runs on pull requests holds none.

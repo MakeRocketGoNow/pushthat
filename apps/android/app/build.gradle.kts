@@ -13,8 +13,21 @@ val keystoreProperties = Properties().apply {
     val file = rootProject.file("keystore.properties")
     if (file.exists()) file.inputStream().use { load(it) }
 }
-val hasReleaseSigning = listOf("storeFile", "storePassword", "keyAlias", "keyPassword")
-    .all { !keystoreProperties.getProperty(it).isNullOrBlank() }
+
+// CI has no keystore.properties, so each value can also come from the environment
+// (.github/workflows/android.yml). Environment variables rather than CI writing the
+// file: a password containing a backslash or a colon means something else to
+// Properties, and would sign with the wrong value or not at all. The file wins
+// when both are set, so a local build is never steered by a stray export.
+fun signing(key: String, env: String): String? =
+    (keystoreProperties.getProperty(key) ?: System.getenv(env))?.takeUnless { it.isBlank() }
+
+val releaseStoreFile = signing("storeFile", "PUSHTHAT_KEYSTORE_PATH")
+val releaseStorePassword = signing("storePassword", "PUSHTHAT_KEYSTORE_PASSWORD")
+val releaseKeyAlias = signing("keyAlias", "PUSHTHAT_KEY_ALIAS")
+val releaseKeyPassword = signing("keyPassword", "PUSHTHAT_KEY_PASSWORD")
+val hasReleaseSigning = listOf(releaseStoreFile, releaseStorePassword, releaseKeyAlias, releaseKeyPassword)
+    .all { it != null }
 
 android {
     namespace = "com.makerocketgonow.pushthat"
@@ -24,8 +37,18 @@ android {
         applicationId = "com.makerocketgonow.pushthat"
         minSdk = 24
         targetSdk = 36
-        versionCode = 8
-        versionName = "1.1.0"
+        /*
+         * Every bundle Play accepts needs a version code it has not seen, so CI passes one
+         * that only rises (the workflow says how it is derived). A local build keeps 8,
+         * the code this file carried before CI took over, which Play will not take
+         * again: bundles for Play come from CI now. A value that is set but not a number
+         * fails the build here, rather than quietly becoming 8 and surfacing later as Play
+         * refusing the upload.
+         */
+        versionCode = System.getenv("PUSHTHAT_VERSION_CODE")?.let {
+            it.toIntOrNull() ?: error("PUSHTHAT_VERSION_CODE is not a number: $it")
+        } ?: 8
+        versionName = "1.2.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -35,10 +58,10 @@ android {
             create("release") {
                 // Relative paths resolve against the repo root, absolute ones are
                 // used as given.
-                storeFile = rootProject.file(keystoreProperties.getProperty("storeFile"))
-                storePassword = keystoreProperties.getProperty("storePassword")
-                keyAlias = keystoreProperties.getProperty("keyAlias")
-                keyPassword = keystoreProperties.getProperty("keyPassword")
+                storeFile = rootProject.file(releaseStoreFile!!)
+                storePassword = releaseStorePassword
+                keyAlias = releaseKeyAlias
+                keyPassword = releaseKeyPassword
             }
         }
     }
