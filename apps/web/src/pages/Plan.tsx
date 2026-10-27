@@ -304,8 +304,8 @@ export default function Plan() {
  * device's id, and where to read what that means. On the Plan page because the web app has
  * no settings page and this is the page about the account. The id is what this install
  * puts on its pushes in place of the device's model name, so showing it lets someone see
- * all the server is told about the device. IndexedDB can refuse (a private window in some browsers), and the line then goes without
- * the id rather than not at all.
+ * all the server is told about the device. IndexedDB can refuse (a private window in
+ * some browsers), and the line then goes without the id rather than not at all.
  */
 function Encrypted() {
   const [id, setId] = useState<string | null>(null);
