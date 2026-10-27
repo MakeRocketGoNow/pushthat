@@ -561,6 +561,12 @@ class TitleScrapingWorker(
             Log.e(TAG, "Error saving scraped title", e)
             // A refusal is final: the push is gone or is no longer this account's to change.
             if (e.code == FirebaseFirestoreException.Code.PERMISSION_DENIED) Result.failure() else Result.retry()
+        } catch (e: PushTooLargeException) {
+            // The URL with the scraped title does not fit `enc.ct`'s bound, and the page will
+            // give the same title next time: the push keeps the title it has. Retried, as the
+            // catch below would, it ran for as long as WorkManager kept the job.
+            Log.w(TAG, "The scraped title does not fit the push")
+            Result.success()
         } catch (e: Exception) {
             Log.e(TAG, "Error saving scraped title", e)
             Result.retry()
