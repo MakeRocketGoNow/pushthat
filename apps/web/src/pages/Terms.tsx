@@ -87,7 +87,8 @@ export default function Terms() {
         Pro is billed yearly and renews automatically each year, at the price then current, until you cancel it. You can
         cancel at any time, on the website, from Plan, then Manage billing. Cancelling stops the next renewal; the
         account keeps Pro until the end of the year already paid for, and then returns to the free plan. Nothing you
-        have pushed is deleted because a plan ends, beyond the file retention period of the plan the account is then on.
+        have pushed is deleted because a plan ends: each file keeps the retention period of the plan the account was on
+        when it was pushed.
       </p>
 
       <h4 id="refunds">REFUNDS</h4>
