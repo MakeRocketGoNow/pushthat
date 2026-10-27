@@ -12,6 +12,7 @@ import { PlanReport } from '@/services/plan';
 import {
   type PushKeys,
   PushTooLongError,
+  PushUnconfirmedError,
   createFilePush,
   createUrlPush,
   encryptedSize,
@@ -31,6 +32,9 @@ const refusalOf = async (error: unknown, keys: PushKeys): Promise<'limit' | 'sta
   if (!(error instanceof FirebaseError && error.code === 'permission-denied')) return undefined;
   return (await keyIsStale(getFirestore(), keys)) ? 'staleKey' : 'limit';
 };
+
+// Word for word what the iOS and macOS apps say: trying again could push it twice.
+const UNCONFIRMED = 'Could not confirm that this push was saved. Check your pushes before trying again.';
 
 // Word for word what Android says (keys_changed_here).
 const STALE_KEY = 'Your encryption keys were changed on another device. Sign out and sign in again to use them here.';
@@ -117,9 +121,11 @@ export default function Push() {
           ? limitMessage(plan, 'url')
           : refusal === 'staleKey'
             ? STALE_KEY
-            : error instanceof PushTooLongError
-              ? 'That link is too long to push.'
-              : 'Failed to save link. Please try again.'
+            : error instanceof PushUnconfirmedError
+              ? UNCONFIRMED
+              : error instanceof PushTooLongError
+                ? 'That link is too long to push.'
+                : 'Failed to save link. Please try again.'
       );
     } finally {
       setIsSubmitting(false);
@@ -179,9 +185,11 @@ export default function Push() {
           ? limitMessage(plan, 'file')
           : refusal === 'staleKey'
             ? STALE_KEY
-            : error instanceof PushTooLongError
-              ? 'That file name is too long to push.'
-              : 'Failed to upload file. Please try again.'
+            : error instanceof PushUnconfirmedError
+              ? UNCONFIRMED
+              : error instanceof PushTooLongError
+                ? 'That file name is too long to push.'
+                : 'Failed to upload file. Please try again.'
       );
     } finally {
       setIsUploadSubmitting(false);

@@ -213,12 +213,19 @@ const MAX_TITLE = 1000;
 export class PushTooLongError extends Error {}
 
 /**
+ * A push the rules refused whose read-back failed too, so whether it landed is unknown. Its
+ * file is kept: an object no push names is the orphan sweep's, where one deleted from under
+ * a push that exists is lost. The same rule as the apps.
+ */
+export class PushUnconfirmedError extends Error {}
+
+/**
  * Writes a new push, and on a refusal checks whether it had landed. The SDK resends a write
  * whose acknowledgement was lost, and the resend of a create is an update of the push it
  * made, which the rules refuse: without the check, that push was reported as refused (the
  * month's limit, on this page) and a file push's object deleted under it. A read of a push
- * that does not exist is refused too, since the read rule looks at its owner, so only a
- * read that succeeds says it landed.
+ * that does not exist is refused too, since the read rule looks at its owner: a refused read
+ * says it did not land, and any other failed read says nothing (`PushUnconfirmedError`).
  */
 async function createPush(pushRef: DocumentReference, push: DocumentData): Promise<void> {
   try {
@@ -227,8 +234,9 @@ async function createPush(pushRef: DocumentReference, push: DocumentData): Promi
     if (!(error instanceof FirebaseError && error.code === 'permission-denied')) throw error;
     const landed = await getDocFromServer(pushRef).then(
       (snapshot) => snapshot.exists(),
-      () => false
+      (readError) => (readError instanceof FirebaseError && readError.code === 'permission-denied' ? false : undefined)
     );
+    if (landed === undefined) throw new PushUnconfirmedError('could not tell whether the push was saved');
     if (!landed) throw error;
   }
 }
@@ -316,7 +324,9 @@ export async function createFilePush(
     });
     return pushRef.id;
   } catch (error) {
-    await deleteObject(uploaded.ref).catch((e) => console.error('Error removing the upload:', e));
+    if (!(error instanceof PushUnconfirmedError)) {
+      await deleteObject(uploaded.ref).catch((e) => console.error('Error removing the upload:', e));
+    }
     throw error;
   }
 }
