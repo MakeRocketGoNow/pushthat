@@ -90,8 +90,15 @@ object PushMigration {
         val data = doc.data ?: return true
         val migration = try {
             PushDocument.migration(keys, doc.id, data) ?: return true
+        } catch (e: PushTooLargeException) {
+            // A URL from before the rules bounded it, too long to seal within `enc.ct`'s
+            // bound. The rules would refuse it on every pass, so it stays plaintext and counts
+            // as done, as on the web and iOS; counted as a failure, it kept the account from
+            // ever being marked and every start paged through the whole history again. Nothing
+            // of the push goes into the log.
+            Log.w(TAG, "A push is too long to encrypt; it is left as it is")
+            return true
         } catch (e: Exception) {
-            // PushTooLargeException: an absurd URL. It stays plaintext and is retried.
             Log.w(TAG, "A push could not be encrypted", e)
             return false
         }
