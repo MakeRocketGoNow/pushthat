@@ -7,9 +7,19 @@ import { LIMITS, formatMb } from '@/config/plan';
 import { usePlan } from '@/hooks/usePlan';
 import { KEYS_UNAVAILABLE, usePushKeys } from '@/hooks/usePushKeys';
 import { atLimit, isRulesRefusal, limitMessage, refusalMessage } from '@/services/pushRefusal';
-import { PushTooLongError, createFilePush, createUrlPush, encryptedSize, keyIsStale } from '@/services/pushes';
+import {
+  PushTooLongError,
+  PushUnconfirmedError,
+  createFilePush,
+  createUrlPush,
+  encryptedSize,
+  keyIsStale,
+} from '@/services/pushes';
 
 import styles from './Push.module.css';
+
+// Word for word what the iOS and macOS apps say: trying again could push it twice.
+const UNCONFIRMED = 'Could not confirm that this push was saved. Check your pushes before trying again.';
 
 export default function Push() {
   const [url, setUrl] = useState('');
@@ -68,9 +78,11 @@ export default function Push() {
       setError(
         isRulesRefusal(error)
           ? await refusalMessage(plan, 'url', refreshPlan, () => keyIsStale(getFirestore(), keys))
-          : error instanceof PushTooLongError
-            ? 'That link is too long to push.'
-            : 'Failed to save link. Please try again.'
+          : error instanceof PushUnconfirmedError
+            ? UNCONFIRMED
+            : error instanceof PushTooLongError
+              ? 'That link is too long to push.'
+              : 'Failed to save link. Please try again.'
       );
     } finally {
       setIsSubmitting(false);
@@ -126,9 +138,11 @@ export default function Push() {
       setError(
         isRulesRefusal(error)
           ? await refusalMessage(plan, 'file', refreshPlan, () => keyIsStale(getFirestore(), keys))
-          : error instanceof PushTooLongError
-            ? 'That file name is too long to push.'
-            : 'Failed to upload file. Please try again.'
+          : error instanceof PushUnconfirmedError
+            ? UNCONFIRMED
+            : error instanceof PushTooLongError
+              ? 'That file name is too long to push.'
+              : 'Failed to upload file. Please try again.'
       );
     } finally {
       setIsUploadSubmitting(false);

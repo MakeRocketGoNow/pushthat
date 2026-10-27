@@ -66,8 +66,17 @@ actor TitleScraperService {
                 data.append(byte)
                 if data.count >= Self.maxPageBytes { break }
             }
-            // Lossy, since the cap can cut a UTF-8 sequence in two.
-            let html = String(decoding: data, as: UTF8.self)
+            // The header's charset, else UTF-8, decoded strictly: a page in an encoding this
+            // cannot read gets no title, rather than a garbled one written into the push for
+            // every device. Up to three bytes are dropped first, the most the cap can cut from
+            // a character, so a page cut mid-character still reads.
+            let encoding = httpResponse.textEncodingName
+                .map { CFStringConvertIANACharSetNameToEncoding($0 as CFString) }
+                .flatMap { $0 == kCFStringEncodingInvalidId ? nil : String.Encoding(rawValue: CFStringConvertEncodingToNSStringEncoding($0)) }
+                ?? .utf8
+            guard let html = (0...3).lazy.compactMap({ String(data: data.dropLast($0), encoding: encoding) }).first else {
+                return nil
+            }
 
             return extractTitle(from: html)
         } catch {
