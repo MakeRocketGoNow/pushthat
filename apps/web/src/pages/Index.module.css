@@ -1,7 +1,7 @@
 /*
  * The front page. Dark only, like the rest of the app, with the brand pink kept for the
- * things that should be looked at first: the primary action, the icons, the one word of
- * each heading that carries the claim. Everything else is white at a few opacities.
+ * things that should be looked at first: the primary action, the icons and the step
+ * numbers. Everything else is white at a few opacities.
  */
 
 .container {
