@@ -40,8 +40,8 @@ export function Security() {
         can do that. Your password reaches Google&rsquo;s sign-in service in two cases: when you reset it, since the
         reset is made on Google&rsquo;s own page, and when a sign-in with the first key is refused (a mistyped password,
         say), since the app then tries the password itself in case the account was made before encryption. A version of
-        the app from before encryption also sends the password itself whenever it signs in. After a reset, your next
-        sign-in replaces the password Google holds with the first key.
+        the app from before encryption also sends the password itself whenever it signs in. After a reset, the password
+        Google holds is replaced with the first key once you have entered your recovery key or chosen to start over.
       </p>
 
       <p>

@@ -81,7 +81,7 @@ export default function Privacy() {
         example, because the password was mistyped), because the App then tries the password itself in case your account
         was made before end-to-end encryption. A version of the App from before end-to-end encryption also sends your
         password itself whenever it signs in. After a reset, the App replaces the stored password with the derived key
-        the next time you sign in.
+        once you have entered your recovery key or chosen to start without it.
       </p>
 
       <p>
