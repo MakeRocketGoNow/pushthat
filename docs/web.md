@@ -34,11 +34,10 @@ What exists today: push handling is in the extension's background service worker
 background service worker is `chrome/background.ts`. Load `chrome-extension/` as an
 unpacked extension from `chrome://extensions` to try it.
 
-The extension logs to Axiom when it is built with an ingest token. The token comes from
-`VITE_AXIOM_TOKEN` in `apps/web/.env` (copy `.env.example`; `.env` is gitignored) or in the
-build's environment. It ships inside the built extension whatever happens, so it must be an
-ingest-only token, and keeping it out of the repository is about not making the repository
-the place it is found. A build without one logs to the console only.
+The extension logs to its own console only (the service worker's, under "Inspect views" on
+`chrome://extensions`). It used to send its logs to Axiom too, which carried user and push
+ids to a third party the privacy policy did not name, so that was removed rather than
+disclosed.
 
 ## Rules, tests and deploying
 

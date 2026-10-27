@@ -18,7 +18,6 @@
     "spellcheck": "cspell -c ../../cspell.json --gitignore \"**/*.{js,json,jsx,md,ts,tsx}\""
   },
   "dependencies": {
-    "@axiomhq/js": "^1.3.1",
     "@heroicons/react": "^2.2.0",
     "clsx": "^2.1.1",
     "firebase": "^11.2.0",

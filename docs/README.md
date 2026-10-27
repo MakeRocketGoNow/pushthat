@@ -5,7 +5,7 @@ design record as much as a manual, with the decision and the reason for it, whic
 house style ([AGENTS.md](../AGENTS.md)).
 
 - [The web app and the Chrome extension](web.md): one codebase, two builds; why pushes are
-  received in the extension; the Axiom token; the rules and deploying.
+  received in the extension; the rules and deploying.
 - [Android app](android.md): building, running on an emulator, release signing.
 - [iOS app](ios.md): building, signing, notifications, and how it matches Android.
 - [macOS app](macos.md): the fork of the iOS app, and how it differs.

@@ -2,7 +2,6 @@
 /// <reference types="chrome"/>
 /// <reference lib="webworker" />
 /// <reference types="vite/client" />
-import { Axiom } from '@axiomhq/js';
 import { User } from 'firebase/auth';
 import {
   arrayUnion,
@@ -27,12 +26,6 @@ declare const self: ServiceWorkerGlobalScope & typeof globalThis;
 
 // Initialize Firebase Cloud Messaging
 const messaging = getMessaging(app);
-
-// The ingest token comes from the build environment (apps/web/.env, see .env.example) so
-// that it is never committed. It still ships inside the built extension, so it has to be an
-// ingest-only token. A build without one logs to the console only.
-const axiomToken = import.meta.env.VITE_AXIOM_TOKEN;
-const axiom = axiomToken ? new Axiom({ token: axiomToken }) : undefined;
 
 interface SignInMessage {
   type: 'ON_AUTH_STATE_CHANGED';
@@ -186,15 +179,10 @@ async function handlePush(event: PushEvent) {
   // The data says which push, never what is in it; the URL is not logged once decrypted.
   debug('Received push notification ', { pushId: data?.pushId, type: data?.type });
 
-  try {
-    // Every push is announced by its id alone (functions/src/notifications.ts): the rules
-    // refuse a plaintext push, so the message that carried a URL and a device name to open
-    // from is never sent, and a URL is only ever opened once it has been decrypted here.
-    if (data?.pushId) await handleEncryptedPush(data);
-  } finally {
-    // Axiom batches in the background; make sure the logs land before the worker is allowed to sleep.
-    await axiom?.flush();
-  }
+  // Every push is announced by its id alone (functions/src/notifications.ts): the rules
+  // refuse a plaintext push, so the message that carried a URL and a device name to open
+  // from is never sent, and a URL is only ever opened once it has been decrypted here.
+  if (data?.pushId) await handleEncryptedPush(data);
 }
 
 // Handle notification clicks
@@ -263,28 +251,12 @@ chrome.runtime.onStartup.addListener(async () => {
   await start();
 });
 
+// Logs stay in the extension's own console. They went to Axiom as well until it was removed:
+// that sent user and push ids to a third party the privacy policy did not name.
 async function debug(message: string, optionalParams?: any) {
   console.debug(message, optionalParams);
-  return axiom?.ingest('push-that-chrome', [
-    {
-      type: 'debug',
-      message,
-      source: 'chrome-extension',
-      timestamp: Date.now(),
-      ...(optionalParams ? { ...optionalParams } : {}),
-    },
-  ]);
 }
 
 async function logError(message: string, optionalParams?: any) {
   console.error(message, optionalParams);
-  return axiom?.ingest('push-that-chrome', [
-    {
-      type: 'error',
-      message,
-      source: 'chrome-extension',
-      timestamp: Date.now(),
-      ...(optionalParams ? { ...optionalParams } : {}),
-    },
-  ]);
 }
