@@ -8,7 +8,7 @@
 // on WebCrypto and btoa/atob so that it runs in the browser unchanged; this is that code
 // with types, and the wraps take raw bytes only (the reference also takes a CryptoKey,
 // which nothing here holds while wrapping). A change here that changes a byte is a change
-// to the specification: `npm run test:vectors` checks every function against vectors.json.
+// to the specification: `npm run test:keys` checks every function against vectors.json.
 //
 // Only erasable TypeScript (no enums, no parameter properties) and no imports, so that
 // Node runs this file as it is for the vector test.

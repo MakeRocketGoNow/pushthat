@@ -77,6 +77,18 @@
       android:inputType="textPassword"
       android:autofillHints="password" />
 
+    <!-- The sign-up rule, said before Register rather than only when it fails, as the web
+         and iOS do. Shown on the sign-in form too, which is also the registration form;
+         LoginActivity fills in the number and hides it on the unlock prompt, where the
+         password already exists. -->
+    <TextView
+      android:id="@+id/passwordRuleText"
+      style="@style/Widget.LinkShare.Body"
+      android:layout_width="match_parent"
+      android:layout_height="wrap_content"
+      android:layout_marginTop="8dp"
+      android:textSize="14sp" />
+
     <TextView
       android:id="@+id/forgotPasswordText"
       android:layout_width="wrap_content"
@@ -109,12 +121,15 @@
       android:layout_marginTop="24dp"
       android:visibility="gone" />
 
+    <!-- A live region, so TalkBack reads a failed step out: the error appears away from the
+         button that was pressed, and nothing else on the screen changes to say it failed. -->
     <TextView
       android:id="@+id/errorText"
       style="@style/Widget.LinkShare.ErrorText"
       android:layout_width="match_parent"
       android:layout_height="wrap_content"
       android:layout_marginTop="16dp"
+      android:accessibilityLiveRegion="polite"
       android:visibility="gone" />
 
     <ProgressBar
@@ -128,23 +143,19 @@
 
     <Button
       android:id="@+id/loginButton"
+      style="@style/Widget.LinkShare.PrimaryButton"
       android:layout_width="match_parent"
       android:layout_height="wrap_content"
       android:layout_marginTop="32dp"
-      android:background="@drawable/button_background"
-      android:text="@string/sign_in"
-      android:textColor="@color/black"
-      android:padding="16dp" />
+      android:text="@string/sign_in" />
 
     <Button
       android:id="@+id/registerButton"
+      style="@style/Widget.LinkShare.OutlineButton"
       android:layout_width="match_parent"
       android:layout_height="wrap_content"
       android:layout_marginTop="16dp"
-      android:background="@drawable/button_outline_background"
-      android:padding="16dp"
-      android:text="@string/register"
-      android:textColor="@color/color_action" />
+      android:text="@string/register" />
 
   </LinearLayout>
 </ScrollView>

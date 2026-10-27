@@ -57,9 +57,12 @@
     <string name="plan_managed">Your plan is managed from your PushThat account on the web.</string>
     <string name="plan_unavailable">Your plan could not be read right now.</string>
 
-    <!-- End-to-end encryption keys (docs/e2ee.md). The copy is shared word for word with the
-         other apps, so a change here is a change there too. -->
-    <string name="password_rule">Use at least 10 characters. Your password is the key to your pushes, so it has to be hard to guess.</string>
+    <!-- End-to-end encryption keys (docs/e2ee.md). The sign-up rule, the recovery key screen,
+         the recovery prompt, the start-over confirmation and the unlock prompt use the same
+         words as the other apps, so a change to one of them is a change there too. The
+         settings and the error messages are this app's own. -->
+    <!-- %1$d is MIN_NEW_PASSWORD_LENGTH (e2ee/AccountKeys.kt), so the number is written once. -->
+    <string name="password_rule">Use at least %1$d characters. Your password is the key to your pushes, so it has to be hard to guess.</string>
     <string name="recovery_key_title">Your recovery key</string>
     <string name="recovery_key_body">Your password is the key to your pushes. We never see it and cannot reset it for you. Save your recovery key.</string>
     <string name="recovery_key_shown_once">It is shown only once. If you forget your password, it is the only way to keep your pushes.</string>
@@ -70,9 +73,12 @@
     <string name="recovery_prompt_title">Enter your recovery key</string>
     <string name="recovery_prompt_body">Your password was changed in a way that could not update your encryption keys. Enter your recovery key to keep your pushes.</string>
     <string name="recovery_key_hint">Recovery key</string>
+    <string name="recovery_key_required">Please enter your recovery key</string>
     <string name="continue_">Continue</string>
     <string name="no_recovery_key">I don\'t have it</string>
-    <string name="start_over_warning">Pushes encrypted before now will not be readable on any device.</string>
+    <string name="start_over_title">Start over without your recovery key?</string>
+    <string name="start_over_warning">Your account gets new keys and a new recovery key. Pushes encrypted before now will not be readable on any device.</string>
+    <string name="start_over">Start over</string>
     <string name="wrong_recovery_key">That recovery key does not open this account\'s keys.</string>
     <string name="unlock_body">PushThat now encrypts your pushes on your devices. Enter your password once to set it up here.</string>
     <string name="sign_out">Sign out</string>
@@ -88,5 +94,6 @@
     <string name="making_recovery_key">Making a new recovery key…</string>
     <string name="key_settings_failed">That did not work. Please try again.</string>
     <string name="keys_changed_here">Your encryption keys were changed on another device. Sign out and sign in again to use them here.</string>
+    <string name="password_again_to_finish">Enter your password again to finish.</string>
     <string name="keys_changed">Your encryption keys were changed on another device while this one was setting up. Try again.</string>
 </resources>

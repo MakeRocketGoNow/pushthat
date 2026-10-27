@@ -23,6 +23,8 @@ import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.auth
 import com.makerocketgonow.pushthat.LoginViewModel.Screen
 import com.makerocketgonow.pushthat.e2ee.AccountKeyStore
+import com.makerocketgonow.pushthat.e2ee.MIN_NEW_PASSWORD_LENGTH
+import com.makerocketgonow.pushthat.e2ee.signOut
 import kotlinx.coroutines.launch
 
 /**
@@ -39,6 +41,7 @@ class LoginActivity : AppCompatActivity() {
     private lateinit var accountEmailText: TextView
     private lateinit var emailInput: EditText
     private lateinit var passwordInput: EditText
+    private lateinit var passwordRuleText: TextView
     private lateinit var forgotPasswordText: TextView
     private lateinit var recoveryInput: EditText
     private lateinit var recoveryKeyView: View
@@ -58,13 +61,28 @@ class LoginActivity : AppCompatActivity() {
         auth = Firebase.auth
         viewModel = ViewModelProvider(this)[LoginViewModel::class.java]
 
+        val user = auth.currentUser
+        // No session, though the key may still be here: Logout clears it, but a session can
+        // also end without it (the password changed on another device revokes the tokens, an
+        // account disabled), and Firebase then signs out on its own. Every launch without a
+        // session comes through here (MainActivity and ShareActivity send it), so the key
+        // goes here rather than waiting for the next sign-in to overwrite it.
+        if (user == null) AccountKeyStore.clear(this)
+
         // Signed in with the key here: straight to the list. Signed in without it (an install
         // that updated while signed in, or a sign-in that stopped partway), the form asks
-        // for the password once instead; see unlockEmail.
-        val user = auth.currentUser
-        if (user != null && viewModel.state.value.screen == Screen.Form && AccountKeyStore.hasKey(this, user.uid)) {
-            startMainActivity()
-            return
+        // for the password once instead; see unlockEmail. Signed in with a recovery key not
+        // yet confirmed (the process went while it was on screen, here or in Settings): that
+        // first, since nothing else will ever show it again. Only from an idle form: after a
+        // rotation the view model is mid-step or already past it.
+        val idle = viewModel.state.value.let { it.screen == Screen.Form && it.working == null }
+        if (user != null && idle) {
+            if (AccountKeyStore.hasUnconfirmedRecoveryKey(this, user.uid)) {
+                viewModel.showUnconfirmedRecoveryKey(user.uid)
+            } else if (AccountKeyStore.hasKey(this, user.uid)) {
+                startMainActivity()
+                return
+            }
         }
 
         titleText = findViewById(R.id.titleText)
@@ -72,6 +90,8 @@ class LoginActivity : AppCompatActivity() {
         accountEmailText = findViewById(R.id.accountEmailText)
         emailInput = findViewById(R.id.emailInput)
         passwordInput = findViewById(R.id.passwordInput)
+        passwordRuleText = findViewById(R.id.passwordRuleText)
+        passwordRuleText.text = getString(R.string.password_rule, MIN_NEW_PASSWORD_LENGTH)
         forgotPasswordText = findViewById(R.id.forgotPasswordText)
         recoveryInput = findViewById(R.id.recoveryInput)
         recoveryKeyView = findViewById(R.id.recoveryKeyView)
@@ -133,6 +153,7 @@ class LoginActivity : AppCompatActivity() {
 
         emailInput.isVisible = form && !unlocking
         passwordInput.isVisible = form
+        passwordRuleText.isVisible = form && !unlocking
         forgotPasswordText.isVisible = form && !unlocking
         recoveryInput.isVisible = recovery
 
@@ -198,7 +219,7 @@ class LoginActivity : AppCompatActivity() {
             is Screen.Recovery -> {
                 val text = recoveryInput.text.toString()
                 if (text.isBlank()) {
-                    recoveryInput.error = getString(R.string.wrong_recovery_key)
+                    recoveryInput.error = getString(R.string.recovery_key_required)
                     return
                 }
                 viewModel.recover(text)
@@ -212,8 +233,7 @@ class LoginActivity : AppCompatActivity() {
             Screen.Form -> {
                 if (unlockEmail() != null) {
                     // Sign out, from the unlock prompt: back to the plain form.
-                    AccountKeyStore.clear(this)
-                    auth.signOut()
+                    signOut(this, auth)
                     passwordInput.text.clear()
                     render(viewModel.state.value)
                     return
@@ -223,8 +243,9 @@ class LoginActivity : AppCompatActivity() {
             }
             // Said before anything is replaced, since it cannot be undone.
             is Screen.Recovery -> AlertDialog.Builder(this, R.style.DeleteDialogStyle)
+                .setTitle(R.string.start_over_title)
                 .setMessage(R.string.start_over_warning)
-                .setPositiveButton(R.string.continue_) { _, _ -> viewModel.startOver() }
+                .setPositiveButton(R.string.start_over) { _, _ -> viewModel.startOver() }
                 .setNegativeButton(R.string.cancel, null)
                 .show()
             else -> Unit
@@ -249,7 +270,7 @@ class LoginActivity : AppCompatActivity() {
             return null
         }
         if (registering && password.length < MIN_NEW_PASSWORD_LENGTH) {
-            passwordInput.error = getString(R.string.password_rule)
+            passwordInput.error = getString(R.string.password_rule, MIN_NEW_PASSWORD_LENGTH)
             return null
         }
         return email to password
@@ -281,10 +302,5 @@ class LoginActivity : AppCompatActivity() {
         if (isFinishing) return
         startActivity(Intent(this, MainActivity::class.java))
         finish()
-    }
-
-    companion object {
-        /** docs/e2ee.md: the sign-up screen asks for at least 10 characters and says why. */
-        const val MIN_NEW_PASSWORD_LENGTH = 10
     }
 }

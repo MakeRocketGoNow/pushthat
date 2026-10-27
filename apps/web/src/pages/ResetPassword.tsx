@@ -4,6 +4,7 @@ import { Link, useSearchParams } from 'react-router';
 
 import Button from '@/components/Button';
 import GlowButton from '@/components/GlowButton';
+import styles from '@/components/KeyStep.module.css';
 import { RecoveryKey } from '@/components/RecoveryKey';
 import {
   KeysChangedError,
@@ -20,7 +21,44 @@ import {
 } from '@/services/passwordReset';
 import { MIN_PASSWORD_LENGTH } from '@/services/signIn';
 
-import styles from './ResetPassword.module.css';
+/*
+ * A new recovery key is stored on the server before it is shown, and the reset link is
+ * used up by then, so a reload on the key's screen used to land on "This link has expired"
+ * with a key nobody had seen. Until the user says they saved it, the key is kept in this
+ * tab's sessionStorage beside the link's code, and the page shows it again for that code
+ * before it checks the link. sessionStorage rather than localStorage: it ends with the tab,
+ * so a key never confirmed does not stay behind on a shared computer, and closing the tab
+ * is asked about instead (`NewRecoveryKey`'s beforeunload). Storage can be missing or
+ * refuse (a private window, blocked site data), and the page still works without it.
+ */
+const UNSAVED_RECOVERY_KEY = 'reset.unsavedRecoveryKey';
+
+function keepUnsavedRecoveryKey(oobCode: string, recoveryKey: string) {
+  try {
+    sessionStorage.setItem(UNSAVED_RECOVERY_KEY, JSON.stringify({ oobCode, recoveryKey }));
+  } catch {
+    // Shown all the same; only a reload loses it.
+  }
+}
+
+function unsavedRecoveryKeyFor(oobCode: string): string | undefined {
+  try {
+    const kept: unknown = JSON.parse(sessionStorage.getItem(UNSAVED_RECOVERY_KEY) ?? 'null');
+    if (typeof kept !== 'object' || kept === null) return undefined;
+    const { oobCode: keptCode, recoveryKey } = kept as { oobCode?: unknown; recoveryKey?: unknown };
+    return keptCode === oobCode && typeof recoveryKey === 'string' ? recoveryKey : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function forgetUnsavedRecoveryKey() {
+  try {
+    sessionStorage.removeItem(UNSAVED_RECOVERY_KEY);
+  } catch {
+    // Nothing was kept.
+  }
+}
 
 // Deleting the pushes the old key locked, which runs after the new recovery key is shown.
 type Deletion = { state: 'none' } | { state: 'running' } | { state: 'done'; deleted: number } | { state: 'failed' };
@@ -62,6 +100,12 @@ export function ResetPassword() {
       setStep({ name: 'badLink', reason: 'code' });
       return;
     }
+    // A reload while the new recovery key was on screen: the link is used, the key is not saved.
+    const unsaved = unsavedRecoveryKeyFor(oobCode);
+    if (unsaved) {
+      setStep({ name: 'newRecoveryKey', recoveryKey: unsaved, deletion: { state: 'none' } });
+      return;
+    }
     emailForResetCode(oobCode)
       .then((email) => setStep({ name: 'password', email }))
       .catch(() => setStep({ name: 'badLink', reason: 'code' }));
@@ -91,6 +135,11 @@ export function ResetPassword() {
     }
   };
 
+  const showRecoveryKey = (recoveryKey: string, deletion: Deletion) => {
+    if (oobCode) keepUnsavedRecoveryKey(oobCode, recoveryKey);
+    setStep({ name: 'newRecoveryKey', recoveryKey, deletion });
+  };
+
   const setDeletion = (deletion: Deletion) =>
     setStep((current) => (current.name === 'newRecoveryKey' ? { ...current, deletion } : current));
 
@@ -100,7 +149,7 @@ export function ResetPassword() {
         const recoveryKey = await startNewKeys(session);
         // The key is stored, so it goes on screen now, before the delete, which can take a
         // while on a large account and must not stand between the user and the only copy.
-        setStep({ name: 'newRecoveryKey', recoveryKey, deletion: { state: deleteLocked ? 'running' : 'none' } });
+        showRecoveryKey(recoveryKey, { state: deleteLocked ? 'running' : 'none' });
         if (deleteLocked) {
           deleteLockedPushes(session).then(
             (deleted) => setDeletion({ state: 'done', deleted }),
@@ -154,7 +203,7 @@ export function ResetPassword() {
                       // Nothing is encrypted yet, so there is nothing to recover: the
                       // account gets its first keys, and its recovery key to save.
                       const recoveryKey = await afterPasswordChanged(() => startNewKeys(session));
-                      setStep({ name: 'newRecoveryKey', recoveryKey, deletion: { state: 'none' } });
+                      showRecoveryKey(recoveryKey, { state: 'none' });
                     } else {
                       setStep(
                         hasRecoveryWrap(session) ? { name: 'recovery', session } : { name: 'withoutRecovery', session }
@@ -260,7 +309,10 @@ export function ResetPassword() {
           <NewRecoveryKey
             recoveryKey={step.recoveryKey}
             deletion={step.deletion}
-            onDone={() => setStep({ name: 'done' })}
+            onDone={() => {
+              forgetUnsavedRecoveryKey();
+              setStep({ name: 'done' });
+            }}
           />
         )}
 
@@ -437,6 +489,21 @@ function NewRecoveryKey({
   deletion: Deletion;
   onDone: () => void;
 }) {
+  const [saved, setSaved] = useState(false);
+
+  // Closing the tab ends the sessionStorage copy too, so the browser asks first until the
+  // user says they saved the key.
+  useEffect(() => {
+    if (saved) return;
+    const ask = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      // Older browsers ask only when this is set; what it says is not shown any more.
+      event.returnValue = '';
+    };
+    window.addEventListener('beforeunload', ask);
+    return () => window.removeEventListener('beforeunload', ask);
+  }, [saved]);
+
   return (
     <>
       <h2 tabIndex={-1} className={styles.title}>
@@ -457,7 +524,7 @@ function NewRecoveryKey({
           Some of your locked pushes could not be deleted. They stay in your list, where you can delete them.
         </p>
       )}
-      <RecoveryKey recoveryKey={recoveryKey} onDone={onDone} />
+      <RecoveryKey recoveryKey={recoveryKey} onSavedChange={setSaved} onDone={onDone} />
     </>
   );
 }

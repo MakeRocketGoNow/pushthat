@@ -1,4 +1,6 @@
-/* The sign-in page's frame (Login.module.css), so the reset reads as part of signing in. */
+/* The frame of the password reset page and of the key steps behind the route guard
+   (KeyGate), after the sign-in page's (Login.module.css), so both read as part of
+   signing in. One file, so that a fix to either is a fix to both. */
 .container {
   min-height: var(--min-height);
   display: flex;

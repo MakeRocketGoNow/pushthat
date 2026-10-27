@@ -27,14 +27,22 @@ struct RecoveryKeyView: View {
                     .foregroundColor(.secondary)
                     .multilineTextAlignment(.center)
 
+                // Not `.textSelection(.enabled)`: the two lines are one string with a newline
+                // in it, a selection copied the newline, and the decoders refuse it (they
+                // drop only hyphens and spaces, as the spec says). One line left to wrap by
+                // itself does not work either: line breaking never breaks between a hyphen
+                // and a digit, so it splits groups wherever a group starts with one. The
+                // context menu (long press, or right click) copies the key as "Copy" does.
                 Text(Self.lines(recoveryKey))
                     .font(.system(.title3, design: .monospaced))
                     .multilineTextAlignment(.center)
-                    .textSelection(.enabled)
                     .padding()
                     .frame(maxWidth: .infinity)
                     .background(Color.inputBackground)
                     .cornerRadius(8)
+                    .contextMenu {
+                        Button("Copy") { copy() }
+                    }
 
                 Button(copied ? "Copied" : "Copy") {
                     copy()

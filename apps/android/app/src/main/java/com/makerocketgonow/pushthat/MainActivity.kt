@@ -25,6 +25,8 @@ import android.view.MenuItem
 import androidx.appcompat.widget.Toolbar
 import com.makerocketgonow.pushthat.workers.RetryPushWorker
 import com.makerocketgonow.pushthat.e2ee.AccountKeyStore
+import com.makerocketgonow.pushthat.e2ee.MIN_NEW_PASSWORD_LENGTH
+import com.makerocketgonow.pushthat.e2ee.signOut
 import android.content.ClipboardManager
 import android.content.ClipData
 import android.widget.Toast
@@ -69,6 +71,7 @@ private fun extractRootDomain(url: String): String {
 }
 
 class MainActivity : AppCompatActivity() {
+
     private val TAG = "MainActivity"
     private lateinit var pushRecyclerView: RecyclerView
     private lateinit var swipeRefreshLayout: SwipeRefreshLayout
@@ -138,9 +141,23 @@ class MainActivity : AppCompatActivity() {
         }
 
         // Signed in, and holding the account key. A session without the key (an install that
-        // updated while signed in) goes to LoginActivity's password prompt before the list.
+        // updated while signed in) goes to LoginActivity's password prompt before the list,
+        // and one with a recovery key not yet confirmed to its recovery key screen, unless
+        // Settings is showing that key here (this is a rotation, not a new process).
+        keySettings = ViewModelProvider(this)[KeySettingsViewModel::class.java]
+        val settingsShowKey = keySettings.state.value.let {
+            it is KeySettingsViewModel.State.RecoveryKey || it is KeySettingsViewModel.State.Working
+        }
         val user = auth.currentUser
-        if (user == null || !AccountKeyStore.hasKey(this, user.uid)) {
+        if (
+            user == null ||
+            !AccountKeyStore.hasKey(this, user.uid) ||
+            (
+                !settingsShowKey &&
+                    !LoginViewModel.recoveryKeyUnavailable &&
+                    AccountKeyStore.hasUnconfirmedRecoveryKey(this, user.uid)
+                )
+        ) {
             startActivity(Intent(this, LoginActivity::class.java))
             finish()
             return
@@ -219,7 +236,6 @@ class MainActivity : AppCompatActivity() {
         val toolbar = findViewById<Toolbar>(R.id.toolbar)
         setSupportActionBar(toolbar)
 
-        keySettings = ViewModelProvider(this)[KeySettingsViewModel::class.java]
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 keySettings.state.collect { renderKeySettings(it) }
@@ -269,6 +285,9 @@ class MainActivity : AppCompatActivity() {
     private fun loadPushRecords(isInitialLoad: Boolean) {
         val currentUser = auth.currentUser
         if (currentUser == null) {
+            // The session ended while the list was open (see LoginActivity.onCreate): the
+            // key goes with it.
+            AccountKeyStore.clear(this)
             pushAdapter.updatePushes(emptyList())
             swipeRefreshLayout.isRefreshing = false
             return
@@ -390,11 +409,7 @@ class MainActivity : AppCompatActivity() {
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         return when (item.itemId) {
             R.id.nav_logout -> {
-                // The key first, so a sign-out that stops between the two leaves a session
-                // with no key (which asks for the password) and never a key on a phone that
-                // is signed out. deviceId stays: it belongs to the install.
-                AccountKeyStore.clear(this)
-                auth.signOut()
+                signOut(this, auth)
                 startActivity(Intent(this, LoginActivity::class.java))
                 finish()
                 true
@@ -489,6 +504,7 @@ class MainActivity : AppCompatActivity() {
         val current = view.findViewById<EditText>(R.id.currentPasswordInput)
         val new = view.findViewById<EditText>(R.id.newPasswordInput)
         val again = view.findViewById<EditText>(R.id.newPasswordAgainInput)
+        view.findViewById<TextView>(R.id.passwordRuleText).text = getString(R.string.password_rule, MIN_NEW_PASSWORD_LENGTH)
         val dialog = AlertDialog.Builder(this, R.style.DeleteDialogStyle)
             .setTitle(R.string.change_password)
             .setView(view)
@@ -501,7 +517,7 @@ class MainActivity : AppCompatActivity() {
             val newPassword = new.text.toString()
             when {
                 currentPassword.isEmpty() -> current.error = getString(R.string.password_required)
-                newPassword.length < LoginActivity.MIN_NEW_PASSWORD_LENGTH -> new.error = getString(R.string.password_rule)
+                newPassword.length < MIN_NEW_PASSWORD_LENGTH -> new.error = getString(R.string.password_rule, MIN_NEW_PASSWORD_LENGTH)
                 newPassword != again.text.toString() -> again.error = getString(R.string.passwords_differ)
                 else -> {
                     dialog.dismiss()
@@ -545,7 +561,7 @@ class MainActivity : AppCompatActivity() {
                 val dialog = builder.setView(scroll).setCancelable(false).show()
                 RecoveryKeyView.bind(view, state.recoveryKey) {
                     dialog.dismiss()
-                    keySettings.acknowledge()
+                    keySettings.recoveryKeySaved()
                 }
                 dialog
             }

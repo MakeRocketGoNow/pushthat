@@ -25,9 +25,22 @@ private struct AccountSettingsModifier: ViewModifier {
     @Binding var confirmNewRecoveryKey: Bool
     @State private var shownRecoveryKey: ShownRecoveryKey?
     @State private var problem: String?
+    /// While a new recovery key is being made. Each run replaces every recovery wrap, so a
+    /// second one started from the menu meanwhile would retire the key the first is about
+    /// to show.
+    @State private var isMaking = false
 
     func body(content: Content) -> some View {
         content
+            .allowsHitTesting(!isMaking)
+            .overlay {
+                if isMaking {
+                    ProgressView()
+                        .padding(24)
+                        .background(.regularMaterial)
+                        .cornerRadius(12)
+                }
+            }
             .sheet(isPresented: $showChangePassword) {
                 ChangePasswordView()
                     .environmentObject(authViewModel)
@@ -36,7 +49,10 @@ private struct AccountSettingsModifier: ViewModifier {
                     #endif
             }
             .sheet(item: $shownRecoveryKey) { shown in
-                RecoveryKeyView(recoveryKey: shown.key) { shownRecoveryKey = nil }
+                RecoveryKeyView(recoveryKey: shown.key) {
+                    authViewModel.recoveryKeySaved()
+                    shownRecoveryKey = nil
+                }
                     // Closed only by "I saved it": the old key has stopped working already.
                     .interactiveDismissDisabled()
                     #if os(macOS)
@@ -55,12 +71,15 @@ private struct AccountSettingsModifier: ViewModifier {
     }
 
     private func makeNewRecoveryKey() {
+        guard !isMaking else { return }
+        isMaking = true
         Task {
             do {
                 shownRecoveryKey = ShownRecoveryKey(key: try await authViewModel.newRecoveryKey())
             } catch {
                 problem = AuthViewModel.message(for: error)
             }
+            isMaking = false
         }
     }
 }
