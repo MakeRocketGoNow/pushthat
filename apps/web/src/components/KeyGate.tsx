@@ -197,7 +197,7 @@ function NewRecoveryKey({ recoveryKey }: { recoveryKey: string }) {
       </h2>
       {/* docs/e2ee.md, Saying so: the sign-up's words, word for word. */}
       <p className={styles.message}>
-        Your password is the key to your pushes. We never see it and cannot reset it for you. Save your recovery key.
+        Your password is the key to your pushes, and we cannot reset it for you. Save your recovery key.
       </p>
       <p className={styles.message}>
         It is shown only once. If you forget your password, it is the only way to keep your pushes.

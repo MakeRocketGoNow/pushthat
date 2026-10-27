@@ -224,7 +224,7 @@ Existing accounts have the raw password as their Firebase password and plaintext
 
 The reason for a password-derived key is that the user can see it. The surfaces:
 
-- **Sign-up:** "Your password is the key to your pushes. We never see it and cannot reset it for you. Save your recovery key." The recovery key is shown there and then.
+- **Sign-up:** "Your password is the key to your pushes, and we cannot reset it for you. Save your recovery key." The recovery key is shown there and then.
 - **Settings and the Plan page:** an "Encrypted" line with the device's `deviceId` and a link to the security page.
 - **Password reset:** the recovery key prompt and, without it, the sentence that the old pushes are gone, before anything is deleted.
 - **The site:** a `/security` page with the gist of this document: what is encrypted, what is not, what a lost password costs.

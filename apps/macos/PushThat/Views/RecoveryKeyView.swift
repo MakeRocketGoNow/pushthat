@@ -20,7 +20,7 @@ struct RecoveryKeyView: View {
                     .font(.title)
                     .fontWeight(.bold)
 
-                Text("Your password is the key to your pushes. We never see it and cannot reset it for you. Save your recovery key.")
+                Text("Your password is the key to your pushes, and we cannot reset it for you. Save your recovery key.")
                     .multilineTextAlignment(.center)
 
                 Text("It is shown only once. If you forget your password, it is the only way to keep your pushes.")
