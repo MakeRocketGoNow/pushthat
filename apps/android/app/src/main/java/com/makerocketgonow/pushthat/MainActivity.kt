@@ -95,7 +95,7 @@ class MainActivity : AppCompatActivity() {
     private var planDialog: AlertDialog? = null
     private lateinit var keySettings: KeySettingsViewModel
     private var keySettingsDialog: AlertDialog? = null
-    private lateinit var deleteProgressBar: ProgressBar
+    private lateinit var listProgressBar: ProgressBar
     private lateinit var searchLayout: View
     private lateinit var selectionLayout: View
     private lateinit var selectAllText: TextView
@@ -132,7 +132,7 @@ class MainActivity : AppCompatActivity() {
         applyWindowInsets()
 
         auth = Firebase.auth
-        deleteProgressBar = findViewById(R.id.deleteProgressBar)
+        listProgressBar = findViewById(R.id.listProgressBar)
 
         // Initialize toolbar views
         searchLayout = findViewById(R.id.searchLayout)
@@ -420,14 +420,14 @@ class MainActivity : AppCompatActivity() {
     private fun openFile(target: PushTarget.File) {
         if (openingFile) return
         openingFile = true
-        deleteProgressBar.visibility = View.VISIBLE
+        listProgressBar.visibility = View.VISIBLE
         val file = target.content
         lifecycleScope.launch {
             val result = runCatching {
                 withContext(Dispatchers.IO) { PushFiles.fetch(this@MainActivity, target.objectPath, file.name, file.fk, file.np) }
             }
             openingFile = false
-            deleteProgressBar.visibility = View.GONE
+            listProgressBar.visibility = View.GONE
             result.onSuccess { opened ->
                 try {
                     PushFiles.view(this@MainActivity, opened, file.mime, file.ext)
@@ -702,7 +702,7 @@ class MainActivity : AppCompatActivity() {
         auth.currentUser ?: return
 
         // Show progress and disable interactions
-        deleteProgressBar.visibility = View.VISIBLE
+        listProgressBar.visibility = View.VISIBLE
         pushRecyclerView.isEnabled = false
         swipeRefreshLayout.isEnabled = false
 
@@ -717,7 +717,7 @@ class MainActivity : AppCompatActivity() {
                     deletedCount++
                     if (deletedCount == totalItems) {
                         // All items deleted, restore UI
-                        deleteProgressBar.visibility = View.GONE
+                        listProgressBar.visibility = View.GONE
                         pushRecyclerView.isEnabled = true
                         swipeRefreshLayout.isEnabled = true
                         clearSelection()
@@ -731,7 +731,7 @@ class MainActivity : AppCompatActivity() {
                     deletedCount++
                     if (deletedCount == totalItems) {
                         // Restore UI even if some deletions failed
-                        deleteProgressBar.visibility = View.GONE
+                        listProgressBar.visibility = View.GONE
                         pushRecyclerView.isEnabled = true
                         swipeRefreshLayout.isEnabled = true
                         clearSelection()
