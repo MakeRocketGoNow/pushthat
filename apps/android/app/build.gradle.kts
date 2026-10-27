@@ -44,7 +44,7 @@ android {
          * again: bundles for Play come from CI now.
          */
         versionCode = System.getenv("PUSHTHAT_VERSION_CODE")?.toIntOrNull() ?: 8
-        versionName = "1.1.0"
+        versionName = "1.2.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
