@@ -28,7 +28,7 @@ const E2EE_SPEC_URL = `${SOURCE_URL}/blob/main/docs/e2ee.md`;
  * static Open Graph tags for crawlers that do not run the app.
  */
 const DESCRIPTION =
-  'Share a link or a file from your phone and it opens on your computer. Push from the browser and your phone ' +
+  'Share a link or a file from your phone and it arrives on your computer. Push from the browser and your phone ' +
   'buzzes. End-to-end encrypted with the password you already have. Free to start.';
 
 /**
@@ -62,11 +62,11 @@ function HowItWorks() {
     },
     {
       title: 'Share it',
-      body: 'Tap PushThat in the share sheet, or the extension’s icon in Chrome. A link, a page, a photo, a PDF.',
+      body: 'Tap PushThat in the share sheet on your phone. On a computer, paste it into PushThat on the web or in the Chrome extension. A link, a page, a photo, a PDF.',
     },
     {
       title: 'It is already there',
-      body: 'A link opens in a new tab on your computer. A push from the browser arrives on your phone as a notification. Every push lands in one searchable list on every device.',
+      body: 'With the Chrome extension, a link opens in a new tab on your computer. A push from the browser arrives on your phone as a notification. Every push lands in one searchable list on every device.',
     },
   ];
   return (
@@ -93,7 +93,7 @@ function BothDirections() {
         <h2 className={styles.sectionTitle}>Both directions</h2>
         <p>
           Push a page from Chrome or the web app and your phone buzzes. Open the notification and the link is there, in
-          the browser you use on the phone. Found something on the phone instead? Share it, and it is a tab on your Mac
+          the browser you use on the phone. Found something on the phone instead? Share it, and it is a tab in Chrome
           before you have reached the keyboard.
         </p>
       </div>
@@ -270,8 +270,9 @@ export function IndexPage() {
           <h1 className={styles.title}>Send a link to your phone. Or from it.</h1>
           <p className={styles.subtitle}>
             PushThat moves links and files between your phone and your computer. Share from Android or iPhone and it
-            opens on your Mac or in Chrome before you reach the keyboard. Everything is encrypted on the device with the
-            password you already have, so nobody in between can read it. Including us.
+            opens in Chrome before you reach the keyboard, and waits in the list on the web and on your Mac. Everything
+            is encrypted on the device with the password you already have, so nobody in between can read it. Including
+            us.
           </p>
           <div className={styles.ctaRow}>
             <GlowLink to="/login" variant="solid">
