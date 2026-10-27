@@ -90,8 +90,8 @@ export function ResetPassword() {
   const box = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    // The action URL is the same for every email template, so a link of another kind
-    // could land here; this page only resets passwords.
+    // Only the reset email asks for this page (resetActionCodeSettings), but a hand-made
+    // or mangled link can still carry another mode, and this page only resets passwords.
     if (mode !== null && mode !== 'resetPassword') {
       setStep({ name: 'badLink', reason: 'mode' });
       return;
