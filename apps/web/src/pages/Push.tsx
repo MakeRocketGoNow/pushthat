@@ -21,13 +21,19 @@ import {
 import styles from './Push.module.css';
 
 /**
- * Whether a refused push was refused for the month's limit. The rules say both that and a
- * key a reset elsewhere has replaced (`isCurrentKeyVersion`) as a permission error, the only
- * two of the create rule's refusals this page's own documents can hit; the second is told
- * apart by reading the account's current version, and is not the plan's doing.
+ * Why the rules refused a push, if they did. They say both the month's limit and a key a
+ * reset elsewhere has replaced (`isCurrentKeyVersion`) as a permission error, the only two
+ * of the create rule's refusals this page's own documents can hit; the second is told apart
+ * by reading the account's current version. It is not the plan's doing, and trying again
+ * cannot help: only signing in again stores the new key.
  */
-const isLimitRefusal = async (error: unknown, keys: PushKeys) =>
-  error instanceof FirebaseError && error.code === 'permission-denied' && !(await keyIsStale(getFirestore(), keys));
+const refusalOf = async (error: unknown, keys: PushKeys): Promise<'limit' | 'staleKey' | undefined> => {
+  if (!(error instanceof FirebaseError && error.code === 'permission-denied')) return undefined;
+  return (await keyIsStale(getFirestore(), keys)) ? 'staleKey' : 'limit';
+};
+
+// Word for word what Android says (keys_changed_here).
+const STALE_KEY = 'Your encryption keys were changed on another device. Sign out and sign in again to use them here.';
 
 /** The sentence for a push past the month's limit, naming the number and, on Free, what Pro allows. */
 const limitMessage = (plan: PlanReport | undefined, type: 'url' | 'file') => {
@@ -103,15 +109,17 @@ export default function Push() {
       setUrl('');
     } catch (error) {
       console.error('Error saving link:', error);
-      const atLimit = await isLimitRefusal(error, keys);
+      const refusal = await refusalOf(error, keys);
       // The limit reached on another device: read the plan again so the next try is stopped here.
-      if (atLimit) void refreshPlan();
+      if (refusal === 'limit') void refreshPlan();
       setError(
-        atLimit
+        refusal === 'limit'
           ? limitMessage(plan, 'url')
-          : error instanceof PushTooLongError
-            ? 'That link is too long to push.'
-            : 'Failed to save link. Please try again.'
+          : refusal === 'staleKey'
+            ? STALE_KEY
+            : error instanceof PushTooLongError
+              ? 'That link is too long to push.'
+              : 'Failed to save link. Please try again.'
       );
     } finally {
       setIsSubmitting(false);
@@ -164,14 +172,16 @@ export default function Push() {
       if (fileInput) fileInput.value = '';
     } catch (error) {
       console.error('Error saving file:', error);
-      const atLimit = await isLimitRefusal(error, keys);
-      if (atLimit) void refreshPlan();
+      const refusal = await refusalOf(error, keys);
+      if (refusal === 'limit') void refreshPlan();
       setError(
-        atLimit
+        refusal === 'limit'
           ? limitMessage(plan, 'file')
-          : error instanceof PushTooLongError
-            ? 'That file name is too long to push.'
-            : 'Failed to upload file. Please try again.'
+          : refusal === 'staleKey'
+            ? STALE_KEY
+            : error instanceof PushTooLongError
+              ? 'That file name is too long to push.'
+              : 'Failed to upload file. Please try again.'
       );
     } finally {
       setIsUploadSubmitting(false);
