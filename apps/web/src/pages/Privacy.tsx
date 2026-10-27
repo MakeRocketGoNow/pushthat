@@ -128,7 +128,9 @@ export default function Privacy() {
         <a href="https://stripe.com/privacy">{'https://stripe.com/privacy'}</a>. The App itself runs on Google’s
         Firebase, which stores your Account and Push Information, including your Push Content in its encrypted form.
         Notifications are delivered through Google’s and Apple’s notification services and carry only an identifier for
-        the push, its kind and the device that sent it, never its Push Content.
+        the push, its kind and the device that sent it, never its Push Content. The Android and iOS apps also send
+        Google Analytics for Firebase the usage events it collects on its own, such as when the App is opened and on
+        what kind of device, with an identifier for the installation; they never include Push Content.
       </p>
 
       <p>
