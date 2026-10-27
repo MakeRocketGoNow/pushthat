@@ -1,5 +1,6 @@
 import { initializeApp } from 'firebase/app';
 import {
+  type ActionCodeSettings,
   type Auth,
   confirmPasswordReset,
   inMemoryPersistence,
@@ -49,7 +50,7 @@ export { KeysChangedError, WrongRecoveryKeyError } from './accountKeys';
 export const resetActionCodeSettings = {
   url: 'https://pushthat.link/reset',
   handleCodeInApp: true,
-} as const;
+} satisfies ActionCodeSettings;
 
 /**
  * The password reset (docs/e2ee.md, Password reset), which the reset email's link brings
