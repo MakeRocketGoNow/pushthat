@@ -64,13 +64,16 @@ export interface PushKeys {
 }
 
 /**
- * The keys for `uid`, or undefined when this device holds none for that account (signed
- * out, or a session that has not unlocked yet).
+ * The keys for `uid`, or undefined when this device holds none it can use for that account
+ * (signed out, a session that has not unlocked yet, or a key whose version is unknown).
  *
- * A key stored before keys carried their version is given the account's current one, read
- * once and remembered. That is the version it was opened at unless a reset replaced the
- * account key between that sign-in and this read, the one case it gets wrong, and then the
- * pushes it writes fail to open on the other devices rather than leaking anything.
+ * A key stored before keys carried their version is trusted only if the account is still at
+ * version 1. Versions start at 1 and go up only when a reset without the recovery key
+ * replaces the account key, so at 1 this key cannot have been replaced; at any other
+ * version it may be the old key, and labelling it with the new version would let the
+ * migration seal the account's surviving plaintext pushes under a key no other device
+ * holds, and delete the plaintext. Such a device is asked for the password again
+ * (`KeysContext`), which stores the key with its version.
  */
 export async function loadPushKeys(db: Firestore, uid: string): Promise<PushKeys | undefined> {
   const stored = await loadAccountKey(uid);
@@ -78,9 +81,9 @@ export async function loadPushKeys(db: Firestore, uid: string): Promise<PushKeys
   let keyVersion = stored.keyVersion;
   if (keyVersion === undefined) {
     const read = (await getDoc(doc(db, 'users', uid))).data()?.e2ee?.keyVersion;
-    if (typeof read !== 'number') return undefined;
-    keyVersion = read;
-    await rememberKeyVersion(uid, read);
+    if (read !== 1) return undefined;
+    keyVersion = 1;
+    await rememberKeyVersion(uid, keyVersion);
   }
   const { metaKey, searchKey } = await accountSubkeyKeys(stored.key);
   return { uid, metaKey, searchKey, keyVersion, deviceId: await deviceId() };

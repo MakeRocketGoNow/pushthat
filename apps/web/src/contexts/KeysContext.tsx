@@ -5,7 +5,7 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState } f
 import { app, auth } from '@/config/firebase';
 import { useAuth } from '@/contexts/AuthContext';
 import { KeysChangedError, WrongRecoveryKeyError } from '@/services/accountKeys';
-import { clearAccountKey, loadAccountKey } from '@/services/keyStore';
+import { clearAccountKey } from '@/services/keyStore';
 import { loadPushKeys, migratePushes } from '@/services/pushes';
 import * as signInService from '@/services/signIn';
 import { type KeySession, type KeysResult } from '@/services/signIn';
@@ -80,9 +80,11 @@ export function KeysProvider({ children }: { children: React.ReactNode }) {
     }
     let current = true;
     setStep({ name: 'checking' });
-    loadAccountKey(uid).then(
-      (key) => {
-        if (current && !flowing.current) setStep(key ? { name: 'ready' } : { name: 'unlock' });
+    // The push keys rather than the stored key alone, so that a key whose version cannot be
+    // known (loadPushKeys) asks for the password like a missing one.
+    loadPushKeys(getFirestore(app), uid).then(
+      (keys) => {
+        if (current && !flowing.current) setStep(keys ? { name: 'ready' } : { name: 'unlock' });
       },
       (error) => {
         console.error('Could not read the account key:', error);
