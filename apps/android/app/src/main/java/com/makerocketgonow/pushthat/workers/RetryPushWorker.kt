@@ -3,6 +3,7 @@ package com.makerocketgonow.pushthat.workers
 import android.content.Context
 import android.util.Log
 import androidx.work.*
+import com.google.firebase.auth.auth
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.firestore
 import com.google.firebase.storage.storage
@@ -73,7 +74,7 @@ class RetryPushWorker(
 
     private sealed class Ready {
         class Push(val prepared: PreparedPush) : Ready()
-        /** Kept until this install holds the key for its account. */
+        /** Kept until this install is signed in to its account and holds that account's key. */
         data object Wait : Ready()
         data object Drop : Ready()
     }
@@ -85,12 +86,18 @@ class RetryPushWorker(
      */
     private fun prepare(row: PendingPush): Ready {
         row.prepared?.let { json ->
-            return try {
-                Ready.Push(PreparedPush.fromJson(json))
+            val prepared = try {
+                PreparedPush.fromJson(json)
             } catch (e: Exception) {
                 Log.w(TAG, "A pending push could not be read; dropping it", e)
-                Ready.Drop
+                return Ready.Drop
             }
+            // While this install is signed out, or signed in to another account, the rules
+            // refuse the write and `landed` cannot read the push either, so it would be taken
+            // for a real refusal and dropped with its upload. It waits for its own account to
+            // sign in again, as a row not yet encrypted waits for its account's key.
+            if (prepared.userId != Firebase.auth.currentUser?.uid) return Ready.Wait
+            return Ready.Push(prepared)
         }
         // Without an owner it was refused by the rules before, and would be now.
         val uid = row.userId ?: return Ready.Drop
