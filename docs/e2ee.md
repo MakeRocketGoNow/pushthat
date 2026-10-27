@@ -179,6 +179,8 @@ apns:    { payload: { aps: { alert: { title: "New push" }, "mutable-content": 1,
 
 Echo suppression compares `deviceId` instead of the device's model name, which also stops two phones of the same model hiding each other's pushes.
 
+One case it does not cover: a link pushed from pushthat.link in a Chrome that also has the extension opens in a new tab there. The site and the extension are two origins with two IndexedDBs, so two device ids, where the old comparison of user agents happened to match them (and also hid every push between two machines on the same Chrome version). Closing it needs the site to ask the extension for its id, through `externally_connectable` and the extension's published id, which the repository does not have yet; until then the duplicate tab is the cost.
+
 ## Titles
 
 The web app asks a Cloud Function, `getPageTitle`, to fetch a page's title, because a browser cannot read a cross-origin page. That function is removed: a server that fetched the URL would know it. A web push goes out with an empty title and the first native device to receive it scrapes the page and writes the title back, which the Android, iOS and macOS scrapers already do for their own pushes and now also do for a received `url` push whose title is empty. Two receivers scraping the same push both write the same title; last write wins. The Chrome extension could scrape before a phone does, but it holds host permissions only for FCM and asking for every site is a worse trade than a late title; not planned.
