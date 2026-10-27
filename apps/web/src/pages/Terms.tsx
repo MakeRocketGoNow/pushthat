@@ -20,7 +20,7 @@ export default function Terms() {
         SERVICES, YOU HEREBY AGREE TO BE BOUND BY THE TERMS AND ALL TERMS INCORPORATED HEREIN BY REFERENCE. IT IS THE
         RESPONSIBILITY OF YOU, THE USER, CUSTOMER, OR PROSPECTIVE CUSTOMER TO READ THE TERMS AND CONDITIONS BEFORE
         PROCEEDING TO USE THIS SITE. IF YOU DO NOT EXPRESSLY AGREE TO ALL OF THE TERMS AND CONDITIONS, THEN PLEASE DO
-        NOT ACCESS OR USE OUR SITES OR OUR SERVICES. THIS TERMS OF SERVICE AGREEMENT IS EFFECTIVE AS OF 03/16/2025
+        NOT ACCESS OR USE OUR SITES OR OUR SERVICES. THIS TERMS OF SERVICE AGREEMENT IS EFFECTIVE AS OF 10/27/2026
       </p>
 
       <h4>ACCEPTANCE OF TERMS</h4>
@@ -137,6 +137,18 @@ export default function Terms() {
         damage arising from any failure to comply with this term and/or condition of the TOS.
       </p>
 
+      <h5>END-TO-END ENCRYPTION AND YOUR RECOVERY KEY</h5>
+
+      <p>
+        The links and files you push, and their titles and names (“Push Content”), are end-to-end encrypted with a key
+        made from your password, as described in the Privacy Policy and at https://pushthat.link/security. When you
+        register, you are shown a recovery key, which is the only other way to unlock your Push Content. MakeRocketGoNow
+        LLC never receives your password or your recovery key and cannot decrypt your Push Content. You are solely
+        responsible for keeping your password and your recovery key. If you reset your password without your recovery
+        key, or lose both, the Push Content made before then cannot be recovered by you or by MakeRocketGoNow LLC, and
+        MakeRocketGoNow LLC shall not be held liable for that loss.
+      </p>
+
       <h4>CONDUCT</h4>
 
       <p>
@@ -214,9 +226,10 @@ export default function Terms() {
       </ol>
 
       <p>
-        MakeRocketGoNow LLC herein reserves the right to pre-screen, refuse and/or delete any content currently
-        available through our Services. In addition, we reserve the right to remove and/or delete any such content that
-        would violate the TOS or which would otherwise be considered offensive to other visitors, users and/or members.
+        MakeRocketGoNow LLC herein reserves the right to refuse and/or delete any content currently available through
+        our Services. Because Push Content is end-to-end encrypted, MakeRocketGoNow LLC does not and cannot pre-screen
+        or review it. In addition, we reserve the right to remove and/or delete any such content that would violate the
+        TOS or which would otherwise be considered offensive to other visitors, users and/or members.
       </p>
 
       <p>
@@ -236,6 +249,11 @@ export default function Terms() {
           members, including the general public.
         </li>
       </ol>
+
+      <p>
+        Push Content can be accessed, preserved and/or disclosed only in its encrypted form, which MakeRocketGoNow LLC
+        cannot decrypt.
+      </p>
 
       <p>
         MakeRocketGoNow LLC herein reserves the right to include the use of security components that may permit digital
