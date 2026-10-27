@@ -74,6 +74,14 @@ A run from any other branch runs the checks and deploys nothing.
   nothing is done in the console. A reset that reaches Firebase's own page regardless is
   caught at the next sign-in, which asks for the recovery key.
 
+  The switch is still a release decision, now made by merging rather than in the console:
+  `/reset` sets the Firebase password to the key derived from the new password, which an
+  app version from before phase 3 of that plan does not know, so a user on an old build
+  who resets is signed out of that build until they update it. The web app deploys on
+  merge, and its reset emails change at once; the apps change with their next release.
+  Merge once the builds that sign in with the derived key are in the stores, or accept
+  that a reset in between locks old builds out until the update.
+
 ## How CI signs in to Google Cloud
 
 There is no key. GitHub gives each run an OIDC token that says which repository and branch
