@@ -23,15 +23,6 @@ const SOURCE_URL = 'https://github.com/MakeRocketGoNow/pushthat';
 const E2EE_SPEC_URL = `${SOURCE_URL}/blob/main/docs/e2ee.md`;
 
 /**
- * Keeps the one-sentence pitch in one place: Helmet's description repeats it so a search
- * result and a shared link say what the hero says. index.html carries the same text as
- * static Open Graph tags for crawlers that do not run the app.
- */
-const DESCRIPTION =
-  'Share a link or a file from your phone and it arrives on your computer. Push from the browser and your phone ' +
-  'buzzes. End-to-end encrypted with the password you already have. Free to start.';
-
-/**
  * The hero's picture: the Android share sheet feeding a tab on the desktop, with an
  * encrypted "pill" traveling between them. The screenshots are the real apps; the pill
  * is the one thing drawn, because the point it makes (what travels is ciphertext) is
@@ -258,7 +249,6 @@ export function IndexPage() {
     <div className={styles.container}>
       <Helmet>
         <title>PushThat: send links and files between your devices, encrypted</title>
-        <meta name="description" content={DESCRIPTION} />
       </Helmet>
 
       <header className={styles.hero}>

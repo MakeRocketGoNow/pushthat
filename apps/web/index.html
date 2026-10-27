@@ -6,9 +6,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>PushThat</title>
     <!--
-      What a search result and a shared link show. The front page sets the same title and
-      description through Helmet once it renders; these are for the crawlers that read
-      the HTML as served and run nothing. The card is apps/web/og/card.html.
+      What a search result and a shared link show, for the crawlers that read the HTML as
+      served and run nothing. The description lives only here: Helmet adds its tags beside
+      a static one rather than replacing it, so repeating it in the front page would give
+      the page two. The front page's tab title, set through Helmet, is og:title's text. The
+      card is apps/web/og/card.html.
     -->
     <meta
       name="description"
