@@ -21,7 +21,7 @@ import PushesList from '@/components/PushesList';
 import { TrashIcon } from '@/components/icons/TrashIcon';
 import { useAuth } from '@/contexts/AuthContext';
 import { useDebounce } from '@/hooks/useDebounce';
-import { usePushKeys } from '@/hooks/usePushKeys';
+import { KEYS_UNAVAILABLE, usePushKeys } from '@/hooks/usePushKeys';
 import { type Push, type PushKeys, readPush, searchTokenFor } from '@/services/pushes';
 
 import styles from './Links.module.css';
@@ -233,7 +233,7 @@ export default function Links() {
 
       <PushesList
         pushes={pushes}
-        error={keysFailed ? 'Your encryption key could not be read on this device. Reload the page.' : error}
+        error={keysFailed ? KEYS_UNAVAILABLE : error}
         loading={(loading || (!keys && !keysFailed)) && pushes.length === 0}
         selectedPushes={selectedPushes}
         onSelectedPushesChange={setSelectedPushes}

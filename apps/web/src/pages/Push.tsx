@@ -7,7 +7,7 @@ import { useState } from 'react';
 import Button from '@/components/Button';
 import { LIMITS, formatMb } from '@/config/plan';
 import { usePlan } from '@/hooks/usePlan';
-import { usePushKeys } from '@/hooks/usePushKeys';
+import { KEYS_UNAVAILABLE, usePushKeys } from '@/hooks/usePushKeys';
 import { PlanReport } from '@/services/plan';
 import {
   type PushKeys,
@@ -37,10 +37,6 @@ const limitMessage = (plan: PlanReport | undefined, type: 'url' | 'file') => {
   return `You have used this month's ${plan.limits[type].toLocaleString()} ${what} pushes.${more}`;
 };
 
-// The keys are read from IndexedDB as the page mounts, which takes a moment; a push sent
-// before then, or in a browser that refuses IndexedDB, is stopped with this.
-const NO_KEYS = 'Your encryption key is not ready on this device. Reload the page and try again.';
-
 export default function Push() {
   const [url, setUrl] = useState('');
   const [file, setFile] = useState<File | null>(null);
@@ -56,7 +52,7 @@ export default function Push() {
 
     if (!url) return;
     if (!keys) {
-      setError(NO_KEYS);
+      setError(KEYS_UNAVAILABLE);
       return;
     }
 
@@ -128,7 +124,7 @@ export default function Push() {
 
     if (!file) return;
     if (!keys) {
-      setError(NO_KEYS);
+      setError(KEYS_UNAVAILABLE);
       return;
     }
 
