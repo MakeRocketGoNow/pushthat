@@ -113,7 +113,8 @@ functions' suites deliver signed events to the webhook over HTTP and point
 
 CI (`.github/workflows/ci.yml`) runs the functions' unit tests, the web app's lint, key
 vectors and builds, the Android unit tests and the encryption reference's tests on every
-pull request.
+pull request. `.github/workflows/android.yml` builds the Android release bundle, and on
+`main` uploads it to Play as a draft ([docs/android.md](docs/android.md#shipping-to-play)).
 The emulator suites run only in the deploy that follows a merge, and the Xcode builds not
 at all, so run them yourself when a change reaches the rules, the functions or the Apple
 apps: by the time CI runs them, the change is on `main`.
@@ -136,5 +137,5 @@ tag through the API (`gh api repos/<owner>/<action>/git/ref/tags/<tag>`, then th
 object's commit if the type is `tag`), not by copying a SHA from a release page.
 
 Actions outside `actions/*` and verified publishers must also be on the allow-list in the
-repository's Actions settings, which today names `gradle/actions/*` and
-`google-github-actions/auth`. A run that uses anything else is refused before it starts.
+repository's Actions settings, which today names `gradle/actions/*`,
+`google-github-actions/auth` and `r0adkll/upload-google-play`. A run that uses anything else is refused before it starts.

@@ -46,6 +46,36 @@ absolute one is used as given; keeping it outside the repository is recommended)
 `keyAlias`. A wrong `storeFile` fails the build rather than falling back to unsigned, so a
 typo cannot quietly ship an unsigned bundle.
 
+Each value can also come from the environment, which is how CI signs:
+`PUSHTHAT_KEYSTORE_PATH`, `PUSHTHAT_KEYSTORE_PASSWORD`, `PUSHTHAT_KEY_ALIAS` and
+`PUSHTHAT_KEY_PASSWORD`. A value in `keystore.properties` wins over its variable.
+
+## Shipping to Play
+
+A push to `main` that touches `apps/android/` builds a signed bundle and uploads it to the
+closed testing track as a **draft** (`.github/workflows/android.yml`): it appears in Play
+Console and passes Play's checks, but nobody receives it until a person promotes it. Making
+testers get it automatically is a one-word change (`status: completed`). Run the workflow
+from the Actions tab to cut a build without a push. Pull requests build the bundle
+unsigned, which proves the release path compiles, and publish nothing.
+
+Don't build a bundle by hand for Play. A local build keeps `versionCode = 8`, which Play has
+already seen; CI passes the workflow's run number plus 100, which only rises. Never lower
+that offset: a code Play has seen is refused for good.
+
+The workflow reads five repository secrets, and builds unsigned without publishing when
+either the keystore or the service account is missing:
+
+- `ANDROID_KEYSTORE_BASE64`: the upload keystore, `base64 -i <keystore>`.
+- `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`: the same values
+  as in `keystore.properties`.
+- `PLAY_SERVICE_ACCOUNT_JSON`: the JSON key of a Google Cloud service account that has
+  been invited in Play Console (Users and permissions) with release permission on this
+  app. One account can publish several apps in the same developer account.
+
+The upload action, `r0adkll/upload-google-play`, has to be on the repository's Actions
+allow-list, or the run is refused before it starts.
+
 ## Conventions
 
 Every string is in `res/values/strings.xml`. The app works in light and dark mode, using

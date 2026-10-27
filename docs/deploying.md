@@ -4,8 +4,9 @@ A push to `main` deploys itself. The CI workflow (`.github/workflows/ci.yml`) ru
 checks, and when they pass it deploys what the push changed to the `push-that` Firebase
 project: the functions when `functions/` changed, and the site with the Firestore and
 Storage rules when `apps/web/` changed. A change to `firebase.json` or `.firebaserc`
-deploys both. Nothing else ships from CI: the Chrome extension, the Android app and the
-Apple apps are still released by hand.
+deploys both. The Android app has its own workflow, which uploads a draft to Play's closed
+testing track (see [android.md](android.md#shipping-to-play)). Nothing else ships from CI:
+the Chrome extension and the Apple apps are still released by hand.
 
 ## What a deploy runs
 

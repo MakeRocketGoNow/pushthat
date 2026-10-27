@@ -1,0 +1,138 @@
+name: Android
+
+# Builds the release bundle and, on `main`, uploads it to Play's closed testing track. The
+# unit tests run in ci.yml on every pull request; this workflow is only about the bundle,
+# and is its own workflow so that a push that changes nothing in the app (a copy change on
+# the site, say) does not upload a build. See "Shipping to Play" in docs/android.md for the
+# secrets it reads and the one-off setup in Play Console.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/android/**'
+      - '.github/workflows/android.yml'
+  pull_request:
+    paths:
+      - 'apps/android/**'
+      - '.github/workflows/android.yml'
+  # Cutting a release build on demand, without waiting for a push.
+  workflow_dispatch:
+
+# A second push to a pull request makes the first one's build pointless, so don't pay to
+# finish it. Only pull requests are cancelled: a `main` build and a `workflow_dispatch`
+# build both use up a version code, and neither should be thrown away because something
+# else started.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    working-directory: apps/android
+
+jobs:
+  bundle:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # Every bundle Play accepts needs a version code it has not seen. The run number only
+      # ever rises, so nothing is remembered or bumped by hand, but it counts this workflow's
+      # runs and so starts at 1, below the codes Play already has from the app's releases by
+      # hand. The offset puts the first run above them. Never lower it: a code Play has seen
+      # is refused for good. Worked out in the shell because expressions have no arithmetic.
+      - name: Pick the version code
+        run: echo "PUSHTHAT_VERSION_CODE=$((GITHUB_RUN_NUMBER + 100))" >> "$GITHUB_ENV"
+      # 25 because gradle/gradle-daemon-jvm.properties asks for it; the app itself
+      # compiles to Java 17.
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: temurin
+          java-version: 25
+      - uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+
+      # Run here as well as in ci.yml, so a bundle that reaches Play is one whose own
+      # commit passed, not one that merely shares a branch with a commit that did.
+      - run: ./gradlew test
+
+      # `secrets` cannot be read in an `if:`, and a step that pulls in an action cannot carry
+      # the `env:` a shell step uses to smuggle one in, so presence is decided once, here,
+      # and the steps below read the output. Both secrets, not either: the service account
+      # says where to publish, and the keystore is what makes a bundle Play will accept.
+      # Checking only the service account would turn a missing keystore into a failed
+      # upload, which reads as a broken publish rather than a build nobody asked to ship.
+      - name: Can this run publish?
+        id: publishable
+        env:
+          EVENT: ${{ github.event_name }}
+          KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          PLAY_SERVICE_ACCOUNT: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+        run: |
+          if [ "$EVENT" != pull_request ] && [ -n "$KEYSTORE" ] && [ -n "$PLAY_SERVICE_ACCOUNT" ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "Pull request, or no Play service account or keystore: building unsigned, not publishing." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      # A pull request, or a fork, gets an unsigned bundle: that still proves the release
+      # path compiles, which is what a change to the build file needs to know.
+      - name: Build the release bundle
+        env:
+          READY: ${{ steps.publishable.outputs.ready }}
+          KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          PUSHTHAT_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          PUSHTHAT_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          PUSHTHAT_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          if [ "$READY" = true ]; then
+            echo "$KEYSTORE" | base64 -d > "$RUNNER_TEMP/release.jks"
+            export PUSHTHAT_KEYSTORE_PATH="$RUNNER_TEMP/release.jks"
+          fi
+          ./gradlew bundleRelease assembleRelease
+          rm -f "$RUNNER_TEMP/release.jks"
+
+      # Both formats, because they are for different places. Play takes only the bundle and
+      # re-signs it per device; the APK is what `adb install` and a sideload take.
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: pushthat-android
+          path: |
+            apps/android/app/build/outputs/bundle/release/*.aab
+            apps/android/app/build/outputs/apk/release/*.apk
+          if-no-files-found: error
+
+      # Play names a release after `versionName` alone when nothing is supplied, so every
+      # release would read "1.1.0" and the list would give no way to tell builds apart. This
+      # mirrors what Play shows beside the bundle, "142 (1.1.0)". `versionName` is read out
+      # of the build file rather than repeated here, because a second copy is one nobody
+      # updates when the first one changes.
+      - name: Name the release
+        id: release_name
+        if: steps.publishable.outputs.ready == 'true'
+        run: |
+          name=$(grep -m1 'versionName = ' app/build.gradle.kts | sed 's/.*versionName = "\(.*\)".*/\1/')
+          echo "name=${PUSHTHAT_VERSION_CODE} (${name})" >> "$GITHUB_OUTPUT"
+
+      # `status: draft` stops short of releasing to testers: the bundle appears in the track
+      # and Play runs its checks, but a person still presses the button. That is the right
+      # default for something every push to `main` triggers. Change it to `completed` to
+      # have testers get the build without anyone asking.
+      #
+      # `alpha` is the API's name for the default closed testing track: "closed" is not a
+      # track name, and a custom closed track is referenced by the name it was given in Play
+      # Console. `tracks`, plural: the singular `track` still works but warns that it is
+      # going away.
+      - name: Publish to Play closed testing
+        if: steps.publishable.outputs.ready == 'true'
+        uses: r0adkll/upload-google-play@e738b9dd8f2476ea806d921b64aacd24f34515a5 # v1.1.5
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          packageName: com.makerocketgonow.pushthat
+          releaseFiles: apps/android/app/build/outputs/bundle/release/*.aab
+          tracks: alpha
+          status: draft
+          releaseName: ${{ steps.release_name.outputs.name }}
