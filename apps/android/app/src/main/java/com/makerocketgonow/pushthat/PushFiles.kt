@@ -8,9 +8,13 @@ import androidx.core.content.FileProvider
 import com.google.firebase.Firebase
 import com.google.firebase.storage.storage
 import com.makerocketgonow.pushthat.e2ee.FileCipher
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.tasks.await
 import java.io.File
 import java.util.UUID
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * Opening a file push. The object is downloaded through the Storage SDK by `objectPath`,
@@ -25,6 +29,17 @@ object PushFiles {
     private const val OPENED = "opened"
 
     /**
+     * Moved by [clear], so an open that started before a sign-out can tell, once its
+     * download and its decrypt are done, that the session it decrypted for has ended. The
+     * folder [clear] removed can be made again by such an open, so the clear alone is not
+     * enough.
+     */
+    private val session = AtomicInteger()
+
+    /** An open given up because the session it started in ended under it. */
+    class SessionEndedException : CancellationException("the session ended while a file was opened")
+
+    /**
      * Downloads [objectPath] and returns the file to open: decrypted with [fk] and [np], or,
      * for a migrated push (`legacyPlain`, both null), as it is, since its bytes were
      * uploaded before encryption. Any failure throws and leaves nothing behind, so a file
@@ -35,6 +50,7 @@ object PushFiles {
      * then; keeping only the latest bounds both the space and the exposure.
      */
     suspend fun fetch(context: Context, objectPath: String, name: String, fk: ByteArray?, np: ByteArray?): File {
+        val started = session.get()
         val opened = File(context.cacheDir, OPENED)
         opened.deleteRecursively()
         // A folder per open, so the file keeps the envelope's name even when two pushes share it.
@@ -49,11 +65,19 @@ object PushFiles {
                 val encrypted = File.createTempFile("object", ".pte", downloads)
                 try {
                     ref.getFile(encrypted).await()
+                    // Not decrypted for a session that has ended.
+                    checkSession(started)
                     FileCipher.decryptToFile(fk, np, encrypted, dest)
                 } finally {
                     encrypted.delete()
                 }
             }
+            checkSession(started)
+            // `decryptToFile` blocks and does not see a cancellation (the activity's scope,
+            // ended by a sign-out), which would otherwise surface only after this returns,
+            // outside the catch, and leave the plaintext in the cache. Checked here, in the
+            // try, so the catch removes the folder.
+            currentCoroutineContext().ensureActive()
             return dest
         } catch (e: Throwable) {
             dir.deleteRecursively()
@@ -76,8 +100,16 @@ object PushFiles {
         }
     }
 
-    /** On sign-out: nothing of the account's files stays in the cache. */
+    private fun checkSession(started: Int) {
+        if (session.get() != started) throw SessionEndedException()
+    }
+
+    /**
+     * On sign-out: nothing of the account's files stays in the cache, including one an open
+     * still running is about to finish (see [session]).
+     */
     fun clear(context: Context) {
+        session.incrementAndGet()
         File(context.cacheDir, OPENED).deleteRecursively()
         File(context.cacheDir, DOWNLOADS).deleteRecursively()
     }

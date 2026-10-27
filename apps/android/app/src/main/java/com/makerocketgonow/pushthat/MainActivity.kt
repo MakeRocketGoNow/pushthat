@@ -62,6 +62,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.repeatOnLifecycle
 import android.widget.EditText
 import android.widget.ScrollView
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -428,6 +429,10 @@ class MainActivity : AppCompatActivity() {
             }
             openingFile = false
             listProgressBar.visibility = View.GONE
+            // Signed out while the file was on its way (this scope cancelled, or the session
+            // ended under the open): `PushFiles.fetch` has removed what it wrote, nothing is
+            // opened, and a failure to decrypt would be the wrong thing to say.
+            if (result.exceptionOrNull() is CancellationException) return@launch
             result.onSuccess { opened ->
                 try {
                     PushFiles.view(this@MainActivity, opened, file.mime, file.ext)
