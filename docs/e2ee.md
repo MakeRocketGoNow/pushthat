@@ -179,8 +179,8 @@ Until a title arrives the list shows the URL, as it does today for a push with n
 
 `firestore.rules`:
 
-- `pushes` create: keys `hasOnly` the plaintext list above; `enc` is a map with string `v`, `n` and `ct`; `type` is `url` or `file`; `objectPath` is required for `file` and must start with `uploads/{uid}/`; `expiresAt` absent; the usage check unchanged. No `url`, `title`, `deviceName` or `ext` key.
-- `pushes` update: `type == 'url'` and `affectedKeys().hasOnly(['enc', 'searchTokens'])`.
+- `pushes` create: keys `hasOnly` the plaintext list above; `enc` is a map with an int `v` and string `n` and `ct`; `type` is `url` or `file`; `objectPath` is required for `file` and must start with `uploads/{uid}/`; `keyVersion` is the account's current `e2ee.keyVersion` once it has one, so a device left holding a key a reset replaced cannot add pushes nobody can open; `expiresAt` absent; the usage check unchanged. No `url`, `title`, `deviceName` or `ext` key.
+- `pushes` update: on a push with `enc`, `type == 'url'` and `affectedKeys().hasOnly(['enc', 'searchTokens'])`. On a push without it, today's title update and the one migration update described under Migration.
 - `users` create and update: the client may also write `e2ee`, a map whose `keyVersion` is an int no smaller than the stored one. The `hasOnly` lists gain `e2ee`; everything else stays server-owned.
 - The `deviceNames` array the trigger keeps on the user document is dropped; it was the model name and it is gone from the push.
 
@@ -245,7 +245,7 @@ Small, next to the clients:
 Each phase is shippable on its own; the rules do not require `enc` until the last.
 
 1. **Reference and vectors.** The Node implementation and `vectors.json` in `packages/push-test`.
-2. **Server, both shapes.** The function changes above with legacy fallbacks; rules that accept both shapes; the reset action URL and the `/reset` page.
+2. **Server, both shapes.** The function changes above with legacy fallbacks; rules that accept both shapes; the reset action URL and the `/reset` page. The page ships here, but the action URL is pointed at it by hand only once phase 3's clients are out ([deploying](deploying.md), What stays manual), since a reset through it sets a Firebase password that a client from before phase 3 cannot sign in with.
 3. **Keys.** Sign-in, registration, the legacy fallback and the password migration on all five clients, each with a vector test. Users see no change yet beyond the recovery key at sign-up.
 4. **Pushes.** The envelope, files, the blind index, the receive paths and the push migration on all five clients; the iOS notification service extension.
 5. **Require it.** Rules refuse plaintext pushes; `getPageTitle` and the plaintext FCM fields are removed; the "Encrypted" copy and the security page go up.

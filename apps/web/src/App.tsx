@@ -12,6 +12,7 @@ import NotFound from './pages/NotFound';
 import Plan from './pages/Plan';
 import Privacy from './pages/Privacy';
 import Push from './pages/Push';
+import { ResetPassword } from './pages/ResetPassword';
 import Support from './pages/Support';
 import Terms from './pages/Terms';
 import { IndexPage } from './pages/Index';
@@ -40,6 +41,7 @@ function App() {
             <Route path="/privacy" element={<Privacy />} />
             <Route path="/terms" element={<Terms />} />
             <Route path="/support" element={<Support />} />
+            <Route path="/reset" element={<ResetPassword />} />
             <Route element={<ProtectedRoute />}>
               <Route path="/links" element={<Links />} />
               <Route path="/push" element={<Push />} />

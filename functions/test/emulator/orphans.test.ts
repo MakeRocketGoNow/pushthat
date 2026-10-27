@@ -67,6 +67,16 @@ test('a URL push does not hold a file, and a push of another user does not eithe
   expect(await sweepOrphanedUploads(new Date(), { graceMs: 0 })).toEqual(['uploads/u1/a.pdf']);
 });
 
+test('an encrypted push holds its object by objectPath, and not by a title', async () => {
+  await Promise.all(['uploads/u1/RandomObjectId0000000A', 'uploads/u1/a.pdf'].map(upload));
+  await push({ userId: 'u1', objectPath: 'uploads/u1/RandomObjectId0000000A', enc: { v: 1, n: 'n', ct: 'ct' } });
+  // A title beside enc is what the rules refuse; if one got there, it holds nothing.
+  await push({ userId: 'u1', title: 'a.pdf', enc: { v: 1, n: 'n', ct: 'ct' } });
+
+  expect(await sweepOrphanedUploads(new Date(), { graceMs: 0 })).toEqual(['uploads/u1/a.pdf']);
+  expect(await remaining()).toEqual(['uploads/u1/RandomObjectId0000000A']);
+});
+
 test('an upload younger than the grace is kept', async () => {
   await upload('uploads/u1/in-flight.pdf');
 

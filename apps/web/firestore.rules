@@ -149,6 +149,127 @@ service cloud.firestore {
         || (data.searchTokens is list && data.searchTokens.size() <= 3000);
     }
 
+    // An encrypted push (docs/e2ee.md) keeps in plaintext only what the rules, the
+    // triggers and the sweeps read, and its content in enc. Both shapes are accepted until
+    // phase 5 of that plan, when the plaintext one is refused; until then a client that
+    // has not updated keeps pushing as it does today.
+    //
+    // No url, title, deviceName or ext beside enc: the list leaves them out, so a client
+    // that encrypts cannot also leak a field by accident. The bounds are the job the old
+    // shape's did: deviceId is 16 bytes in base64url, keyVersion a count, and enc.ct a
+    // ciphertext of what a URL push could hold before (1500 characters each of URL and
+    // title, as JSON, in base64) with room to spare, far inside a document's megabyte.
+    // The notification no longer carries any of it, so FCM's 4 KB is not the bound here.
+    // createdAt is checked by the create rule alone: a push migrated in place keeps the
+    // createdAt it was made with, which an old client may never have written.
+    function isEncryptedPushFields(data) {
+      return data.type in ['url', 'file']
+        && isEnvelope(data.enc)
+        && data.keyVersion is int
+        && data.keyVersion >= 1
+        && isCurrentKeyVersion(data)
+        && isBoundedString(data.deviceId, 64)
+        && hasValidSearchTokens(data)
+        && (data.type == 'file'
+          ? isOwnObjectPath(data.objectPath, data.userId)
+          : !('objectPath' in data));
+    }
+
+    // A push is encrypted under the account's current key. A reset without the recovery
+    // key raises e2ee.keyVersion and deletes the pushes made under the old one, and a
+    // device still holding the old key (its ID token lives up to an hour after the reset)
+    // would otherwise keep adding locked rows that delete has already passed. An account
+    // with no keys on its document yet has nothing to compare with. The user document is
+    // the one the usage check reads, and a document read twice in one evaluation is
+    // billed once.
+    function isCurrentKeyVersion(data) {
+      let user = getCurrentUser(data.userId);
+      return user == null
+        || !('e2ee' in user.data)
+        || data.keyVersion == user.data.e2ee.get('keyVersion', 0);
+    }
+
+    // The keys an encrypted push may have. expiresAt is onNewPushCreated's, so a create
+    // never has it; a file push migrated in place keeps the one it was given.
+    function encryptedPushKeys() {
+      return ['userId', 'type', 'createdAt', 'deviceId', 'keyVersion', 'enc', 'searchTokens', 'objectPath'];
+    }
+
+    // AES-GCM's output under the account's metaKey: the version of the envelope, a 12-byte
+    // nonce (16 characters of base64) and the ciphertext with its tag.
+    function isEnvelope(enc) {
+      return enc is map
+        && enc.keys().hasOnly(['v', 'n', 'ct'])
+        && enc.v is int
+        && enc.n is string
+        && enc.n.size() == 16
+        && isBoundedString(enc.ct, 16384);
+    }
+
+    // An object the uploader owns: uploads/{uid}/{name}, one name deep, which is the only
+    // place the Storage rules let uid write, and the shape uploaderOf in
+    // functions/src/orphans.ts reads. onPushRecordDeleted deletes what a file push names,
+    // so a push must not be able to name someone else's object, or a nested path the sweep
+    // would not see.
+    function isOwnObjectPath(path, uid) {
+      return isBoundedString(path, 1024)
+        && path.split('/').size() == 3
+        && path.split('/')[0] == 'uploads'
+        && path.split('/')[1] == uid
+        && path.split('/')[2].size() > 0;
+    }
+
+    // The one update a client makes to a push it has not encrypted: the Android and iOS
+    // title scrapers filling in a URL push's title once the page has answered. A file push
+    // is never updated this way, since its title names the stored object that
+    // onPushRecordDeleted removes, and its type is what tells that trigger to look; either
+    // changed would keep the file for good.
+    function isPlaintextRetitle() {
+      return resource.data.type == 'url'
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['title', 'searchTokens'])
+        && isBoundedString(request.resource.data.title, 1500)
+        && hasValidSearchTokens(request.resource.data);
+    }
+
+    // The same on an encrypted push: the scraped title is re-encrypted with the URL under a
+    // fresh nonce, so the update rewrites enc and the blind index together.
+    function isEncryptedRetitle() {
+      return resource.data.type == 'url'
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['enc', 'searchTokens'])
+        && isEnvelope(request.resource.data.enc)
+        && hasValidSearchTokens(request.resource.data);
+    }
+
+    // A plaintext push encrypted in place on its owner's first sign-in with an updated
+    // client (docs/e2ee.md, Migration): enc, the blind index, keyVersion and deviceId go
+    // in, and url, title, deviceName and ext go out, leaving the encrypted shape. In place
+    // rather than recreated, because a create would fire onNewPushCreated and count
+    // against the month. A file push also gains objectPath, the path its title named,
+    // since onPushRecordDeleted can no longer read the title. userId, type, createdAt and
+    // expiresAt must not change, so the push stays whose, what and how long it was; any
+    // other field may go, and the list of what the result holds is what makes sure the
+    // plaintext ones do. That is a guard on what stays rather than a list of what may be
+    // removed because a push made before the shape was bounded may hold a field no client
+    // writes now, and a list would leave it unable ever to migrate.
+    function isMigration() {
+      return !request.resource.data.diff(resource.data).affectedKeys()
+          .hasAny(['userId', 'type', 'createdAt', 'expiresAt'])
+        && request.resource.data.keys().hasOnly(encryptedPushKeys().concat(['expiresAt']))
+        && isEncryptedPushFields(request.resource.data)
+        && isMigratedObjectPath();
+    }
+
+    // A file push migrated in place names the object its title named, which is the one
+    // onPushRecordDeleted has been deleting with it. Any other path, even one of the
+    // owner's own, would leave the real object to the orphan sweep and point the delete at
+    // something else. A push with no title (none is made now) names nothing to compare
+    // with, and is held only to its owner's folder.
+    function isMigratedObjectPath() {
+      return resource.data.type != 'file'
+        || !(resource.data.get('title', null) is string)
+        || request.resource.data.objectPath == 'uploads/' + resource.data.userId + '/' + resource.data.title;
+    }
+
     // The device tokens a user document may hold. A token is about 160 characters and
     // the trigger removes the dead ones as sends fail, so a hundred is far past any
     // real set. The bound on the joined length is what caps the document's size: a
@@ -160,6 +281,57 @@ service cloud.firestore {
         && tokens.join(',').size() <= 51200;
     }
 
+    // users/{uid}.e2ee (docs/e2ee.md, The user document): the account key, wrapped under
+    // the password and under the recovery key, which each client writes at registration,
+    // on a password change or reset, and when it marks the push migration done. The rules
+    // cannot check the wraps open, only that they have the shape the spec gives, and that
+    // shape is checked whole because the user document's size is what the token list's
+    // bound protects (isTokenList): a wrap is a 12-byte nonce and a 48-byte ciphertext in
+    // base64, and four of them cover a password change caught between its steps (old
+    // password, new password, recovery). Map values can only be reached by key, so the
+    // wraps are read by position, one to four.
+    function isE2ee(e2ee) {
+      return e2ee is map
+        && e2ee.keys().hasAll(['v', 'kdf', 'keyVersion', 'wraps'])
+        && e2ee.keys().hasOnly(['v', 'kdf', 'keyVersion', 'wraps', 'migratedAt'])
+        && e2ee.v is int
+        && isBoundedString(e2ee.kdf, 64)
+        && e2ee.keyVersion is int
+        && e2ee.keyVersion >= 1
+        && (!('migratedAt' in e2ee) || e2ee.migratedAt is timestamp)
+        && e2ee.wraps is map
+        && e2ee.wraps.size() <= 4
+        && isWrapAt(e2ee.wraps, 0)
+        && isWrapAt(e2ee.wraps, 1)
+        && isWrapAt(e2ee.wraps, 2)
+        && isWrapAt(e2ee.wraps, 3);
+    }
+
+    // A wrapId is 8 bytes in base64url, 11 characters.
+    function isWrapAt(wraps, i) {
+      return wraps.size() <= i
+        || (isBoundedString(wraps.keys()[i], 16) && isWrap(wraps[wraps.keys()[i]]));
+    }
+
+    function isWrap(wrap) {
+      return wrap is map
+        && wrap.keys().hasOnly(['by', 'n', 'ct'])
+        && wrap.by in ['password', 'recovery']
+        && wrap.n is string
+        && wrap.n.size() == 16
+        && wrap.ct is string
+        && wrap.ct.size() == 64;
+    }
+
+    // keyVersion counts account keys and only goes up, when a reset without the recovery
+    // key replaces the account key: a client holding an older key must not be able to
+    // write it back over the newer one, which would leave every push since unreadable.
+    function isE2eeUpdate() {
+      return isE2ee(request.resource.data.e2ee)
+        && (!('e2ee' in resource.data)
+          || request.resource.data.e2ee.keyVersion >= resource.data.e2ee.get('keyVersion', 0));
+    }
+
     // A client writes only these fields on its own user document. Everything else on it
     // (subscription, usageRecords, periodStart, billing ids) is written by Cloud Functions
     // through the Admin SDK, which these rules do not apply to. It is a list of what clients
@@ -169,19 +341,25 @@ service cloud.firestore {
       allow read: if isOwnUser(userId);
 
       // Every client's sign-up or first token write: email and createdAt from the apps and
-      // the web, fcmTokens from the apps and the Chrome extension.
+      // the web, fcmTokens from the apps and the Chrome extension, e2ee from a client that
+      // registers with a key (or the reset page, for an account with no document yet).
       allow create: if isOwnUser(userId)
-        && request.resource.data.keys().hasOnly(['email', 'createdAt', 'fcmTokens'])
+        && request.resource.data.keys().hasOnly(['email', 'createdAt', 'fcmTokens', 'e2ee'])
         && (!('email' in request.resource.data) || isBoundedString(request.resource.data.email, 320))
         && (!('createdAt' in request.resource.data) || request.resource.data.createdAt is timestamp)
-        && (!('fcmTokens' in request.resource.data) || isTokenList(request.resource.data.fcmTokens));
+        && (!('fcmTokens' in request.resource.data) || isTokenList(request.resource.data.fcmTokens))
+        && (!('e2ee' in request.resource.data) || isE2ee(request.resource.data.e2ee));
 
-      // After that, only a device token. createdAt anchors the monthly period the usage is
-      // counted in (getBillingPeriodKey), so moving it would move the count onto an emptier
-      // month.
+      // After that, only a device token and the wrapped keys. createdAt anchors the monthly
+      // period the usage is counted in (getBillingPeriodKey), so moving it would move the
+      // count onto an emptier month. Each field is checked only when it changes, since a
+      // web sign-up's document has no fcmTokens to keep valid; a field removed is changed,
+      // and fails its check.
       allow update: if isOwnUser(userId)
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['fcmTokens'])
-        && isTokenList(request.resource.data.fcmTokens);
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['fcmTokens', 'e2ee'])
+        && (!('fcmTokens' in request.resource.data.diff(resource.data).affectedKeys())
+          || isTokenList(request.resource.data.fcmTokens))
+        && (!('e2ee' in request.resource.data.diff(resource.data).affectedKeys()) || isE2eeUpdate());
 
       // No delete: it would take usageRecords with it and start the period's count again.
 
@@ -195,22 +373,22 @@ service cloud.firestore {
       allow read, delete: if request.auth != null
         && resource.data.userId == request.auth.uid;
 
-      // The one update a client makes: the Android and iOS title scrapers filling in a
-      // URL push's title once the page has answered. A file push is never updated, since
-      // its title names the stored object that onPushRecordDeleted removes, and its type
-      // is what tells that trigger to look; either changed would keep the file for good.
-      // expiresAt, when the sweep deletes a file push, is onNewPushCreated's alone.
+      // A push is updated only to fill in a scraped title, or to encrypt it in place;
+      // which of those depends on whether it is encrypted already. expiresAt, when the
+      // sweep deletes a file push, is onNewPushCreated's alone.
       allow update: if request.auth != null
         && resource.data.userId == request.auth.uid
-        && resource.data.type == 'url'
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['title', 'searchTokens'])
-        && isBoundedString(request.resource.data.title, 1500)
-        && hasValidSearchTokens(request.resource.data);
+        && ('enc' in resource.data
+          ? isEncryptedRetitle()
+          : isPlaintextRetitle() || isMigration());
 
       allow create: if
         request.auth != null
         && request.resource.data.userId == request.auth.uid
-        && isPushShape(request.resource.data)
+        && (isPushShape(request.resource.data)
+          || (request.resource.data.keys().hasOnly(encryptedPushKeys())
+            && request.resource.data.createdAt is timestamp
+            && isEncryptedPushFields(request.resource.data)))
         && isWithinUsageLimit(request.auth.uid, request.resource.data.type);
     }
 

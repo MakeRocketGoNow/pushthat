@@ -54,6 +54,14 @@ A run from any other branch runs the checks and deploys nothing.
   so the first deploy of a function that uses a new secret is made by hand
   (`npm run deploy` in `functions/`), which grants the functions' account access to it.
 - **The Firestore indexes**, which aren't in `firebase.json`.
+- **The password reset email's action URL**, a console setting: Authentication →
+  Templates → Password reset → edit → Customize action URL, set to
+  `https://pushthat.link/reset` (see [end-to-end encryption](e2ee.md), Password reset).
+  The page sets the Firebase password to the key derived from the new password, which a
+  client from before phase 3 of that plan does not know, so flip it only once the clients
+  that sign in with the derived key are released everywhere; until then Firebase's own
+  page keeps resetting passwords as it does today. Firebase uses the one action URL for
+  every email template, and the page refuses links that are not password resets.
 
 ## How CI signs in to Google Cloud
 

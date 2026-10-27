@@ -86,7 +86,7 @@ Each folder is installed and checked on its own, from that folder:
 
 ```bash
 # apps/web
-npm ci && npm run lint && npm run build && npm run build:chrome && npm run test:rules
+npm ci && npm run lint && npm run test:vectors && npm run build && npm run build:chrome && npm run test:rules
 
 # functions
 npm ci && npm run lint && npm run build && npm test && npm run test:emulator
@@ -111,8 +111,9 @@ port, and one run cannot share another's emulators, so run them one after the ot
 functions' suites deliver signed events to the webhook over HTTP and point
 `STRIPE_API_URL` at a stand-in for Stripe's API, so nothing reaches Stripe.
 
-CI (`.github/workflows/ci.yml`) runs the functions' unit tests, the web app's lint and
-builds, the Android unit tests and the encryption reference's tests on every pull request.
+CI (`.github/workflows/ci.yml`) runs the functions' unit tests, the web app's lint, key
+vectors and builds, the Android unit tests and the encryption reference's tests on every
+pull request.
 The emulator suites run only in the deploy that follows a merge, and the Xcode builds not
 at all, so run them yourself when a change reaches the rules, the functions or the Apple
 apps: by the time CI runs them, the change is on `main`.

@@ -7,7 +7,7 @@
  * See a full list of supported triggers at https://firebase.google.com/docs/functions
  */
 import { initializeApp } from 'firebase-admin/app';
-import { BaseMessage, SendResponse, getMessaging } from 'firebase-admin/messaging';
+import { SendResponse, getMessaging } from 'firebase-admin/messaging';
 import { getStorage } from 'firebase-admin/storage';
 import * as logger from 'firebase-functions/logger';
 import { onDocumentCreated, onDocumentDeleted } from 'firebase-functions/v2/firestore';
@@ -15,7 +15,8 @@ import { HttpsError, onCall } from 'firebase-functions/v2/https';
 // import { beforeUserCreated } from 'firebase-functions/v2/identity';
 import 'whatwg-fetch';
 
-import { deadTokens } from './notifications';
+import { deadTokens, pushMessageOf } from './notifications';
+import { storagePathOf } from './orphans';
 import { pageTitleOf } from './title';
 import { recordPush } from './usage';
 
@@ -66,10 +67,17 @@ export const onPushRecordDeleted = onDocumentDeleted('pushes/{pushId}', async (e
       return;
     }
 
+    // `objectPath` on an encrypted push, the title on a plaintext one (orphans.ts).
+    const path = storagePathOf(deletedPush);
+    if (!path) {
+      logger.warn(`Deleted file push ${event.params.pushId} names no stored object`);
+      return;
+    }
+    storagePath = path;
+
     // Get storage reference
     const storage = getStorage();
     const bucket = storage.bucket();
-    storagePath = `uploads/${deletedPush.userId}/${deletedPush.title}`;
     const file = bucket.file(storagePath);
 
     // Check if file exists before attempting to delete
@@ -87,16 +95,6 @@ export const onPushRecordDeleted = onDocumentDeleted('pushes/{pushId}', async (e
     throw error;
   }
 });
-
-// Helper function to extract domain from URL
-const extractDomain = (url: string): string => {
-  try {
-    const urlObj = new URL(url);
-    return urlObj.hostname;
-  } catch {
-    return 'Unknown';
-  }
-};
 
 export const onNewPushCreated = onDocumentCreated('pushes/{pushId}', async (event) => {
   try {
@@ -142,22 +140,8 @@ export const onNewPushCreated = onDocumentCreated('pushes/{pushId}', async (even
       return;
     }
 
-    // Create notification message
-    const message: BaseMessage = {
-      // Only send data otherwise Chrome will show a notification automatically.
-      // notification: {
-      //   title: pushData.title || (pushData.url ? extractDomain(pushData.url) : 'Unknown'),
-      //   body: pushData.url,
-      // },
-      data: {
-        title: pushData.title || (pushData.url ? extractDomain(pushData.url) : 'Unknown'),
-        pushId: event.params.pushId,
-        id: snapshot.id,
-        type: pushData.type || 'unknown',
-        url: pushData.url,
-        deviceName: pushData.deviceName,
-      },
-    };
+    // Encrypted or plaintext, by whether the push has `enc` (notifications.ts).
+    const message = pushMessageOf(event.params.pushId, pushData);
 
     // Send messages in batches (FCM allows up to 500 tokens per request)
     const batchResponse = await messaging.sendEachForMulticast({
