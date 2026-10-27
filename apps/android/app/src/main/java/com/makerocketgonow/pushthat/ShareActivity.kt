@@ -74,21 +74,9 @@ class ShareActivity : AppCompatActivity() {
         auth = Firebase.auth
         appDatabase = AppDatabase.getDatabase(this)
 
-        // Log complete intent details
-        Log.d(TAG, "Intent details:")
-        Log.d(TAG, "Action: ${intent?.action}")
-        Log.d(TAG, "Type: ${intent?.type}")
-        Log.d(TAG, "Categories: ${intent?.categories}")
-        Log.d(TAG, "Data: ${intent?.data}")
-        Log.d(TAG, "Package: ${intent?.`package`}")
-
-        intent?.extras?.let { bundle ->
-            Log.d(TAG, "Extras:")
-            for (key in bundle.keySet()) {
-                @Suppress("DEPRECATION")
-                Log.d(TAG, "$key: ${bundle.get(key)}")
-            }
-        }
+        // What kind of share, never what was shared: the text, subject and stream of a share
+        // are the push itself, and logcat is readable by anything with adb or a bug report.
+        Log.d(TAG, "Share: ${intent?.action} ${intent?.type}")
 
         // Signed in, and holding the account key, as MainActivity asks. A session without
         // the key (an install that updated while signed in) goes to LoginActivity's password
@@ -570,7 +558,8 @@ class TitleScrapingWorker(
                     doc.title().takeIf { it.isNotBlank() }
                 }
             } catch (e: IOException) {
-                Log.e(TAG, "Error scraping title", e)
+                // The exception's type only: its message can name the page's host.
+                Log.e(TAG, "Error scraping title: ${e.javaClass.simpleName}")
                 null
             } catch (e: IllegalArgumentException) {
                 // OkHttp refuses a URL it cannot parse; there is no title to find.
