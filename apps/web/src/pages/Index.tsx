@@ -100,6 +100,27 @@ function BothDirections() {
   );
 }
 
+interface Card {
+  Icon: typeof KeyIcon;
+  title: string;
+  body: string;
+}
+
+/** The icon-title-sentence grid the encryption section and the features share. */
+function CardGrid({ cards }: { cards: Card[] }) {
+  return (
+    <div className={styles.cards}>
+      {cards.map(({ Icon, title, body }) => (
+        <div key={title} className={styles.card}>
+          <Icon className={styles.cardIcon} />
+          <h3>{title}</h3>
+          <p>{body}</p>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function Encryption() {
   const points = [
     {
@@ -126,15 +147,7 @@ function Encryption() {
         A push’s link, its title, a file’s name and its contents are encrypted on your device and opened only on the
         devices you sign in to. Our servers, Google’s, and anyone with access to either hold only what they cannot read.
       </p>
-      <div className={styles.cards}>
-        {points.map(({ Icon, title, body }) => (
-          <div key={title} className={styles.card}>
-            <Icon className={styles.cardIcon} />
-            <h3>{title}</h3>
-            <p>{body}</p>
-          </div>
-        ))}
-      </div>
+      <CardGrid cards={points} />
       <p className={styles.honest}>
         <strong>What we can still see:</strong> which account pushed, when, whether it was a link or a file, roughly how
         big a file is, which of your devices sent it and how many pushes you make. Search also shows us when two of your
@@ -187,15 +200,7 @@ function Features() {
   return (
     <section className={styles.section} id="features">
       <h2 className={styles.sectionTitle}>What it does</h2>
-      <div className={styles.cards}>
-        {features.map(({ Icon, title, body }) => (
-          <div key={title} className={styles.card}>
-            <Icon className={styles.cardIcon} />
-            <h3>{title}</h3>
-            <p>{body}</p>
-          </div>
-        ))}
-      </div>
+      <CardGrid cards={features} />
     </section>
   );
 }
