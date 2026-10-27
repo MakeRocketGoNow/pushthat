@@ -113,8 +113,11 @@ actor PushMigration {
             // Only a file push may name an object.
             update["objectPath"] = FieldValue.delete()
         }
+        // As field paths: a string key is read as a dotted path, so a field an old client
+        // named with a dot would never be deleted, and the rules would refuse its push on
+        // every start.
         for field in data.keys where !keptFields.contains(field) {
-            update[field] = FieldValue.delete()
+            update[FieldPath([field])] = FieldValue.delete()
         }
         return update
     }
