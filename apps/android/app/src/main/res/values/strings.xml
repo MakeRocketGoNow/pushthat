@@ -104,5 +104,8 @@
     <string name="locked_push_message">This device does not have the key this push was encrypted with. If your keys were changed on another device, sign out and sign in again to open it.</string>
     <string name="file_decrypt_failed">This file could not be decrypted.</string>
     <string name="file_push_body">File</string>
+    <!-- A long press on a push copies its URL, or a file push's name, as "Copy name" does on iOS. -->
+    <string name="url_copied">URL copied to clipboard</string>
+    <string name="name_copied">Name copied</string>
     <string name="keys_changed">Your encryption keys were changed on another device while this one was setting up. Try again.</string>
 </resources>

@@ -942,18 +942,23 @@ class PushAdapter(
             // Set click listener for the item
             itemView.setOnClickListener { onItemClicked(push) }
 
-            // Copies a URL. An encrypted file push has none (no download URL is stored) and a
-            // locked one's is unknown, so a long press on those offers nothing.
-            val link = push.target as? PushTarget.Link
-            if (link == null) {
+            // Copies a URL. An encrypted file push has none (no download URL is stored), so it
+            // copies the file's name, as "Copy name" does on iOS and macOS. A locked push's
+            // content is unknown, so a long press on it offers nothing.
+            val copy: Triple<String, String, Int>? = when (val target = push.target) {
+                is PushTarget.Link -> Triple("URL", target.url, R.string.url_copied)
+                is PushTarget.File -> Triple("Name", target.content.name, R.string.name_copied)
+                PushTarget.Locked -> null
+            }
+            if (copy == null) {
                 itemView.setOnLongClickListener(null)
                 itemView.isLongClickable = false
             } else {
+                val (label, text, copied) = copy
                 itemView.setOnLongClickListener {
                     val clipboard = itemView.context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                    val clip = ClipData.newPlainText("URL", link.url)
-                    clipboard.setPrimaryClip(clip)
-                    Toast.makeText(itemView.context, "URL copied to clipboard", Toast.LENGTH_SHORT).show()
+                    clipboard.setPrimaryClip(ClipData.newPlainText(label, text))
+                    Toast.makeText(itemView.context, copied, Toast.LENGTH_SHORT).show()
                     true
                 }
             }
