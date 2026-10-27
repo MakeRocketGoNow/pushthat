@@ -32,7 +32,7 @@ actor TitleScraperService {
                 keyVersion: keyVersion, url: url, ext: ext, title: title
             )
         } catch {
-            print("Failed to update title: \(error)")
+            print("Failed to update title: \(type(of: error))")
         }
     }
 
@@ -55,7 +55,8 @@ actor TitleScraperService {
 
             return extractTitle(from: html)
         } catch {
-            print("Failed to scrape title: \(error)")
+            // The error's type only: a URLError carries the page's full URL.
+            print("Failed to scrape title: \(type(of: error))")
             return nil
         }
     }
