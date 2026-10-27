@@ -333,10 +333,11 @@ class AuthViewModel: ObservableObject {
 
     // MARK: - Sign out
 
-    /// Clears the account key first, so that a sign-out that fails partway never leaves a
-    /// key behind for whoever signs in next. The device id stays: it is the install's.
+    /// Clears the account key and the last decrypted file first, so that a sign-out that
+    /// fails partway never leaves either behind for whoever signs in next. The device id stays: it is the install's.
     func signOut() {
         AccountKeyStore.clearAccountKey()
+        PushFileOpener.clear()
         pendingRecovery = nil
         do {
             try auth.signOut()

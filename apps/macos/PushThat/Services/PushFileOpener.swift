@@ -27,6 +27,12 @@ enum PushFileOpener {
         FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0].appendingPathComponent("OpenedPushes", isDirectory: true)
     }
 
+    /// On sign-out: no decrypted file outlives the session it was opened in, whoever uses the
+    /// device next (on a Mac, any account on it).
+    static func clear() {
+        try? FileManager.default.removeItem(at: root)
+    }
+
     /// The push's file, decrypted into the cache under its own name. A migrated push
     /// (`legacyPlain`) is the plaintext upload and is only downloaded. Whatever fails, no
     /// partial file is left: `E2eeCrypto.decryptFile` removes its output, and the folder
@@ -42,7 +48,8 @@ enum PushFileOpener {
             _ = try await storage.reference(withPath: objectPath).writeAsync(toFile: downloaded)
         } catch {
             try? FileManager.default.removeItem(at: folder)
-            print("Failed to download \(objectPath): \(error)")
+            // Not the path or the error: a migrated push's path is its file's name.
+            print("Failed to download a push's file: \(type(of: error))")
             throw OpenError.notDownloaded
         }
 
@@ -59,7 +66,7 @@ enum PushFileOpener {
             return output
         } catch {
             try? FileManager.default.removeItem(at: folder)
-            print("Failed to decrypt \(objectPath): \(error)")
+            print("Failed to decrypt a push's file: \(type(of: error))")
             throw OpenError.notDecrypted
         }
     }
