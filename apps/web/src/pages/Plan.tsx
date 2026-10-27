@@ -178,7 +178,7 @@ export default function Plan() {
 
   if (!plan) {
     return (
-      <div>
+      <div className={styles.page}>
         <Helmet>
           <title>Plan</title>
         </Helmet>
@@ -195,8 +195,10 @@ export default function Plan() {
         ) : (
           <p className={styles.muted}>Reading your plan…</p>
         )}
-        {/* Nothing in it depends on the plan, so it shows while the plan is read or cannot be. */}
-        <Encrypted />
+        {/* Nothing in it depends on the plan, so it shows while the plan is read or cannot be.
+            Keyed, so that React keeps the one section when the plan arrives rather than
+            mounting another, which would read the device id again and blink its line. */}
+        <Encrypted key="encrypted" />
       </div>
     );
   }
@@ -296,7 +298,7 @@ export default function Plan() {
         </section>
       )}
 
-      <Encrypted />
+      <Encrypted key="encrypted" />
     </div>
   );
 }
