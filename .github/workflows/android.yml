@@ -4,7 +4,7 @@ name: Android
 # unit tests run in ci.yml on every pull request; this workflow is only about the bundle,
 # and is its own workflow so that a push that changes nothing in the app (a copy change on
 # the site, say) does not upload a build. See "Shipping to Play" in docs/android.md for the
-# secrets it reads and the one-off setup in Play Console.
+# secrets it reads and the one-off setup in Play Console and GitHub.
 on:
   push:
     branches: [main]
@@ -36,8 +36,36 @@ defaults:
     working-directory: apps/android
 
 jobs:
-  bundle:
+  # Every run, pull requests included. It holds no secrets at all, so it is safe to run the
+  # build files of a branch nobody has reviewed yet: the bundle comes out unsigned, which
+  # still proves the release path compiles, and is not kept.
+  build:
     runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # 25 because gradle/gradle-daemon-jvm.properties asks for it; the app itself
+      # compiles to Java 17.
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: temurin
+          java-version: 25
+      - uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+      # Run here as well as in ci.yml, so a bundle that reaches Play is one whose own
+      # commit passed, not one that merely shares a branch with a commit that did.
+      - run: ./gradlew test
+      - run: ./gradlew bundleRelease assembleRelease
+
+  # Signs and uploads, on `main` only. The signing and Play secrets live on the `play`
+  # Environment, not on the repository, and the Environment accepts only `main` (Settings,
+  # Environments). That check is GitHub's, made before the job starts, so it holds even
+  # against a pull request that edits this file: a run from any other ref is refused the
+  # Environment and never sees a secret. The `if:` below only skips the job cleanly instead
+  # of letting it fail on that refusal.
+  release:
+    needs: build
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: play
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -50,17 +78,6 @@ jobs:
       # because expressions have no arithmetic.
       - name: Pick the version code
         run: echo "PUSHTHAT_VERSION_CODE=$((GITHUB_RUN_NUMBER + 100))" >> "$GITHUB_ENV"
-      # 25 because gradle/gradle-daemon-jvm.properties asks for it; the app itself
-      # compiles to Java 17.
-      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
-        with:
-          distribution: temurin
-          java-version: 25
-      - uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
-
-      # Run here as well as in ci.yml, so a bundle that reaches Play is one whose own
-      # commit passed, not one that merely shares a branch with a commit that did.
-      - run: ./gradlew test
 
       # `secrets` cannot be read in an `if:`, and a step that pulls in an action cannot carry
       # the `env:` a shell step uses to smuggle one in, so presence is decided once, here,
@@ -68,49 +85,43 @@ jobs:
       # says where to publish, and the keystore is what makes a bundle Play will accept.
       # Checking only the service account would turn a missing keystore into a failed
       # upload, which reads as a broken publish rather than a build nobody asked to ship.
-      #
-      # Only `main`, not only "not a pull request": the Actions tab can start this workflow
-      # on any branch, and without the ref check that would sign unreviewed code and upload
-      # it above `main`'s latest build.
       - name: Can this run publish?
         id: publishable
         env:
-          REF: ${{ github.ref }}
           KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           PLAY_SERVICE_ACCOUNT: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
         run: |
-          if [ "$REF" = refs/heads/main ] && [ -n "$KEYSTORE" ] && [ -n "$PLAY_SERVICE_ACCOUNT" ]; then
+          if [ -n "$KEYSTORE" ] && [ -n "$PLAY_SERVICE_ACCOUNT" ]; then
             echo "ready=true" >> "$GITHUB_OUTPUT"
           else
             echo "ready=false" >> "$GITHUB_OUTPUT"
-            echo "Not on \`main\`, or no Play service account or keystore: building unsigned, not publishing." >> "$GITHUB_STEP_SUMMARY"
+            echo "No Play service account or keystore on the \`play\` Environment: not publishing." >> "$GITHUB_STEP_SUMMARY"
           fi
 
-      # A pull request, another branch or a fork gets an unsigned bundle: that still proves
-      # the release path compiles, which is what a change to the build file needs to know.
-      #
-      # Each secret is blanked unless this run publishes. Everything in a step's `env:`
-      # reaches Gradle, and on a pull request Gradle runs that branch's own build files, so
-      # an unconditional `env:` would hand the signing passwords to code nobody has reviewed
-      # yet, for a build that never uses them.
-      - name: Build the release bundle
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        if: steps.publishable.outputs.ready == 'true'
+        with:
+          distribution: temurin
+          java-version: 25
+      - uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+        if: steps.publishable.outputs.ready == 'true'
+
+      - name: Build the signed bundle
+        if: steps.publishable.outputs.ready == 'true'
         env:
-          READY: ${{ steps.publishable.outputs.ready }}
-          KEYSTORE: ${{ steps.publishable.outputs.ready == 'true' && secrets.ANDROID_KEYSTORE_BASE64 || '' }}
-          PUSHTHAT_KEYSTORE_PASSWORD: ${{ steps.publishable.outputs.ready == 'true' && secrets.ANDROID_KEYSTORE_PASSWORD || '' }}
-          PUSHTHAT_KEY_ALIAS: ${{ steps.publishable.outputs.ready == 'true' && secrets.ANDROID_KEY_ALIAS || '' }}
-          PUSHTHAT_KEY_PASSWORD: ${{ steps.publishable.outputs.ready == 'true' && secrets.ANDROID_KEY_PASSWORD || '' }}
+          KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          PUSHTHAT_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          PUSHTHAT_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          PUSHTHAT_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
-          if [ "$READY" = true ]; then
-            echo "$KEYSTORE" | base64 -d > "$RUNNER_TEMP/release.jks"
-            export PUSHTHAT_KEYSTORE_PATH="$RUNNER_TEMP/release.jks"
-          fi
-          ./gradlew bundleRelease assembleRelease
+          echo "$KEYSTORE" | base64 -d > "$RUNNER_TEMP/release.jks"
+          PUSHTHAT_KEYSTORE_PATH="$RUNNER_TEMP/release.jks" ./gradlew bundleRelease assembleRelease
           rm -f "$RUNNER_TEMP/release.jks"
 
       # Both formats, because they are for different places. Play takes only the bundle and
       # re-signs it per device; the APK is what `adb install` and a sideload take.
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: steps.publishable.outputs.ready == 'true'
         with:
           name: pushthat-android
           path: |
@@ -119,10 +130,10 @@ jobs:
           if-no-files-found: error
 
       # Play names a release after `versionName` alone when nothing is supplied, so every
-      # release would read "1.1.0" and the list would give no way to tell builds apart. This
-      # mirrors what Play shows beside the bundle, "142 (1.1.0)". `versionName` is read out
-      # of the build file rather than repeated here, because a second copy is one nobody
-      # updates when the first one changes.
+      # release of one version would read the same and the list would give no way to tell
+      # builds apart. This mirrors what Play shows beside the bundle, "142 (1.2.0)".
+      # `versionName` is read out of the build file rather than repeated here, because a
+      # second copy is one nobody updates when the first one changes.
       - name: Name the release
         id: release_name
         if: steps.publishable.outputs.ready == 'true'

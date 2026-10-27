@@ -146,3 +146,9 @@ Actions outside `actions/*` and verified publishers must also be on the allow-li
 repository's Actions settings, which today names `gradle/actions/*`,
 `google-github-actions/auth` and `r0adkll/upload-google-play`. A run that uses anything
 else is refused before it starts.
+
+A secret that signs or publishes lives on an Environment that accepts only `main`, never
+on the repository: a pull request runs its own copy of the workflow, so a repository
+secret is one any branch can read. The Android release job uses the `play` Environment
+([docs/android.md](docs/android.md#shipping-to-play)). A job that needs such a secret
+declares the Environment, and a job that runs on pull requests holds none.

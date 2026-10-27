@@ -57,15 +57,15 @@ closed testing track as a **draft** (`.github/workflows/android.yml`): it appear
 Console and passes Play's checks, but nobody receives it until a person promotes it. Making
 testers get it automatically is a one-word change (`status: completed`). Run the workflow
 from the Actions tab on `main` to cut a build without a push. Pull requests and other
-branches build the bundle unsigned, which proves the release path compiles, and publish
-nothing.
+branches run only the `build` job: the tests and an unsigned bundle, which proves the
+release path compiles, with no secrets and nothing published.
 
 Don't build a bundle by hand for Play. A local build keeps `versionCode = 8`, which Play has
 already seen; CI passes the workflow's run number plus 100, which only rises. Never lower
 that offset: a code Play has seen is refused for good.
 
-The workflow reads five repository secrets, and builds unsigned without publishing when
-either the keystore or the service account is missing:
+The `release` job reads five secrets from the repository's `play` Environment, and skips
+publishing when either the keystore or the service account is missing:
 
 - `ANDROID_KEYSTORE_BASE64`: the upload keystore, `base64 -i <keystore>`.
 - `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`: the same values
@@ -76,6 +76,17 @@ either the keystore or the service account is missing:
 
 The upload action, `r0adkll/upload-google-play`, has to be on the repository's Actions
 allow-list, or the run is refused before it starts.
+
+The secrets are on the Environment, not the repository, because the Environment accepts
+only `main` (Settings, Environments, `play`, Deployment branches) and GitHub checks that
+before the job starts. Repository secrets reach every run a branch of this repository
+starts, and a pull request runs its own copy of the workflow, so a branch could edit the
+workflow to read them before anyone reviewed it. A secret set without `--env play` lands
+back on the repository and reopens that, so set them as:
+
+```bash
+gh secret set ANDROID_KEY_PASSWORD --env play --repo MakeRocketGoNow/pushthat
+```
 
 ## Release notes
 
