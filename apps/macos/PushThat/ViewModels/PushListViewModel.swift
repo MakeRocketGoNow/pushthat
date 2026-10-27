@@ -238,10 +238,17 @@ class PushListViewModel: ObservableObject {
         isOpeningFile = true
         Task {
             defer { isOpeningFile = false }
+            // A sign-out while the file opened ends the session it was for: nothing is shown
+            // then, neither the file (which `PushFileOpener.clear()` has removed) nor an error.
+            let session = PushFileOpener.session
             do {
                 let local = try await PushFileOpener.localFile(file: file, objectPath: objectPath, storage: Storage.storage())
+                guard PushFileOpener.session == session else { return }
                 NSWorkspace.shared.open(local)
+            } catch PushFileOpener.OpenError.signedOut {
+                return
             } catch {
+                guard PushFileOpener.session == session else { return }
                 showError(error.localizedDescription)
             }
         }

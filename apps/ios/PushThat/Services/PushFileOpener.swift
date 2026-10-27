@@ -12,11 +12,16 @@ enum PushFileOpener {
     enum OpenError: LocalizedError {
         case notDecrypted
         case notDownloaded
+        /// The session the open started in ended before it finished (`clear()`). Nothing
+        /// it wrote is left, and the caller shows nothing: not the file, and no error to
+        /// whoever is at the device now.
+        case signedOut
 
         var errorDescription: String? {
             switch self {
             case .notDecrypted: return "This file could not be decrypted."
             case .notDownloaded: return "This file could not be downloaded."
+            case .signedOut: return "You signed out before this file opened."
             }
         }
     }
@@ -27,17 +32,31 @@ enum PushFileOpener {
         FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0].appendingPathComponent("OpenedPushes", isDirectory: true)
     }
 
+    /// Moved on by every `clear()`. An open notes it when it starts and checks it after the
+    /// download and after the decrypt: either can finish after a sign-out has emptied the
+    /// cache, and without the check it would write a decrypted file into whatever session
+    /// came next, and the app would show it there. A cancelled task would not do: the
+    /// decrypt runs detached and does not look at cancellation, and sign-out does not know
+    /// which open to cancel.
+    ///
+    /// On the main actor, as `clear()` and the callers are, so that the check after the
+    /// decrypt and the caller's use of the file are not split by a sign-out.
+    @MainActor private(set) static var session = 0
+
     /// On sign-out: no decrypted file outlives the session it was opened in, whoever uses the
-    /// device next (on a Mac, any account on it).
-    static func clear() {
+    /// device next (on a Mac, any account on it), and no open still running writes one.
+    @MainActor static func clear() {
+        session += 1
         try? FileManager.default.removeItem(at: root)
     }
 
     /// The push's file, decrypted into the cache under its own name. A migrated push
     /// (`legacyPlain`) is the plaintext upload and is only downloaded. Whatever fails, no
     /// partial file is left: `E2eeCrypto.decryptFile` removes its output, and the folder
-    /// goes with it.
-    static func localFile(file: PushFile, objectPath: String, storage: Storage) async throws -> URL {
+    /// goes with it. An open a sign-out overtook (`session`) removes what it wrote and
+    /// throws `OpenError.signedOut`.
+    @MainActor static func localFile(file: PushFile, objectPath: String, storage: Storage) async throws -> URL {
+        let started = session
         try? FileManager.default.removeItem(at: root)
         let folder = root.appendingPathComponent(UUID().uuidString, isDirectory: true)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
@@ -50,15 +69,25 @@ enum PushFileOpener {
             try? FileManager.default.removeItem(at: folder)
             try? FileManager.default.removeItem(at: downloaded)
         }
+        // Checked in the failure paths too: a sign-out that empties the cache mid-download
+        // or mid-decrypt makes that step fail, and the error is not for the next session.
+        let checkSession = {
+            guard session == started else {
+                discard()
+                throw OpenError.signedOut
+            }
+        }
 
         do {
             _ = try await storage.reference(withPath: objectPath).writeAsync(toFile: downloaded)
         } catch {
             discard()
+            try checkSession()
             // Not the path or the error: a migrated push's path is its file's name.
             print("Failed to download a push's file: \(type(of: error))")
             throw OpenError.notDownloaded
         }
+        try checkSession()
 
         if file.legacyPlain {
             do {
@@ -78,12 +107,14 @@ enum PushFileOpener {
                 try E2eeCrypto.decryptFile(fk: fk, np: np, source: downloaded, destination: output)
             }.value
             try? FileManager.default.removeItem(at: downloaded)
-            return output
         } catch {
             discard()
+            try checkSession()
             print("Failed to decrypt a push's file: \(type(of: error))")
             throw OpenError.notDecrypted
         }
+        try checkSession()
+        return output
     }
 
     /// The envelope's name as a file name: one path component, never empty, and short enough
