@@ -333,11 +333,12 @@ class ShareActivity : AppCompatActivity() {
                 }
 
                 // The tier's file size, which the Storage rules enforce; said here before the upload
-                // starts, when the tier can be read. `>=`, as the rule has it. On the plaintext
-                // size, the one the user knows: encryption adds 16 bytes a MiB and 12 more,
-                // inside the rounding of every limit.
+                // starts, when the tier can be read. `>=`, as the rule has it. The rule measures
+                // the encrypted object, 12 bytes and 16 a MiB larger than the file, and a file
+                // just under the limit can be just over it encrypted: refused here, with the
+                // limit named, rather than by the upload with a generic error.
                 val maxFileBytes = Plan.maxFileBytes()
-                if (maxFileBytes != null && fileSize >= maxFileBytes) {
+                if (maxFileBytes != null && E2ee.encryptedFileSize(fileSize) >= maxFileBytes) {
                     Toast.makeText(this@ShareActivity, getString(R.string.file_too_large, Plan.megabytes(maxFileBytes)), Toast.LENGTH_LONG).show()
                     finish()
                     return@launch

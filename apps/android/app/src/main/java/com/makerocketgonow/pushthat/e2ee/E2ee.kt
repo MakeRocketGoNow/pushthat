@@ -413,6 +413,15 @@ object E2ee {
     const val FILE_HEADER_LENGTH = 12
     const val SEALED_CHUNK_SIZE = CHUNK_SIZE + TAG_LENGTH
 
+    /**
+     * The size of a file of [plaintextBytes] once encrypted: the header and one tag per chunk,
+     * the empty file's one included. What the Storage rules measure against the tier's limit.
+     */
+    fun encryptedFileSize(plaintextBytes: Long): Long {
+        val chunks = maxOf(1L, (plaintextBytes + CHUNK_SIZE - 1) / CHUNK_SIZE)
+        return FILE_HEADER_LENGTH + plaintextBytes + TAG_LENGTH * chunks
+    }
+
     fun newFileKey(): ByteArray = randomBytes(KEY_LENGTH)
     fun newFilePrefix(): ByteArray = randomBytes(FILE_PREFIX_LENGTH)
     fun newObjectId(): String = base64url(randomBytes(16))

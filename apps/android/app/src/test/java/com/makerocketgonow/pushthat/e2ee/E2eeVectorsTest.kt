@@ -344,6 +344,15 @@ class E2eeVectorsTest {
         assertEquals(2 * E2ee.CHUNK_SIZE, decrypt(encrypted).size)
     }
 
+    // The size the share sheet checks against the tier's limit is the one the Storage rules
+    // will measure: the vectors' encrypted lengths, without encrypting anything.
+    @Test
+    fun encryptedFileSizeIsTheSizeOfTheObject() {
+        assertEquals(file.getLong("encryptedLength"), E2ee.encryptedFileSize(file.getLong("length")))
+        assertEquals(emptyFile.getString("encrypted").length / 2L, E2ee.encryptedFileSize(0))
+        assertEquals(12L + E2ee.CHUNK_SIZE + 16, E2ee.encryptedFileSize(E2ee.CHUNK_SIZE.toLong()))
+    }
+
     @Test
     fun vector6_encryptsTheEmptyFile() {
         val fk = fromHex(emptyFile.getString("fk"))
