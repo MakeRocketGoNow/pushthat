@@ -76,7 +76,7 @@ export default function Privacy() {
         By registering or authenticating via our email and password login, Users allow the App to identify them and give
         them access to the App's services. The App signs you in with a key derived from your password rather than the
         password itself. Your password can be worked out from that key only by guessing it, which is made deliberately
-        slow. Your password itself reaches Google’s sign-in service, Firebase Authentication, in two cases: when you
+        slow. Your password itself reaches Google’s sign-in service, Firebase Authentication, in these cases: when you
         reset it, because the reset is made on Google’s page, and when a sign-in with the derived key is refused (for
         example, because the password was mistyped), because the App then tries the password itself in case your account
         was made before end-to-end encryption. A version of the App from before end-to-end encryption also sends your
