@@ -119,8 +119,9 @@ export function Security() {
       <h5>OLD VERSIONS OF THE APPS</h5>
 
       <p>
-        A version of the app from before encryption cannot read an encrypted push, and its pushes are refused. If an app
-        says a push could not be sent, update it.
+        A version of the app from before encryption cannot read an encrypted push, and its pushes are refused. It was
+        not written to know why, so it may say the push could not be saved, or that you have used this month&rsquo;s
+        pushes when you have not. Update it and the push goes through.
       </p>
 
       <h5>YOUR DEVICE ID</h5>
