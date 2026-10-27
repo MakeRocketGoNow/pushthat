@@ -56,8 +56,9 @@ A push to `main` that touches `apps/android/` builds a signed bundle and uploads
 closed testing track as a **draft** (`.github/workflows/android.yml`): it appears in Play
 Console and passes Play's checks, but nobody receives it until a person promotes it. Making
 testers get it automatically is a one-word change (`status: completed`). Run the workflow
-from the Actions tab to cut a build without a push. Pull requests build the bundle
-unsigned, which proves the release path compiles, and publish nothing.
+from the Actions tab on `main` to cut a build without a push. Pull requests and other
+branches build the bundle unsigned, which proves the release path compiles, and publish
+nothing.
 
 Don't build a bundle by hand for Play. A local build keeps `versionCode = 8`, which Play has
 already seen; CI passes the workflow's run number plus 100, which only rises. Never lower

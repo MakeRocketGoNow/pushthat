@@ -15,7 +15,8 @@ on:
     paths:
       - 'apps/android/**'
       - '.github/workflows/android.yml'
-  # Cutting a release build on demand, without waiting for a push.
+  # Cutting a release build on demand, without waiting for a push. Started on `main` it
+  # publishes; on any other branch it only builds.
   workflow_dispatch:
 
 # A second push to a pull request makes the first one's build pointless, so don't pay to
@@ -64,22 +65,26 @@ jobs:
       # says where to publish, and the keystore is what makes a bundle Play will accept.
       # Checking only the service account would turn a missing keystore into a failed
       # upload, which reads as a broken publish rather than a build nobody asked to ship.
+      #
+      # Only `main`, not only "not a pull request": the Actions tab can start this workflow
+      # on any branch, and without the ref check that would sign unreviewed code and upload
+      # it above `main`'s latest build.
       - name: Can this run publish?
         id: publishable
         env:
-          EVENT: ${{ github.event_name }}
+          REF: ${{ github.ref }}
           KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           PLAY_SERVICE_ACCOUNT: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
         run: |
-          if [ "$EVENT" != pull_request ] && [ -n "$KEYSTORE" ] && [ -n "$PLAY_SERVICE_ACCOUNT" ]; then
+          if [ "$REF" = refs/heads/main ] && [ -n "$KEYSTORE" ] && [ -n "$PLAY_SERVICE_ACCOUNT" ]; then
             echo "ready=true" >> "$GITHUB_OUTPUT"
           else
             echo "ready=false" >> "$GITHUB_OUTPUT"
-            echo "Pull request, or no Play service account or keystore: building unsigned, not publishing." >> "$GITHUB_STEP_SUMMARY"
+            echo "Not on \`main\`, or no Play service account or keystore: building unsigned, not publishing." >> "$GITHUB_STEP_SUMMARY"
           fi
 
-      # A pull request, or a fork, gets an unsigned bundle: that still proves the release
-      # path compiles, which is what a change to the build file needs to know.
+      # A pull request, another branch or a fork gets an unsigned bundle: that still proves
+      # the release path compiles, which is what a change to the build file needs to know.
       - name: Build the release bundle
         env:
           READY: ${{ steps.publishable.outputs.ready }}
