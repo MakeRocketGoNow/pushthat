@@ -28,8 +28,9 @@ export default function Privacy() {
         The links you push, their page titles, and the names, types and contents of the files you push (together, “Push
         Content”) are encrypted on your device before they leave it, with a key made from your password. They can be
         decrypted only on the devices you sign in to. We, and Google, which runs the servers the App uses, hold Push
-        Content only in that encrypted form and cannot read it. Your password and your recovery key are never sent to
-        us. The <Link to="/security">Security</Link> page explains how this works and what it does not cover.
+        Content only in that encrypted form and cannot read it. Your recovery key is never sent to us or to Google, and
+        your password only in the two cases described below. The <Link to="/security">Security</Link> page explains how
+        this works and what it does not cover.
       </p>
 
       <h5>PERSONAL INFORMATION WE COLLECT</h5>
@@ -72,8 +73,13 @@ export default function Privacy() {
 
       <p>
         By registering or authenticating via our email and password login, Users allow the App to identify them and give
-        them access to the App's services. The App does not send us your password: it sends a key derived from it, from
-        which neither your password nor the key that decrypts your Push Content can be worked out.
+        them access to the App's services. The App signs you in with a key derived from your password rather than the
+        password itself. Your password can be worked out from that key only by guessing it, which is made deliberately
+        slow. Your password itself reaches Google’s sign-in service, Firebase Authentication, in two cases: when you
+        reset it, because the reset is made on Google’s page, and when a sign-in with the derived key is refused (for
+        example, because the password was mistyped), because the App then tries the password as typed in case your
+        account was made before end-to-end encryption. After a reset, the App replaces the stored password with the
+        derived key the next time you sign in.
       </p>
 
       <p>
