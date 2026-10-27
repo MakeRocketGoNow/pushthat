@@ -39,6 +39,9 @@
     <string name="push_failed_title">Unable to Save</string>
     <string name="push_failed_message_limit">You have reached this month’s push limit.</string>
     <string name="push_failed_message_generic">Failed to save push. Please try again later.</string>
+    <!-- The envelope would pass the rules' bound on its size: the same words as the web. -->
+    <string name="push_failed_link_too_long">That link is too long to push.</string>
+    <string name="push_failed_file_name_too_long">That file name is too long to push.</string>
     <string name="ok">OK</string>
     <string name="only_urls_can_be_pushed">Only URLs can be pushed</string>
     <string name="no_url_found">No valid URL found in shared content</string>

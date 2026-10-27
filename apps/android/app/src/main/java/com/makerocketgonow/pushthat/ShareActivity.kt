@@ -244,7 +244,8 @@ class ShareActivity : AppCompatActivity() {
                     PreparedPush.prepare(keys, pushId, PushContent.Url(validatedUrl, initialTitle, ext))
                 } catch (e: PushTooLargeException) {
                     Log.w(TAG, "The link is too long to push")
-                    showErrorDialog(getString(R.string.push_failed_title), getString(R.string.push_failed_message_generic))
+                    // Said as it is: the generic failure's "try again later" never works here.
+                    showErrorDialog(getString(R.string.push_failed_title), getString(R.string.push_failed_link_too_long))
                     return@launch
                 }
 
@@ -401,7 +402,7 @@ class ShareActivity : AppCompatActivity() {
                     PreparedPush.prepare(keys, pushId, content, objectPath)
                 } catch (e: PushTooLargeException) {
                     discardUpload(objectPath)
-                    showErrorDialog(getString(R.string.push_failed_title), getString(R.string.push_failed_message_generic))
+                    showErrorDialog(getString(R.string.push_failed_title), getString(R.string.push_failed_file_name_too_long))
                     return@launch
                 }
 
