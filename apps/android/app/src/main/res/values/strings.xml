@@ -98,7 +98,7 @@
     <!-- Pushes encrypted under the account key (docs/e2ee.md, phase 4), word for word with
          the other apps. -->
     <string name="locked_push">Locked push</string>
-    <string name="locked_push_message">This push was encrypted with a key this account no longer has. It can be deleted but not opened.</string>
+    <string name="locked_push_message">This device does not have the key this push was encrypted with. If your keys were changed on another device, sign out and sign in again to open it.</string>
     <string name="file_decrypt_failed">This file could not be decrypted.</string>
     <string name="file_push_body">File</string>
     <string name="keys_changed">Your encryption keys were changed on another device while this one was setting up. Try again.</string>

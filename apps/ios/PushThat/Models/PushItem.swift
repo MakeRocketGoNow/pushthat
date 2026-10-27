@@ -38,7 +38,7 @@ struct PushItem: Identifiable, Equatable {
     }
 
     static let lockedTitle = "Locked push"
-    static let lockedMessage = "This push was encrypted with a key this account no longer has. It can be deleted but not opened."
+    static let lockedMessage = "This device does not have the key this push was encrypted with. If your keys were changed on another device, sign out and sign in again to open it."
 
     var isLocked: Bool { source == .locked }
 
