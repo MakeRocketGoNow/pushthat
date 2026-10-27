@@ -35,9 +35,13 @@ export function Security() {
 
       <p>
         When you sign in, the app turns your password into two keys on the device: one signs you in, and the other
-        unlocks the key your pushes are encrypted with. Your password and that second key never leave the device, so we
-        never see them and cannot read your pushes. It also means we cannot reset your password for you and keep your
-        pushes: only the recovery key, below, can do that.
+        unlocks the key your pushes are encrypted with. That second key never leaves the device, so we cannot read your
+        pushes. It also means we cannot reset your password for you and keep your pushes: only the recovery key, below,
+        can do that. Your password reaches Google&rsquo;s sign-in service in these cases: when you reset it, since the
+        reset is made on Google&rsquo;s own page, and when a sign-in with the first key is refused (a mistyped password,
+        say), since the app then tries the password itself in case the account was made before encryption. A version of
+        the app from before encryption also sends the password itself whenever it signs in. After a reset, the password
+        Google holds is replaced with the first key once you have entered your recovery key or chosen to start over.
       </p>
 
       <p>
@@ -94,9 +98,10 @@ export function Security() {
       <h5>THE RECOVERY KEY</h5>
 
       <p>
-        When you create your account, PushThat shows a recovery key once: 32 letters and numbers in groups of four. It
-        is a second way to unlock your pushes, and the only one besides your password. Keep it somewhere safe and apart
-        from your devices, such as a password manager or on paper.
+        When your account&rsquo;s encryption is set up (when you create your account, or the first time an updated app
+        signs in to an account made before encryption), PushThat shows a recovery key once: 32 letters and numbers in
+        groups of four. It is a second way to unlock your pushes, and the only one besides your password. Keep it
+        somewhere safe and apart from your devices, such as a password manager or on paper.
       </p>
 
       <p>
@@ -113,9 +118,9 @@ export function Security() {
 
       <p>
         Without it, the pushes you made before the reset cannot be read again, by you or by us: they were encrypted with
-        a key that only your old password or the recovery key could unlock. Your account gets new keys, and you can
-        delete the old pushes in one step or keep them in your list as locked rows. Files are deleted within{' '}
-        {LIMITS.pro.keepDays} days either way.
+        a key that only your old password or the recovery key could unlock. Your account gets new keys, and the old
+        pushes stay in your list as locked rows that you can delete. Files are deleted within {LIMITS.pro.keepDays} days
+        either way.
       </p>
 
       <h5>OLD VERSIONS OF THE APPS</h5>
@@ -131,7 +136,8 @@ export function Security() {
       <p>
         Each install of PushThat makes a random device ID, which the web app shows on the <Link to="/plan">Plan</Link>{' '}
         page. It goes with every push so that the device that sent one does not notify itself, and it says nothing about
-        the device: it replaced the device&rsquo;s model name, which pushes used to carry.
+        the device: it replaced the device&rsquo;s name (the one you gave it, its model name, or the browser&rsquo;s
+        user agent), which pushes used to carry.
       </p>
 
       <h5>QUESTIONS</h5>

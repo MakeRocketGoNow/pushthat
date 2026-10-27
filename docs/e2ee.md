@@ -34,7 +34,7 @@ The last three lines are HKDF-SHA256 with an empty salt written out, since every
 
 Byte for byte: every string in a derivation is UTF-8, the labels are ASCII, and `|| 0x01` appends one byte. The email is NFC-normalized first, like the password, since two keyboards can spell one accented letter as different code points; then `trim` removes space, tab, CR and LF from both ends and `lowercase` maps A to Z onto a to z and changes nothing else. Both are deliberately ASCII-only so that no platform's locale or Unicode tables can enter the salt: an address with a capital letter outside ASCII keeps it. Every AES-GCM tag in this document is 16 bytes, every `base64` field (`n`, `ct`, `fk`, `np`) is the standard alphabet with padding, and every `base64url` string is unpadded. PBKDF2 was chosen over Argon2id because WebCrypto, Android and CommonCrypto all have it natively and the Chrome extension's service worker has no room for a WASM library; the `kdf` field on the user document names the construction so it can be raised later. 600,000 iterations is OWASP's 2023 figure and costs about a second on a phone, paid once at sign-in.
 
-`authKey` is what Firebase Auth sees. The clients sign in and register with `base64url(authKey)` (43 characters, no padding) as the Firebase password, never the password itself. Firebase cannot derive `masterKey` from what it holds, and a stolen Firebase hash is behind 600,000 iterations per guess before Firebase's own scrypt.
+`authKey` is what Firebase Auth sees. The clients sign in and register with `base64url(authKey)` (43 characters, no padding) as the Firebase password, and fall back to the password itself only on a wrong-password error (Migration, below), which a reset on Firebase's hosted form also relies on (Password reset). Firebase cannot derive `masterKey` from what it holds, and a stolen Firebase hash is behind 600,000 iterations per guess before Firebase's own scrypt.
 
 `masterKey` never leaves the device and wraps the account key:
 
@@ -204,7 +204,9 @@ Firebase's hosted reset page sets the Firebase password to whatever the user typ
 
 So a reset runs on Firebase's hosted form, and the clients send the email with the web sign-in page as the continue URL, which gives that form a Continue button once the password is set. The sign-in that follows, on any client, derives the new keys, finds that the new `masterKey` opens none of the stored `password` wraps, and asks for the recovery key: with it, the account key is rewrapped and nothing is lost; without it, the client says the earlier pushes cannot be read and starts new keys, as below. The `/reset` page stays complete for the day the template is unlocked. What the detour costs is the order of one warning, which the recovery-key screen at sign-up has already given, and a client from before phase 3 is not affected, since the hosted form sets the raw password it signs in with.
 
-Without the recovery key, the app says plainly that the pushes made before this reset cannot be read, generates a fresh account key with `keyVersion + 1`, and offers to delete the old pushes in one step; a user who declines sees them in the list as locked rows that can be deleted but never opened. Files expire on their own within 30 days either way.
+That sign-in gets in through the raw-password fallback (Migration), since the hosted form set the raw new password, and `updatePassword(authKey)` follows once the recovery key is entered or the user starts over, as for a legacy account. So the fallback stays after every old account has moved: it can go only once the template's action URL is unlocked and `/reset` sets `authKey` itself. It is also why the raw password reaches Firebase Authentication on a reset and on any sign-in whose `authKey` is refused, such as a mistyped password, which the privacy policy and `/security` say.
+
+Without the recovery key, the app says plainly that the pushes made before this reset cannot be read, generates a fresh account key with `keyVersion + 1`, and offers to delete the old pushes in one step; a user who declines sees them in the list as locked rows that can be deleted but never opened. Files expire on their own within 30 days either way. Only `/reset` makes that offer, and it is not reached today; the sign-in prompt every reset reaches starts over without it, so the old pushes stay as locked rows until the user deletes them.
 
 The email is the salt, so an email change would be a rewrap like a password change. The apps have no email change today and this does not add one.
 
@@ -224,7 +226,7 @@ Existing accounts have the raw password as their Firebase password and plaintext
 
 The reason for a password-derived key is that the user can see it. The surfaces:
 
-- **Sign-up:** "Your password is the key to your pushes. We never see it and cannot reset it for you. Save your recovery key." The recovery key is shown there and then.
+- **Sign-up:** "Your password is the key to your pushes, and we cannot reset it for you. Save your recovery key." The recovery key is shown there and then.
 - **Settings and the Plan page:** an "Encrypted" line with the device's `deviceId` and a link to the security page.
 - **Password reset:** the recovery key prompt and, without it, the sentence that the old pushes are gone, before anything is deleted.
 - **The site:** a `/security` page with the gist of this document: what is encrypted, what is not, what a lost password costs.

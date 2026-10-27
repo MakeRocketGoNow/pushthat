@@ -20,7 +20,7 @@ export default function Terms() {
         SERVICES, YOU HEREBY AGREE TO BE BOUND BY THE TERMS AND ALL TERMS INCORPORATED HEREIN BY REFERENCE. IT IS THE
         RESPONSIBILITY OF YOU, THE USER, CUSTOMER, OR PROSPECTIVE CUSTOMER TO READ THE TERMS AND CONDITIONS BEFORE
         PROCEEDING TO USE THIS SITE. IF YOU DO NOT EXPRESSLY AGREE TO ALL OF THE TERMS AND CONDITIONS, THEN PLEASE DO
-        NOT ACCESS OR USE OUR SITES OR OUR SERVICES. THIS TERMS OF SERVICE AGREEMENT IS EFFECTIVE AS OF 03/16/2025
+        NOT ACCESS OR USE OUR SITES OR OUR SERVICES. THIS TERMS OF SERVICE AGREEMENT IS EFFECTIVE AS OF 10/27/2026
       </p>
 
       <h4>ACCEPTANCE OF TERMS</h4>
@@ -87,7 +87,8 @@ export default function Terms() {
         Pro is billed yearly and renews automatically each year, at the price then current, until you cancel it. You can
         cancel at any time, on the website, from Plan, then Manage billing. Cancelling stops the next renewal; the
         account keeps Pro until the end of the year already paid for, and then returns to the free plan. Nothing you
-        have pushed is deleted because a plan ends, beyond the file retention period of the plan the account is then on.
+        have pushed is deleted because a plan ends: each file keeps the retention period of the plan the account was on
+        when it was pushed.
       </p>
 
       <h4 id="refunds">REFUNDS</h4>
@@ -135,6 +136,22 @@ export default function Terms() {
         to notify MakeRocketGoNow LLC immediately if you notice any unauthorized access or use of your account or
         password or any other breach of security. MakeRocketGoNow LLC shall not be held liable for any loss and/or
         damage arising from any failure to comply with this term and/or condition of the TOS.
+      </p>
+
+      <h5>END-TO-END ENCRYPTION AND YOUR RECOVERY KEY</h5>
+
+      <p>
+        Your “Push Content”, as the Privacy Policy defines it (the links you push, their page titles, and the names,
+        types and contents of the files you push), is end-to-end encrypted with a key that only your password or your
+        recovery key can unlock, as described in the Privacy Policy and at https://pushthat.link/security. You are shown
+        a recovery key when your account's encryption is set up (when you register, or at your first sign-in with an
+        updated App if your account was made before end-to-end encryption), which is the only other way to unlock your
+        Push Content. MakeRocketGoNow LLC never receives your recovery key, receives your password only in the cases
+        described in the Privacy Policy, and cannot decrypt your Push Content (apart from pushes made before end-to-end
+        encryption that are still stored as they were sent). You are solely responsible for keeping your password and
+        your recovery key. If you reset your password without your recovery key, or lose both, the Push Content made
+        before then cannot be recovered by you or by MakeRocketGoNow LLC, and MakeRocketGoNow LLC shall not be held
+        liable for that loss.
       </p>
 
       <h4>CONDUCT</h4>
@@ -214,9 +231,10 @@ export default function Terms() {
       </ol>
 
       <p>
-        MakeRocketGoNow LLC herein reserves the right to pre-screen, refuse and/or delete any content currently
-        available through our Services. In addition, we reserve the right to remove and/or delete any such content that
-        would violate the TOS or which would otherwise be considered offensive to other visitors, users and/or members.
+        MakeRocketGoNow LLC herein reserves the right to refuse and/or delete any content currently available through
+        our Services. Because Push Content is end-to-end encrypted, MakeRocketGoNow LLC does not pre-screen or review
+        it. In addition, we reserve the right to remove and/or delete any such content that would violate the TOS or
+        which would otherwise be considered offensive to other visitors, users and/or members.
       </p>
 
       <p>
@@ -236,6 +254,12 @@ export default function Terms() {
           members, including the general public.
         </li>
       </ol>
+
+      <p>
+        Push Content can be accessed, preserved and/or disclosed only in its encrypted form, which MakeRocketGoNow LLC
+        cannot decrypt, apart from pushes made before end-to-end encryption that are still stored as they were sent, as
+        described in the Privacy Policy.
+      </p>
 
       <p>
         MakeRocketGoNow LLC herein reserves the right to include the use of security components that may permit digital

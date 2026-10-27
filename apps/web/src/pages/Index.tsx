@@ -49,7 +49,7 @@ function HowItWorks() {
   const steps = [
     {
       title: 'Sign in everywhere',
-      body: 'One account on your phone, your computer and Chrome. Your password unlocks the key on each device, and it never leaves them.',
+      body: 'One account on your phone, your computer and Chrome. Your password unlocks the key on each device.',
     },
     {
       title: 'Share it',
@@ -126,7 +126,7 @@ function Encryption() {
     {
       Icon: KeyIcon,
       title: 'Your password is the key',
-      body: 'The app turns your password into the key on the device. There is no second passphrase to set up and nothing to switch on: it is on for every push, from the first.',
+      body: 'Your password unlocks the key your pushes are encrypted with, on the device. There is no second passphrase to set up and nothing to switch on: it is on for every push, from the first.',
     },
     {
       Icon: MagnifyingGlassIcon,

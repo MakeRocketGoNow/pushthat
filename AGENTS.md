@@ -38,9 +38,9 @@ original did. Prefer placeholders that are obviously made up (`example.com`,
 `someone@example.com`) over ones that merely sound plausible.
 
 The same goes for credentials. The service account key for `packages/push-test`, Stripe
-keys and webhook secrets, the Axiom token, signing keystores: none of them is ever
-committed, and each has a gitignored place to live (see the docs for each app). If you find
-real content or a secret already in the repo, say so rather than quietly working around it.
+keys and webhook secrets, signing keystores: none of them is ever committed, and each has a
+gitignored place to live (see the docs for each app). If you find real content or a secret
+already in the repo, say so rather than quietly working around it.
 
 ## Commits
 

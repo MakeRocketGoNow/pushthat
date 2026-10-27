@@ -75,8 +75,7 @@ jobs:
       # rules; plain Node.
       - run: npm run test:keys
       - run: npm run build
-      # The extension builds without VITE_AXIOM_TOKEN and then logs to the console only,
-      # which is what a fork gets. Its bundle is not uploaded from here.
+      # The extension's bundle is not uploaded from here.
       - run: npm run build:chrome
 
   android:

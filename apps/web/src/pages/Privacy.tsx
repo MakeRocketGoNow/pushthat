@@ -1,6 +1,8 @@
 import { Helmet } from 'react-helmet';
+import { Link } from 'react-router';
 
 import LegalContainer from '@/components/LegalContainer';
+import { LIMITS } from '@/config/plan';
 
 import styles from './Privacy.module.css';
 
@@ -13,9 +15,23 @@ export default function Privacy() {
 
       <h1>PushThat Privacy Policy</h1>
 
+      <p>Last updated: October 27, 2026</p>
+
       <p>
         This Privacy Policy describes how your personal information is collected, used, and shared when you visit or
         make a purchase from https://pushthat.link (the “App”).
+      </p>
+
+      <h5>YOUR PUSHES ARE END-TO-END ENCRYPTED</h5>
+
+      <p>
+        The links you push, their page titles, and the names, types and contents of the files you push (together, “Push
+        Content”) are encrypted on your device before they leave it, with a key that only your password, or your
+        recovery key, can unlock. They can be decrypted only on the devices you sign in to. We, and Google, which runs
+        the servers the App uses, hold Push Content only in that encrypted form and cannot read it, apart from pushes
+        made before end-to-end encryption that are still stored as they were sent (see Data Retention below). Your
+        recovery key is never sent to us or to Google, and your password only in the cases described below. The{' '}
+        <Link to="/security">Security</Link> page explains how this works and what it does not cover.
       </p>
 
       <h5>PERSONAL INFORMATION WE COLLECT</h5>
@@ -25,8 +41,8 @@ export default function Privacy() {
         about your web browser, IP address, time zone, and some of the cookies that are installed on your device.
         Additionally, as you browse the App, we collect information about the individual web pages you view, what
         websites or search terms referred you to the App, and information about how you interact with the App. We refer
-        to this automatically-collected information as “Device Information.” The Urls and files you share via the App
-        are stored in a database. They are not collected as part of "Device Information".
+        to this automatically-collected information as “Device Information.” Push Content is not part of Device
+        Information.
       </p>
 
       <p>We collect Device Information using the following technologies:</p>
@@ -58,12 +74,32 @@ export default function Privacy() {
 
       <p>
         By registering or authenticating via our email and password login, Users allow the App to identify them and give
-        them access to the App's services.
+        them access to the App's services. The App signs you in with a key derived from your password rather than the
+        password itself. Your password can be worked out from that key only by guessing it, which is made deliberately
+        slow. Your password itself reaches Google’s sign-in service, Firebase Authentication, in these cases: when you
+        reset it, because the reset is made on Google’s page, and when a sign-in with the derived key is refused (for
+        example, because the password was mistyped), because the App then tries the password itself in case your account
+        was made before end-to-end encryption. A version of the App from before end-to-end encryption also sends your
+        password itself whenever it signs in. After a reset, the App replaces the stored password with the derived key
+        once you have entered your recovery key or chosen to start without it.
       </p>
 
       <p>
-        When we talk about “Personal Information” in this Privacy Policy, we are talking both about Device Information
-        and Subscription Information.
+        To deliver your pushes we keep your email address, the notification tokens of the devices you sign in on, and a
+        random identifier that each installation of the App makes for itself. For each push we keep which account made
+        it, when, whether it is a link or a file, which of your devices sent it, the encrypted Push Content, and
+        scrambled search tokens made with your key, which let a search find a push without revealing the words searched
+        for. The size of a file you push can be seen roughly from its encrypted form. We also keep how many pushes your
+        account has made each month, and your account’s encryption key, itself encrypted so that only your password or
+        your recovery key can unlock it. An account made before end-to-end encryption may also still hold the names of
+        the devices that pushed from it (the name you gave the device, its model name, or its browser’s user agent),
+        which pushes used to carry. We refer to this as “Account and Push Information.” It does not include Push Content
+        in any readable form.
+      </p>
+
+      <p>
+        When we talk about “Personal Information” in this Privacy Policy, we are talking about Device Information,
+        Subscription Information, and Account and Push Information.
       </p>
 
       <h5>HOW DO WE USE YOUR PERSONAL INFORMATION?</h5>
@@ -71,6 +107,11 @@ export default function Privacy() {
       <p>
         We use the Subscription Information that we collect generally to fulfill your subscription to the App.
         Additionally, we use this Subscription Information to communicate with you.
+      </p>
+
+      <p>
+        We use Account and Push Information to deliver your pushes to your devices, to apply your plan’s monthly limits,
+        and to delete files when their retention period ends.
       </p>
 
       <p>
@@ -89,13 +130,19 @@ export default function Privacy() {
         Pro subscriptions, and share your email address with it so that it can issue receipts and renewal notices; you
         can read more about how Stripe uses your Personal Information at{' '}
         <a href="https://stripe.com/privacy">{'https://stripe.com/privacy'}</a>. The App itself runs on Google’s
-        Firebase, which stores your account, the links and files you push, and the device tokens that deliver them.
+        Firebase, which stores your Account and Push Information, including your Push Content in its encrypted form.
+        Notifications are delivered through Google’s and Apple’s notification services and carry only an identifier for
+        the push, its kind, the device that sent it and which version of your key it was encrypted with, never its Push
+        Content. The Android and iOS apps also send Google Analytics for Firebase the usage events it collects on its
+        own, such as when the App is opened and on what kind of device, with an identifier for the installation; they
+        never include Push Content.
       </p>
 
       <p>
         Finally, we may also share your Personal Information to comply with applicable laws and regulations, to respond
         to a subpoena, search warrant or other lawful request for information we receive, or to otherwise protect our
-        rights.
+        rights. We can provide only what we hold: Push Content can be provided only in its encrypted form, which we
+        cannot decrypt, apart from pushes made before end-to-end encryption that are still stored as they were sent.
       </p>
 
       <h5>DO NOT TRACK</h5>
@@ -123,6 +170,24 @@ export default function Privacy() {
       <p>
         When you create a subscription through the App, we will maintain your Subscription Information for our records
         unless and until you ask us to delete this information.
+      </p>
+
+      <p>
+        A link push is kept until you delete it, or until you ask us to delete your account. A file push, with its
+        record, is deleted when the retention period of the plan your account was on when you pushed it ends (
+        {LIMITS.free.keepDays} days on the free plan, {LIMITS.pro.keepDays} days on Pro).
+      </p>
+
+      <p>
+        If you reset your password without your recovery key, the pushes made before the reset can no longer be
+        decrypted by you or by us. They stay in your account as locked entries until you delete them, or, for files,
+        until their retention period ends.
+      </p>
+
+      <p>
+        Pushes made before your App was updated to end-to-end encryption were stored as they were sent. A link pushed
+        then is encrypted in place the next time an updated App signs in to your account. A file pushed then stays as it
+        was sent, under its own name, until its retention period ends.
       </p>
 
       <p>The App is not intended for individuals under the age of 18.</p>

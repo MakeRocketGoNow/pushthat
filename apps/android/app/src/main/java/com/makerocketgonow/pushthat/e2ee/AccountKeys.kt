@@ -102,6 +102,13 @@ class AccountKeys(
      * registration and at sign-in, so an account made here with a space at either end has
      * the trimmed password in Firebase. The keys are derived from it untrimmed, as the
      * spec says and the other apps do, so it signs in the same everywhere afterwards.
+     *
+     * The fallback stays after every old account has moved, because password resets
+     * depend on it. A reset runs on Firebase's hosted form (docs/e2ee.md, "Password
+     * reset"), which sets the raw new password as the Firebase password, so the first
+     * sign-in after any reset gets in this way and then moves the account back to
+     * `authKey`. It can go only once a reset sets `authKey` itself, which needs the reset
+     * email's action URL unlocked.
      */
     private suspend fun signInToFirebase(email: String, password: String, firebasePassword: String): Boolean {
         try {
