@@ -168,9 +168,9 @@ export default function Privacy() {
       </p>
 
       <p>
-        A link push is kept until you delete it or your account is closed. A file push, with its record, is deleted when
-        the retention period of the plan your account was on when you pushed it ends ({LIMITS.free.keepDays} days on the
-        free plan, {LIMITS.pro.keepDays} days on Pro).
+        A link push is kept until you delete it, or until you ask us to delete your account. A file push, with its
+        record, is deleted when the retention period of the plan your account was on when you pushed it ends (
+        {LIMITS.free.keepDays} days on the free plan, {LIMITS.pro.keepDays} days on Pro).
       </p>
 
       <p>
