@@ -1,0 +1,3 @@
+Your pushes are now end-to-end encrypted: only devices you sign in on can read them. Signing in sets up your keys from your password and shows a recovery key. Save it, because it is the only way to read your pushes again if you forget your password. Change password and Show a new recovery key are in the menu.
+
+Notifications and search work on encrypted pushes. A share that cannot be confirmed is kept and retried instead of dropped, and a long press copies a file push's name.

@@ -73,6 +73,12 @@ are not.
 - The app works in light and dark mode. Use the semantic colors in `res/values/colors.xml`
   and `res/values-night/colors.xml`, never a literal.
 - New styles go in `themes.xml`.
+- A change someone would notice on their phone updates the release note,
+  `store/whatsnew/whatsnew-en-US`, in the same pull request. CI uploads that file as the
+  build's "What's new", so a change without it ships under the previous note. Write it for
+  the person holding the phone, not as a commit subject, and keep it under Play's 500
+  characters. A bug fix nobody saw, a refactor or a test changes nothing there. See
+  [docs/android.md](docs/android.md#release-notes).
 
 ## The iOS and macOS apps
 

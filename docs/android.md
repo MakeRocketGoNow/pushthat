@@ -76,6 +76,23 @@ either the keystore or the service account is missing:
 The upload action, `r0adkll/upload-google-play`, has to be on the repository's Actions
 allow-list, or the run is refused before it starts.
 
+## Release notes
+
+`store/whatsnew/whatsnew-en-US` is what testers see under "What's new". The workflow passes
+the directory to the upload, so editing that file is how the note changes: nothing is
+entered in Play Console by hand, and a release whose note nobody updated ships the previous
+one.
+
+Write it for someone holding the phone: what is different for them, in their words. Commit
+subjects are addressed to whoever changes the code next and make poor release notes, so
+the note is written by hand rather than generated from them.
+
+The note covers everything since `versionName` last changed. A change someone would notice
+adds to it, in the same pull request; bumping `versionName` starts it over. Play's limit is
+500 characters per locale, so when it is full, cut the least noticeable line rather than
+squeezing. Another language is another file beside it, named `whatsnew-<BCP 47 tag>`
+(`whatsnew-de-DE`).
+
 ## Conventions
 
 Every string is in `res/values/strings.xml`. The app works in light and dark mode, using
