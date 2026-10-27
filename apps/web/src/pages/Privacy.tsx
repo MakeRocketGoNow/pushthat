@@ -26,12 +26,12 @@ export default function Privacy() {
 
       <p>
         The links you push, their page titles, and the names, types and contents of the files you push (together, “Push
-        Content”) are encrypted on your device before they leave it, with a key made from your password. They can be
-        decrypted only on the devices you sign in to. We, and Google, which runs the servers the App uses, hold Push
-        Content only in that encrypted form and cannot read it, apart from pushes made before end-to-end encryption that
-        are still stored as they were sent (see Data Retention below). Your recovery key is never sent to us or to
-        Google, and your password only in the two cases described below. The <Link to="/security">Security</Link> page
-        explains how this works and what it does not cover.
+        Content”) are encrypted on your device before they leave it, with a key that only your password, or your
+        recovery key, can unlock. They can be decrypted only on the devices you sign in to. We, and Google, which runs
+        the servers the App uses, hold Push Content only in that encrypted form and cannot read it, apart from pushes
+        made before end-to-end encryption that are still stored as they were sent (see Data Retention below). Your
+        recovery key is never sent to us or to Google, and your password only in the two cases described below. The{' '}
+        <Link to="/security">Security</Link> page explains how this works and what it does not cover.
       </p>
 
       <h5>PERSONAL INFORMATION WE COLLECT</h5>

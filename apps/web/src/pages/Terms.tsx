@@ -142,13 +142,14 @@ export default function Terms() {
 
       <p>
         The links and files you push, and their titles and names (“Push Content”), are end-to-end encrypted with a key
-        made from your password, as described in the Privacy Policy and at https://pushthat.link/security. When you
-        register, you are shown a recovery key, which is the only other way to unlock your Push Content. MakeRocketGoNow
-        LLC never receives your recovery key, receives your password only in the cases described in the Privacy Policy,
-        and cannot decrypt your Push Content (apart from pushes made before end-to-end encryption that are still stored
-        as they were sent). You are solely responsible for keeping your password and your recovery key. If you reset
-        your password without your recovery key, or lose both, the Push Content made before then cannot be recovered by
-        you or by MakeRocketGoNow LLC, and MakeRocketGoNow LLC shall not be held liable for that loss.
+        that only your password or your recovery key can unlock, as described in the Privacy Policy and at
+        https://pushthat.link/security. When you register, you are shown a recovery key, which is the only other way to
+        unlock your Push Content. MakeRocketGoNow LLC never receives your recovery key, receives your password only in
+        the cases described in the Privacy Policy, and cannot decrypt your Push Content (apart from pushes made before
+        end-to-end encryption that are still stored as they were sent). You are solely responsible for keeping your
+        password and your recovery key. If you reset your password without your recovery key, or lose both, the Push
+        Content made before then cannot be recovered by you or by MakeRocketGoNow LLC, and MakeRocketGoNow LLC shall not
+        be held liable for that loss.
       </p>
 
       <h4>CONDUCT</h4>
