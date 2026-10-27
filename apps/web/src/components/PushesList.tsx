@@ -56,8 +56,10 @@ const faviconOf = (url: string | undefined): string => {
 };
 
 /**
- * Hands a decrypted file to the browser as a download. The object URL lives only until the
- * click has started the save; a 100 MB Blob is otherwise held for the life of the tab.
+ * Hands a decrypted file to the browser as a download. The object URL is revoked once the
+ * save has had time to start, or a 100 MB Blob would be held for the life of the tab. Not
+ * at once: Safari, and Firefox in some versions, cancel a download whose URL goes away
+ * before they have begun reading it, which is why FileSaver.js waits 40 seconds too.
  */
 const save = (blob: Blob, name: string) => {
   const url = URL.createObjectURL(blob);
@@ -65,7 +67,7 @@ const save = (blob: Blob, name: string) => {
   link.href = url;
   link.download = name;
   link.click();
-  setTimeout(() => URL.revokeObjectURL(url), 0);
+  setTimeout(() => URL.revokeObjectURL(url), 40_000);
 };
 
 export default function PushesList({
