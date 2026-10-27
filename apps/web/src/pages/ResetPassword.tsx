@@ -74,11 +74,15 @@ type Step =
   | { name: 'keysNotUpdated' };
 
 /**
- * `/reset`, where the password reset email's link lands: every client asks for the email
- * with `resetActionCodeSettings` (services/passwordReset.ts), since the template's action
- * URL cannot be changed on this project. Firebase adds `mode` and `oobCode` to the URL.
- * The work is in services/passwordReset.ts; this page asks for the new password, then for
- * the recovery key, and says what is lost without it before anything is.
+ * `/reset`, the page the password reset email's link was to land on, with `mode` and
+ * `oobCode` added by Firebase. It does not today: the template's action URL that would
+ * bring the link here cannot be changed on this project, and nothing else makes
+ * Firebase's handler forward a reset (see `resetActionCodeSettings` in
+ * services/passwordReset.ts), so resets happen on Firebase's hosted form and the recovery
+ * key is asked for at the next sign-in instead. The page stays complete for the day the
+ * template is unlocked, and for a link made by hand. The work is in
+ * services/passwordReset.ts; this page asks for the new password, then for the recovery
+ * key, and says what is lost without it before anything is.
  */
 export function ResetPassword() {
   const [params] = useSearchParams();

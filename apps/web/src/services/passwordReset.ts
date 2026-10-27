@@ -38,18 +38,21 @@ import { type E2ee, deriveKeys } from './e2ee';
 export { KeysChangedError, WrongRecoveryKeyError } from './accountKeys';
 
 /**
- * Where every reset email's link lands. Each client asks for the email with these
- * settings (`sendPasswordResetEmail` here, `ActionCodeSettings` on iOS and macOS) rather
- * than through the template's action URL in the console, because Firebase refuses to
- * change that setting on this project (`EMAIL_TEMPLATE_UPDATE_NOT_ALLOWED`, in the console
- * and through the API alike; a verified sender domain does not lift it). With
- * `handleCodeInApp`, Firebase's handler forwards the click to `url` with `mode` and
- * `oobCode` on it instead of showing its own reset form. The domain must be on the
- * Authentication allow-list, which pushthat.link is.
+ * The settings every client sends a reset email with (`sendPasswordResetEmail` here,
+ * `ActionCodeSettings` on iOS and macOS). The reset itself happens on Firebase's hosted
+ * page: the template's action URL that would bring it to `/reset` cannot be changed on
+ * this project (`EMAIL_TEMPLATE_UPDATE_NOT_ALLOWED`, in the console and through the API
+ * alike; a verified sender domain does not lift it), and `handleCodeInApp` does not help,
+ * because the hosted handler forwards a click to the continue URL with the code only for
+ * email-link sign-in; for a password reset it always shows its own form (read from the
+ * handler's script, `/__/auth/action.js`). So `url` is the sign-in page, which the hosted
+ * form's Continue button leads to once the password is set, and that sign-in finds a
+ * password that opens none of the stored wraps and asks for the recovery key: the same
+ * recovery step `/reset` would have run, one screen later (docs/e2ee.md, Password reset).
+ * The domain must be on the Authentication allow-list, which pushthat.link is.
  */
 export const resetActionCodeSettings = {
-  url: 'https://pushthat.link/reset',
-  handleCodeInApp: true,
+  url: 'https://pushthat.link/login',
 } satisfies ActionCodeSettings;
 
 /**

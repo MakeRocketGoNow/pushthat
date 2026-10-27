@@ -64,23 +64,16 @@ A run from any other branch runs the checks and deploys nothing.
   what keeps one account out of another's files (`storage.rules` is). Without it, opening
   a file on the web fails with "This file could not be decrypted." and a CORS error in
   the console; the apps are not affected.
-- **The password reset email's action URL is not a setting to flip.** The plan was the
-  console's Authentication → Templates → Password reset → Customize action URL, set to
-  `https://pushthat.link/reset`, but Firebase refuses that change on this project
-  (`EMAIL_TEMPLATE_UPDATE_NOT_ALLOWED`, from the console and from the Identity Toolkit
-  API alike; a verified sender domain does not lift it, and a Firebase support case is
-  the only known way to). The clients send the address with each reset email instead
-  (`ActionCodeSettings`; see [end-to-end encryption](e2ee.md), Password reset), so
-  nothing is done in the console. A reset that reaches Firebase's own page regardless is
-  caught at the next sign-in, which asks for the recovery key.
-
-  The switch is still a release decision, now made by merging rather than in the console:
-  `/reset` sets the Firebase password to the key derived from the new password, which an
-  app version from before phase 3 of that plan does not know, so a user on an old build
-  who resets is signed out of that build until they update it. The web app deploys on
-  merge, and its reset emails change at once; the apps change with their next release.
-  Merge once the builds that sign in with the derived key are in the stores, or accept
-  that a reset in between locks old builds out until the update.
+- **The password reset email's action URL cannot be set.** The plan in
+  [end-to-end encryption](e2ee.md) (Password reset) was the console's Authentication →
+  Templates → Password reset → Customize action URL, pointed at
+  `https://pushthat.link/reset`. Firebase refuses that change on this project:
+  `EMAIL_TEMPLATE_UPDATE_NOT_ALLOWED`, from the console and from the Identity Toolkit API
+  alike; a verified sender domain does not lift it, and a Firebase support case is the
+  only known way to. Nothing is done in the console: resets run on Firebase's hosted form,
+  whose Continue button leads to the web sign-in, and the sign-in asks for the recovery
+  key. If the lock is ever lifted, set the URL and the `/reset` page takes over; nothing
+  else changes.
 
 ## How CI signs in to Google Cloud
 
