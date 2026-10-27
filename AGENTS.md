@@ -144,4 +144,5 @@ object's commit if the type is `tag`), not by copying a SHA from a release page.
 
 Actions outside `actions/*` and verified publishers must also be on the allow-list in the
 repository's Actions settings, which today names `gradle/actions/*`,
-`google-github-actions/auth` and `r0adkll/upload-google-play`. A run that uses anything else is refused before it starts.
+`google-github-actions/auth` and `r0adkll/upload-google-play`. A run that uses anything
+else is refused before it starts.
