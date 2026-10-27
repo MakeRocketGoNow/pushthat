@@ -1,5 +1,6 @@
 import clsx from 'clsx';
 import { ReactNode, useEffect, useState } from 'react';
+import { Helmet } from 'react-helmet';
 import { useLocation, useNavigate } from 'react-router';
 
 import { useAuth } from '@/contexts/AuthContext';
@@ -35,6 +36,13 @@ export default function Layout({ children }: LayoutProps) {
 
   return (
     <div className={clsx(styles.layout, isAuthenticated && styles.layoutAuthenticated)}>
+      {/*
+        react-helmet sets document.title only while some Helmet gives one, and does not put
+        the old title back when that Helmet unmounts. Without this fallback, a page with no
+        title of its own (the login page, the list) keeps the title of the last page that
+        had one, which is usually the front page's long one.
+      */}
+      <Helmet defaultTitle="PushThat" />
       <div className={styles.layoutBorder} id="layout-border">
         {isAuthenticated && (
           <div className={styles.menuContainer}>
