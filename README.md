@@ -29,7 +29,7 @@ write, and they are all here: [apps/web/firestore.rules](apps/web/firestore.rule
 [apps/web/storage.rules](apps/web/storage.rules), with their tests beside them. The Cloud
 Functions are here too, but nothing proves that what runs on pushthat.link is this code, so
 that part you take on trust. Pushes are end-to-end encrypted: a push's link, title and file
-are encrypted on the device with a key made from the account password, and Firebase holds
+are encrypted on the device with a key that only the account password, or its recovery key, unlocks, and Firebase holds
 only ciphertext and the metadata it needs to count, deliver and expire it. [End-to-end
 encryption](docs/e2ee.md) is the specification, and `packages/push-test` is the reference
 the five clients are checked against.

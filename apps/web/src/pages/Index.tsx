@@ -126,7 +126,7 @@ function Encryption() {
     {
       Icon: KeyIcon,
       title: 'Your password is the key',
-      body: 'The app turns your password into the key on the device. There is no second passphrase to set up and nothing to switch on: it is on for every push, from the first.',
+      body: 'Your password unlocks the key your pushes are encrypted with, on the device. There is no second passphrase to set up and nothing to switch on: it is on for every push, from the first.',
     },
     {
       Icon: MagnifyingGlassIcon,
