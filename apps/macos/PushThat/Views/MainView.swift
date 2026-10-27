@@ -95,7 +95,8 @@ struct MainView: View {
                 if viewModel.isUploading {
                     uploadingOverlay
                 } else if viewModel.isOpeningFile {
-                    ProgressView()
+                    // Labelled, so VoiceOver says what the wait is for rather than "in progress".
+                    ProgressView("Opening file…")
                         .controlSize(.large)
                         .padding(24)
                         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
