@@ -38,7 +38,7 @@ function isAuthStateChangedInMessage(message: any): message is SignInMessage {
 }
 
 async function updateUserFcmToken(userId: string, token: string) {
-  await debug('Updating user FCM token', { userId });
+  debug('Updating user FCM token', { userId });
   const db = getFirestore(app);
 
   const userRef = doc(db, 'users', userId);
@@ -52,13 +52,13 @@ async function updateUserFcmToken(userId: string, token: string) {
 
       // Only add the token if it doesn't already exist
       if (!existingTokens.includes(token)) {
-        await debug('Adding token to user', { userId });
+        debug('Adding token to user', { userId });
         await updateDoc(userRef, {
           fcmTokens: arrayUnion(token),
         });
       }
     } else {
-      await debug('Creating new user document', { userId });
+      debug('Creating new user document', { userId });
       // Create new user document if it doesn't exist
       try {
         await setDoc(userRef, {
@@ -72,7 +72,7 @@ async function updateUserFcmToken(userId: string, token: string) {
       }
     }
   } catch (error) {
-    await logError('Error updating user FCM token:', { error });
+    logError('Error updating user FCM token:', { error });
     throw error;
   }
 }
@@ -95,7 +95,7 @@ const requestFcmToken = async (userId: string): Promise<string | undefined> => {
 
     return token;
   } catch (error) {
-    await logError('Error getting FCM token:', { error });
+    logError('Error getting FCM token:', { error });
   }
 
   return undefined;
@@ -103,13 +103,13 @@ const requestFcmToken = async (userId: string): Promise<string | undefined> => {
 
 async function start() {
   const { userId } = await chrome.storage.local.get('userId');
-  await debug('START', { userId });
+  debug('START', { userId });
   if (userId) {
-    await debug('Requesting FCM token');
+    debug('Requesting FCM token');
     const token = await requestFcmToken(userId);
-    await debug(`FCM token result: ${!!token}`);
+    debug(`FCM token result: ${!!token}`);
   } else {
-    await debug('No user id found, PushThat will not open new pushes.');
+    debug('No user id found, PushThat will not open new pushes.');
   }
 }
 
@@ -148,14 +148,14 @@ async function readReceivedPush(pushId: string): Promise<Push | undefined> {
  */
 async function handleEncryptedPush(data: { pushId?: string; deviceId?: string }) {
   if (data.deviceId && data.deviceId === (await deviceId())) {
-    await debug('Skipping a push this browser sent');
+    debug('Skipping a push this browser sent');
     return;
   }
   let push: Push | undefined;
   try {
     push = data.pushId ? await readReceivedPush(data.pushId) : undefined;
   } catch (error) {
-    await logError('Could not read a received push:', { error: String(error) });
+    logError('Could not read a received push:', { error: String(error) });
   }
 
   if (push?.url && push.type === 'url') {
@@ -201,7 +201,7 @@ self.addEventListener('notificationclick', async (event) => {
 
 chrome.runtime.onMessage.addListener(async (message: any, sender, sendResponse) => {
   if (isAuthStateChangedInMessage(message)) {
-    await debug('ON_AUTH_STATE_CHANGED', { userId: message.user?.uid });
+    debug('ON_AUTH_STATE_CHANGED', { userId: message.user?.uid });
 
     if (message.user && message.user.uid) {
       // Save userId to storage
@@ -221,11 +221,11 @@ chrome.runtime.onMessage.addListener(async (message: any, sender, sendResponse) 
 self.addEventListener('activate', async (event) => {
   try {
     // Run code when service worker becomes active
-    await debug('Service worker activating');
+    debug('Service worker activating');
 
     start();
   } catch (error) {
-    await logError('Activation error:', { error });
+    logError('Activation error:', { error });
   }
 });
 
@@ -243,20 +243,20 @@ chrome.runtime.onInstalled.addListener(async (details) => {
 
 // Add wake-up listeners
 // chrome.idle.onStateChanged.addListener(async (state) => {
-//   await debug('System state changed:', { state });
+//   debug('System state changed:', { state });
 // });
 
 chrome.runtime.onStartup.addListener(async () => {
-  await debug('Extension starting up');
+  debug('Extension starting up');
   await start();
 });
 
 // Logs stay in the extension's own console. They went to Axiom as well until it was removed:
 // that sent user and push ids to a third party the privacy policy did not name.
-async function debug(message: string, optionalParams?: any) {
+function debug(message: string, optionalParams?: any) {
   console.debug(message, optionalParams);
 }
 
-async function logError(message: string, optionalParams?: any) {
+function logError(message: string, optionalParams?: any) {
   console.error(message, optionalParams);
 }
