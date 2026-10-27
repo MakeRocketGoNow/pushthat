@@ -1,185 +1,591 @@
+/*
+ * The front page. Dark only, like the rest of the app, with the brand pink kept for the
+ * things that should be looked at first: the primary action, the icons and the step
+ * numbers. Everything else is white at a few opacities.
+ */
+
 .container {
+  /*
+   * The page's three shades of secondary text, named so the palette changes in one
+   * place: body copy, the copy inside cards and steps, and fine print.
+   */
+  --text-body: rgba(255, 255, 255, 0.78);
+  --text-muted: rgba(255, 255, 255, 0.72);
+  --text-faint: rgba(255, 255, 255, 0.6);
+
   display: flex;
   flex-direction: column;
-  gap: 48px;
-  padding: 32px 16px;
+  gap: 96px;
+  padding: 48px 16px 24px;
   max-width: 1100px;
   margin: 0 auto;
 }
 
-.hero {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  text-align: center;
-  gap: 12px;
+.container h2,
+.container h3 {
+  line-height: 1.15;
+  margin: 0;
 }
 
-.logo {
-  width: 72px;
-  height: 72px;
+.container p {
+  margin: 0;
+}
+
+/* ---------- Hero ---------- */
+
+.hero {
+  display: grid;
+  grid-template-columns: minmax(0, 7fr) minmax(0, 6fr);
+  align-items: center;
+  gap: 48px;
+  min-height: min(70vh, 640px);
+}
+
+.heroText {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  width: fit-content;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-primary);
+}
+
+.eyebrowIcon {
+  width: 16px;
+  height: 16px;
 }
 
 .title {
-  font-size: 40px;
-  line-height: 1.1;
+  font-size: clamp(38px, 5vw, 52px);
+  font-weight: 700;
+  line-height: 1.05;
+  letter-spacing: -0.02em;
   margin: 0;
+  max-width: 14ch;
 }
 
 .subtitle {
-  margin: 0;
-  opacity: 0.8;
-  font-size: 18px;
+  font-size: clamp(17px, 1.6vw, 19px);
+  line-height: 1.55;
+  color: var(--text-body);
+  max-width: 56ch;
 }
 
 .ctaRow {
   display: flex;
-  gap: 12px;
-  margin-top: 12px;
-}
-
-.ctaButton {
-  appearance: none;
-  border: none;
-  background: #4f46e5;
-  color: #fff;
-  padding: 10px 14px;
-  border-radius: 10px;
-  text-decoration: none;
-  font-weight: 600;
-}
-
-.ctaSecondary {
-  background: transparent;
-  color: inherit;
-  outline: 1px solid currentColor;
-}
-
-.row {
-  display: flex;
+  flex-wrap: wrap;
   align-items: center;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+/* Matches .button in Button.module.css without the glow, so the row reads as one pair */
+.ctaSecondary {
+  display: inline-block;
+  padding: 12px 24px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  color: var(--color-text);
+  text-decoration: none;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  font-weight: 500;
+  transition: border-color 0.25s;
+}
+.ctaSecondary:hover {
+  border-color: var(--color-primary);
+}
+
+.finePrint {
+  font-size: 14px;
+  color: var(--text-faint);
+}
+
+/*
+ * The hero picture: a browser window with a phone overlapping its lower-left corner, and
+ * a pill that travels from the phone's share sheet to the browser's tab. The frames crop
+ * the real screenshots (object-position) to the part that tells the story: the share
+ * sheet at the bottom of the phone, the tab and page title at the top of the browser.
+ */
+.heroVisual {
+  position: relative;
+  height: 440px;
+}
+
+.browserFrame {
+  position: absolute;
+  top: 0;
+  left: 28%;
+  right: 0;
+  height: 330px;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
+  background: var(--color-surface);
+}
+.browserFrame img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: left top;
+}
+
+.phoneFrame {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 200px;
+  height: 340px;
+  border-radius: 26px;
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  box-shadow:
+    0 24px 60px rgba(0, 0, 0, 0.55),
+    0 0 0 6px #111;
+  background: var(--color-surface);
+}
+.phoneFrame img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center bottom;
+}
+
+.pill {
+  position: absolute;
+  left: 150px;
+  top: 300px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: var(--color-primary);
+  color: var(--color-surface);
+  font-size: 13px;
+  font-weight: 600;
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.2),
+    0 0 24px color-mix(in srgb, var(--color-primary), transparent 40%);
+  animation: travel 3.2s ease-in-out infinite;
+}
+.pill code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+}
+.pillIcon {
+  width: 16px;
+  height: 16px;
+}
+
+/*
+ * The pill leaves the share sheet, crosses to the browser's tab strip and fades as it
+ * arrives, then the loop starts again from the sheet. The distance is in px because the
+ * phone and the pill's start are. The browser frame is placed by percentage, so where the
+ * pill lands along its tab strip moves as the column widens; it stays over the frame from
+ * the narrow layout to the widest two-column one, so check that again if the frame moves.
+ */
+@keyframes travel {
+  0% {
+    transform: translate(0, 0) scale(0.9);
+    opacity: 0;
+  }
+  12% {
+    opacity: 1;
+    transform: translate(0, 0) scale(1);
+  }
+  70% {
+    opacity: 1;
+    transform: translate(160px, -280px) scale(1);
+  }
+  82%,
+  100% {
+    opacity: 0;
+    transform: translate(160px, -280px) scale(0.9);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pill {
+    animation: none;
+    transform: translate(80px, -140px);
+  }
+}
+
+/* ---------- Sections ---------- */
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+  scroll-margin-top: 24px;
+}
+
+.sectionTitle {
+  font-size: clamp(28px, 3.4vw, 38px);
+  font-weight: 700;
+  letter-spacing: -0.015em;
+}
+
+.intro {
+  font-size: 18px;
+  line-height: 1.55;
+  color: var(--text-body);
+  max-width: 64ch;
+}
+
+/* ---------- How it works ---------- */
+
+.steps {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 24px;
+}
+
+.step {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 24px;
+  border-radius: 14px;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+}
+.step h3 {
+  font-size: 20px;
+}
+.step p {
+  color: var(--text-muted);
+  line-height: 1.55;
+}
+
+.stepNumber {
+  display: inline-grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--color-primary), transparent 82%);
+  color: var(--color-primary);
+  font-weight: 700;
+  font-size: 15px;
+}
+
+/* ---------- Both directions ---------- */
+
+.band {
+  display: grid;
+  grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+  align-items: center;
+  gap: 48px;
+}
+
+.bandText {
+  display: flex;
+  flex-direction: column;
   gap: 16px;
 }
-
-.rowAlt {
-  direction: rtl;
-}
-.rowAlt > * {
-  direction: ltr;
+.bandText p {
+  font-size: 17px;
+  line-height: 1.6;
+  color: var(--text-body);
 }
 
-.panel {
-  min-height: 260px;
-  display: grid;
-  place-items: center;
-  flex-shrink: 0;
+.bandVisual {
+  position: relative;
+  height: 380px;
 }
 
-.panelLeft {
-  padding-left: 140px;
+.bandBrowser {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 80%;
+  height: 300px;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
+  background: var(--color-surface);
 }
-
-.screenshot {
-  width: auto;
-  height: auto;
-  max-height: 400px;
-  border-radius: 10px;
-  box-shadow: 0 6px 24px color-mix(in hsl, CanvasText, transparent 90%);
-}
-
-.arrow {
-  flex: 1;
-  flex-direction: column;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-}
-.arrowSvg {
+.bandBrowser img {
   width: 100%;
-  height: 48px;
-}
-.arrowLine {
-  stroke: var(--color-primary);
-  stroke-width: 6;
-}
-.arrowHead {
-  fill: var(--color-primary);
+  height: 100%;
+  object-fit: cover;
+  object-position: right top;
 }
 
-.footer {
-  margin-top: 12px;
-  border-top: 1px solid color-mix(in hsl, CanvasText, transparent 90%);
+.bandPhone {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 190px;
+  height: 300px;
+  border-radius: 26px;
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  box-shadow:
+    0 24px 60px rgba(0, 0, 0, 0.55),
+    0 0 0 6px #111;
+  background: var(--color-surface);
 }
-.footerInner {
+.bandPhone img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center top;
+}
+
+/* ---------- Encryption, features ---------- */
+
+.encryption {
+  padding: 48px;
+  border-radius: 20px;
+  border: 1px solid color-mix(in srgb, var(--color-primary), transparent 60%);
+  background: radial-gradient(
+      ellipse at top left,
+      color-mix(in srgb, var(--color-secondary-1), transparent 55%),
+      transparent 60%
+    ),
+    var(--color-surface);
+  box-shadow: 0 0 60px color-mix(in srgb, var(--color-primary), transparent 85%);
+}
+
+.cards {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 20px;
+}
+
+.card {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding-top: 16px;
-  gap: 12px;
+  flex-direction: column;
+  gap: 10px;
+  padding: 24px;
+  border-radius: 14px;
+  border: 1px solid var(--color-border);
+  background: var(--color-background);
 }
-.footerNav { display: flex; gap: 12px; }
-
-@media (max-width: 860px) {
-  .row {
-    flex-direction: column;
-  }
-  .arrow { display: none; }
+.card h3 {
+  font-size: 18px;
+}
+.card p {
+  color: var(--text-muted);
+  line-height: 1.55;
+  font-size: 15px;
 }
 
+.cardIcon {
+  width: 28px;
+  height: 28px;
+  color: var(--color-primary);
+}
 
+.honest {
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--text-muted);
+  max-width: 72ch;
+}
+.honest strong {
+  color: var(--color-text);
+}
+
+.links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 24px;
+  font-weight: 500;
+}
+
+/* ---------- Pricing ---------- */
 
 .pricing {
-  display: flex;
-  flex-direction: column;
   align-items: center;
-  gap: 20px;
   text-align: center;
 }
-.pricingTitle {
-  margin: 0;
-  font-size: 28px;
+.pricing .intro {
+  text-align: center;
 }
+
 .tiers {
   display: flex;
   gap: 20px;
   flex-wrap: wrap;
   justify-content: center;
+  width: 100%;
 }
+
 .tier {
-  flex: 1 1 240px;
-  max-width: 320px;
-  padding: 24px;
-  border-radius: 12px;
+  flex: 1 1 260px;
+  max-width: 340px;
+  display: flex;
+  flex-direction: column;
+  padding: 28px;
+  border-radius: 14px;
   border: 1px solid var(--color-border);
   background: var(--color-surface);
   text-align: left;
 }
 .tier h3 {
-  margin: 0 0 8px;
+  font-size: 18px;
+  margin-bottom: 8px;
 }
 .tier ul {
-  margin: 16px 0 0;
+  margin: 20px 0 24px;
   padding-left: 20px;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
+  color: var(--text-body);
 }
 .tierPro {
   border-color: var(--color-primary);
   box-shadow: 0 0 25px color-mix(in srgb, var(--color-primary), transparent 75%);
 }
+.tierCta {
+  margin-top: auto;
+  text-align: center;
+}
+
 .price {
-  margin: 0;
-  font-size: 32px;
-  font-weight: 600;
+  font-size: 36px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
 }
 .priceNote {
   font-size: 14px;
   font-weight: 400;
-  opacity: 0.8;
+  letter-spacing: 0;
+  color: var(--text-faint);
 }
 .pricingNote {
-  margin: 0;
   max-width: 560px;
-  opacity: 0.8;
+  color: var(--text-faint);
+  font-size: 15px;
+}
+
+/* ---------- Footer ---------- */
+
+.footer {
+  border-top: 1px solid var(--color-border);
+}
+.footerInner {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  padding-top: 20px;
+  gap: 12px;
+  font-size: 14px;
+  color: var(--text-faint);
+}
+.footerBrand {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.footerNav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+.footerNav a {
+  color: var(--text-body);
+  text-decoration: none;
+}
+.footerNav a:hover {
+  color: var(--color-primary);
+}
+
+/* ---------- Narrow screens ---------- */
+
+@media (max-width: 900px) {
+  .container {
+    gap: 72px;
+    padding-top: 24px;
+  }
+  .hero,
+  .band {
+    grid-template-columns: 1fr;
+    min-height: 0;
+    gap: 32px;
+  }
+  .band {
+    display: flex;
+    flex-direction: column;
+  }
+  .steps,
+  .cards {
+    grid-template-columns: 1fr;
+  }
+  .encryption {
+    padding: 28px 20px;
+  }
+}
+
+@media (max-width: 480px) {
+  .heroVisual {
+    height: 340px;
+  }
+  .browserFrame {
+    left: 18%;
+    height: 240px;
+  }
+  .phoneFrame {
+    width: 150px;
+    height: 250px;
+  }
+  .pill {
+    left: 100px;
+    top: 230px;
+    padding: 6px 10px;
+  }
+  @keyframes travel {
+    0% {
+      transform: translate(0, 0) scale(0.9);
+      opacity: 0;
+    }
+    12% {
+      opacity: 1;
+      transform: translate(0, 0) scale(1);
+    }
+    70% {
+      opacity: 1;
+      transform: translate(90px, -210px) scale(1);
+    }
+    82%,
+    100% {
+      opacity: 0;
+      transform: translate(90px, -210px) scale(0.9);
+    }
+  }
+  .bandVisual {
+    height: 300px;
+  }
+  .bandBrowser {
+    width: 90%;
+    height: 220px;
+  }
+  .bandPhone {
+    width: 140px;
+    height: 230px;
+  }
+  .ctaRow > * {
+    flex: 1 1 100%;
+    text-align: center;
+  }
 }

@@ -1,0 +1,108 @@
+<!--
+  The source of public/og.png, the 1200x630 card a shared link shows. It is rendered by
+  hand rather than at build time so that the build needs no browser; redo it when the
+  headline changes, from apps/web:
+
+    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless=new --disable-gpu \
+      --hide-scrollbars --window-size=1200,630 --screenshot=public/og.png "file://$PWD/og/card.html"
+
+  The headline is the hero's; the sentence under it is the card's own and shorter. The
+  logo is loaded from public/ so there is one copy of it.
+-->
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      html,
+      body {
+        margin: 0;
+        width: 1200px;
+        height: 630px;
+        overflow: hidden;
+      }
+      body {
+        background: radial-gradient(ellipse at 15% 10%, rgba(80, 46, 168, 0.55), transparent 55%), #1a1a1a;
+        color: rgba(255, 255, 255, 0.95);
+        font-family:
+          Inter,
+          -apple-system,
+          'Helvetica Neue',
+          Helvetica,
+          Arial,
+          sans-serif;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        padding: 0 88px;
+        box-sizing: border-box;
+      }
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 18px;
+        margin-bottom: 44px;
+      }
+      .brand img {
+        width: 64px;
+        height: 64px;
+      }
+      .brand span {
+        font-size: 30px;
+        font-weight: 600;
+        letter-spacing: -0.01em;
+      }
+      h1 {
+        margin: 0 0 28px;
+        font-size: 76px;
+        line-height: 1.04;
+        font-weight: 700;
+        letter-spacing: -0.025em;
+        max-width: 15ch;
+      }
+      p {
+        margin: 0;
+        font-size: 30px;
+        line-height: 1.4;
+        color: rgba(255, 255, 255, 0.78);
+        max-width: 32ch;
+      }
+      .tag {
+        position: absolute;
+        right: 88px;
+        bottom: 56px;
+        display: inline-flex;
+        align-items: center;
+        gap: 12px;
+        padding: 14px 24px;
+        border-radius: 999px;
+        background: #ffa9e7;
+        color: #242424;
+        font-size: 22px;
+        font-weight: 600;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+      }
+      .tag svg {
+        width: 22px;
+        height: 22px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="brand"><img src="../public/pushthat.svg" alt="" /><span>PushThat</span></div>
+    <h1>Send a link to your phone. Or from it.</h1>
+    <p>
+      Links and files between your phone and your computer, encrypted on the device with the password you already have.
+    </p>
+    <div class="tag">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z"
+        /></svg
+      >End-to-end encrypted
+    </div>
+  </body>
+</html>
