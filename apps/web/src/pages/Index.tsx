@@ -145,9 +145,10 @@ function Encryption() {
         ))}
       </div>
       <p className={styles.honest}>
-        <strong>What we can still see:</strong> that your account pushed something, when, whether it was a link or a
-        file, and roughly how big. The monthly limits and file expiry need that much and no more. The design is
-        published, so you can check it rather than take our word for it.
+        <strong>What we can still see:</strong> which account pushed, when, whether it was a link or a file, roughly how
+        big a file is, which of your devices sent it and how many pushes you make. Search also shows us when two of
+        your pushes share a word, though not what the word is. The monthly limits, file expiry and notifications need
+        these. The design is published, so you can check it rather than take our word for it.
       </p>
       <p className={styles.links}>
         <Link to="/security">The security page</Link>
