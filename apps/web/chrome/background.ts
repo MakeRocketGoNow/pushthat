@@ -187,42 +187,10 @@ async function handlePush(event: PushEvent) {
   debug('Received push notification ', { pushId: data?.pushId, type: data?.type });
 
   try {
-    if (data?.pushId && !data.url) {
-      await handleEncryptedPush(data);
-      return;
-    }
-    // A plaintext push, from a client that has not updated, until phase 5 of
-    // docs/e2ee.md refuses them: open the push URL in a new tab, as before.
-    if (data?.url && data?.deviceName !== navigator.userAgent) {
-      try {
-        await chrome.tabs.create({ url: data.url });
-      } catch (error) {
-        logError('Error opening push URL:', { error: String(error) });
-      }
-
-      // You can customize the notification here if needed
-      const notificationTitle = data?.title || 'New Push';
-      const notificationOptions: NotificationOptions = {
-        body: data?.url || '',
-        icon: '/icons/icon128.png',
-        silent: true,
-        // Add data to the notification so we can access it in the click handler
-        data: {
-          url: data?.url,
-        },
-      };
-
-      await self.registration.showNotification(notificationTitle, notificationOptions);
-    } else {
-      await self.registration.showNotification('Push sent successfully', {
-        body: data?.url || '',
-        icon: '/icons/icon128.png',
-        silent: true,
-        data: {
-          url: data?.url,
-        },
-      });
-    }
+    // Every push is announced by its id alone (functions/src/notifications.ts): the rules
+    // refuse a plaintext push, so the message that carried a URL and a device name to open
+    // from is never sent, and a URL is only ever opened once it has been decrypted here.
+    if (data?.pushId) await handleEncryptedPush(data);
   } finally {
     // Axiom batches in the background; make sure the logs land before the worker is allowed to sleep.
     await axiom?.flush();

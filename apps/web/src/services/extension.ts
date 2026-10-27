@@ -10,8 +10,13 @@
  * aim the message at that extension.
  */
 export function sendToExtension(message: { type: string } & Record<string, unknown>): void {
-  if (typeof chrome === 'undefined' || !chrome.runtime?.id) return;
+  if (!isExtensionPage()) return;
   // The worker may be asleep and fail to answer; it reads what it needs again when it
   // starts, so a lost message is logged and not thrown into the page.
   chrome.runtime.sendMessage(message).catch((error) => console.debug('The extension did not take a message:', error));
+}
+
+/** Whether this page is the extension's own bundled page rather than the site (see `sendToExtension`). */
+export function isExtensionPage(): boolean {
+  return typeof chrome !== 'undefined' && !!chrome.runtime?.id;
 }

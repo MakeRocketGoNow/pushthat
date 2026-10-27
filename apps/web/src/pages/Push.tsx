@@ -1,6 +1,4 @@
-import { FirebaseError } from 'firebase/app';
 import { getFirestore } from 'firebase/firestore';
-import { getFunctions, httpsCallable } from 'firebase/functions';
 import { getStorage } from 'firebase/storage';
 import { useState } from 'react';
 
@@ -8,9 +6,8 @@ import Button from '@/components/Button';
 import { LIMITS, formatMb } from '@/config/plan';
 import { usePlan } from '@/hooks/usePlan';
 import { KEYS_UNAVAILABLE, usePushKeys } from '@/hooks/usePushKeys';
-import { PlanReport } from '@/services/plan';
+import { atLimit, isRulesRefusal, limitMessage, refusalMessage } from '@/services/pushRefusal';
 import {
-  type PushKeys,
   PushTooLongError,
   PushUnconfirmedError,
   createFilePush,
@@ -21,31 +18,8 @@ import {
 
 import styles from './Push.module.css';
 
-/**
- * Why the rules refused a push, if they did. They say both the month's limit and a key a
- * reset elsewhere has replaced (`isCurrentKeyVersion`) as a permission error, the only two
- * of the create rule's refusals this page's own documents can hit; the second is told apart
- * by reading the account's current version. It is not the plan's doing, and trying again
- * cannot help: only signing in again stores the new key.
- */
-const refusalOf = async (error: unknown, keys: PushKeys): Promise<'limit' | 'staleKey' | undefined> => {
-  if (!(error instanceof FirebaseError && error.code === 'permission-denied')) return undefined;
-  return (await keyIsStale(getFirestore(), keys)) ? 'staleKey' : 'limit';
-};
-
 // Word for word what the iOS and macOS apps say: trying again could push it twice.
 const UNCONFIRMED = 'Could not confirm that this push was saved. Check your pushes before trying again.';
-
-// Word for word what Android says (keys_changed_here).
-const STALE_KEY = 'Your encryption keys were changed on another device. Sign out and sign in again to use them here.';
-
-/** The sentence for a push past the month's limit, naming the number and, on Free, what Pro allows. */
-const limitMessage = (plan: PlanReport | undefined, type: 'url' | 'file') => {
-  const what = type === 'url' ? 'link' : 'file';
-  if (!plan) return `You have used this month's ${what} pushes.`;
-  const more = plan.tier === 'free' ? ` Pro allows ${LIMITS.pro[type].toLocaleString()}.` : '';
-  return `You have used this month's ${plan.limits[type].toLocaleString()} ${what} pushes.${more}`;
-};
 
 export default function Push() {
   const [url, setUrl] = useState('');
@@ -68,7 +42,7 @@ export default function Push() {
 
     // Said before anything is sent: at 50 a month a Free account reaches this routinely.
     // The plan read once per mount can be stale, so the refusal below is handled too.
-    if (plan && plan.usage.url >= plan.limits.url) {
+    if (plan && atLimit(plan, 'url')) {
       // Read once per mount, so a new period or a subscription in another tab is not seen
       // until it is read again; a refusal here asks for the read, so the next try is right.
       void refreshPlan();
@@ -79,10 +53,6 @@ export default function Push() {
     setIsSubmitting(true);
 
     try {
-      // Empty when the page has none to give: the list shows the URL meanwhile, and the
-      // first phone or Mac to receive the push scrapes the title and writes it back.
-      let finalTitle = '';
-
       // Validate this is a valid URL.
       try {
         new URL(url);
@@ -92,40 +62,27 @@ export default function Push() {
         return;
       }
 
-      // Until phase 5 of docs/e2ee.md, which removes the function: a server that fetches the
-      // page learns the URL, which is the one thing the push otherwise keeps from it.
-      try {
-        const functions = getFunctions();
-        const getPageTitle = httpsCallable(functions, 'getPageTitle');
-        const result = await getPageTitle({ url });
-        const data = result.data as { title: string };
-        if (data.title) {
-          finalTitle = data.title;
-        }
-      } catch (error) {
-        console.error('Error fetching page title:', error);
-      }
-
-      const id = await createUrlPush(getFirestore(), keys, url, finalTitle);
+      // No title from here: a browser cannot read a cross-origin page, and a server that
+      // fetched it for us would learn the URL, which is what the push keeps from it
+      // (docs/e2ee.md, Titles). The list shows the URL until the first phone or Mac to
+      // receive the push scrapes the title and writes it back.
+      const id = await createUrlPush(getFirestore(), keys, url, '');
       console.log('Link saved with ID:', id);
 
       // Clear form after successful submission
       setUrl('');
     } catch (error) {
       console.error('Error saving link:', error);
-      const refusal = await refusalOf(error, keys);
-      // The limit reached on another device: read the plan again so the next try is stopped here.
-      if (refusal === 'limit') void refreshPlan();
+      // The limit reached on another device, a key a reset replaced, or a push this copy of
+      // PushThat cannot make (pushRefusal.ts); the plan read again stops the next try here.
       setError(
-        refusal === 'limit'
-          ? limitMessage(plan, 'url')
-          : refusal === 'staleKey'
-            ? STALE_KEY
-            : error instanceof PushUnconfirmedError
-              ? UNCONFIRMED
-              : error instanceof PushTooLongError
-                ? 'That link is too long to push.'
-                : 'Failed to save link. Please try again.'
+        isRulesRefusal(error)
+          ? await refusalMessage(plan, 'url', refreshPlan, () => keyIsStale(getFirestore(), keys))
+          : error instanceof PushUnconfirmedError
+            ? UNCONFIRMED
+            : error instanceof PushTooLongError
+              ? 'That link is too long to push.'
+              : 'Failed to save link. Please try again.'
       );
     } finally {
       setIsSubmitting(false);
@@ -157,7 +114,7 @@ export default function Push() {
     // The file is uploaded before the push document is made, and only the document is
     // checked against the quota, so a refused push would leave its bytes in Storage with
     // nothing to ever delete them. Refused here first, with the plan already in hand.
-    if (plan && plan.usage.file >= plan.limits.file) {
+    if (plan && atLimit(plan, 'file')) {
       void refreshPlan();
       setError(limitMessage(plan, 'file'));
       return;
@@ -178,18 +135,14 @@ export default function Push() {
       if (fileInput) fileInput.value = '';
     } catch (error) {
       console.error('Error saving file:', error);
-      const refusal = await refusalOf(error, keys);
-      if (refusal === 'limit') void refreshPlan();
       setError(
-        refusal === 'limit'
-          ? limitMessage(plan, 'file')
-          : refusal === 'staleKey'
-            ? STALE_KEY
-            : error instanceof PushUnconfirmedError
-              ? UNCONFIRMED
-              : error instanceof PushTooLongError
-                ? 'That file name is too long to push.'
-                : 'Failed to upload file. Please try again.'
+        isRulesRefusal(error)
+          ? await refusalMessage(plan, 'file', refreshPlan, () => keyIsStale(getFirestore(), keys))
+          : error instanceof PushUnconfirmedError
+            ? UNCONFIRMED
+            : error instanceof PushTooLongError
+              ? 'That file name is too long to push.'
+              : 'Failed to upload file. Please try again.'
       );
     } finally {
       setIsUploadSubmitting(false);

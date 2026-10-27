@@ -54,6 +54,13 @@ export default function Support() {
         us and say what you can about it.
       </p>
 
+      <p>
+        Your password is also the key your pushes are encrypted with, so a reset keeps them only with the recovery key
+        you were shown when you signed up: you are asked for it after choosing the new password, and without it the
+        pushes made before the reset cannot be read again. The <Link to="/security">security page</Link> explains what
+        is encrypted and what the recovery key does.
+      </p>
+
       <h5>YOUR PUSHES</h5>
 
       <p>

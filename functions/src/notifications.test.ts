@@ -71,6 +71,8 @@ describe('the message for a new push', () => {
   test('an encrypted file push says so', () =>
     expect(pushMessageOf('p1', { ...encrypted, type: 'file', objectPath: 'uploads/u1/x' }).data?.type).toBe('file'));
 
+  // A plaintext push the rules let through (none should be): its content stays off the
+  // wire, and the message is the encrypted one with what the push lacks left empty.
   const plaintext = {
     userId: 'u1',
     type: 'url',
@@ -78,22 +80,12 @@ describe('the message for a new push', () => {
     title: 'A page',
     deviceName: 'Pixel',
   };
-  test("a plaintext push keeps the message today's clients read", () =>
+  test('a plaintext push sends none of what it holds', () =>
     expect(pushMessageOf('p1', plaintext)).toEqual({
-      data: {
-        title: 'A page',
-        pushId: 'p1',
-        id: 'p1',
-        type: 'url',
-        url: 'https://example.com/a',
-        deviceName: 'Pixel',
-      },
+      data: { pushId: 'p1', type: 'url', deviceId: '', keyVersion: '' },
+      android: { priority: 'high' },
+      apns: { payload: { aps: { alert: { title: 'New push' }, mutableContent: true, sound: 'default' } } },
     }));
-  test('with the domain for a title when it has none', () =>
-    expect(pushMessageOf('p1', { ...plaintext, title: '' }).data?.title).toBe('example.com'));
-  test('and data alone, so Chrome shows no notification of its own', () => {
-    const message = pushMessageOf('p1', plaintext);
-    expect(message.notification).toBeUndefined();
-    expect(message.apns).toBeUndefined();
-  });
+  test('and no notification block, so Chrome shows nothing of its own', () =>
+    expect(pushMessageOf('p1', encrypted).notification).toBeUndefined());
 });

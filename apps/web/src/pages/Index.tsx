@@ -102,6 +102,7 @@ export function IndexPage() {
           <span>© {new Date().getFullYear()} PushThat</span>
           <nav className={styles.footerNav}>
             <Link to="/support">Support</Link>
+            <Link to="/security">Security</Link>
             <Link to="/privacy">Privacy</Link>
             <Link to="/terms">Terms</Link>
           </nav>
