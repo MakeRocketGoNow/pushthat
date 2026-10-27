@@ -39,6 +39,7 @@ import androidx.work.*
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.jsoup.Jsoup
+import java.io.ByteArrayInputStream
 import java.io.File
 import java.io.IOException
 import java.util.concurrent.TimeUnit
@@ -588,13 +589,21 @@ class TitleScrapingWorker(
                         return@withContext null
                     }
 
-                    val html = response.body?.string()
-                    if (html == null) {
-                        Log.e(TAG, "Empty response")
-                        return@withContext null
-                    }
-
-                    val doc = Jsoup.parse(html)
+                    // The pushes left untitled are mostly links to files (PDFs, video,
+                    // archives), which have no title to find, and the worker runs for received
+                    // ones too. Only an HTML page is read, and only its first 256 KiB, where
+                    // the <title> is: `string()` pulled a whole file into memory. iOS and
+                    // macOS read the same.
+                    val body = response.body
+                    val type = body.contentType()
+                    if (type == null || !type.subtype.lowercase().contains("html")) return@withContext null
+                    val source = body.source()
+                    source.request(MAX_PAGE_BYTES)
+                    val bytes = source.buffer.readByteArray(minOf(source.buffer.size, MAX_PAGE_BYTES))
+                    // The header's charset, or, when it names none, whatever the page's
+                    // <meta> says. The cap can cut the last character in two, well past the
+                    // <title>, so that costs nothing.
+                    val doc = Jsoup.parse(ByteArrayInputStream(bytes), type.charset()?.name(), url)
                     doc.title().takeIf { it.isNotBlank() }
                 }
             } catch (e: IOException) {
@@ -610,6 +619,9 @@ class TitleScrapingWorker(
 
     companion object {
         private const val KEY_DOCUMENT_ID = "documentId"
+
+        /** How much of a page the title is looked for in. */
+        private const val MAX_PAGE_BYTES = 256L * 1024
 
         fun enqueue(context: Context, documentId: String) {
             val constraints = Constraints.Builder()
