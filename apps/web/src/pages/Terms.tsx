@@ -141,16 +141,17 @@ export default function Terms() {
       <h5>END-TO-END ENCRYPTION AND YOUR RECOVERY KEY</h5>
 
       <p>
-        The links and files you push, and their titles and names (“Push Content”), are end-to-end encrypted with a key
-        that only your password or your recovery key can unlock, as described in the Privacy Policy and at
-        https://pushthat.link/security. You are shown a recovery key when your account's encryption is set up (when you
-        register, or at your first sign-in with an updated App if your account was made before end-to-end encryption),
-        which is the only other way to unlock your Push Content. MakeRocketGoNow LLC never receives your recovery key,
-        receives your password only in the cases described in the Privacy Policy, and cannot decrypt your Push Content
-        (apart from pushes made before end-to-end encryption that are still stored as they were sent). You are solely
-        responsible for keeping your password and your recovery key. If you reset your password without your recovery
-        key, or lose both, the Push Content made before then cannot be recovered by you or by MakeRocketGoNow LLC, and
-        MakeRocketGoNow LLC shall not be held liable for that loss.
+        Your “Push Content”, as the Privacy Policy defines it (the links you push, their page titles, and the names,
+        types and contents of the files you push), is end-to-end encrypted with a key that only your password or your
+        recovery key can unlock, as described in the Privacy Policy and at https://pushthat.link/security. You are shown
+        a recovery key when your account's encryption is set up (when you register, or at your first sign-in with an
+        updated App if your account was made before end-to-end encryption), which is the only other way to unlock your
+        Push Content. MakeRocketGoNow LLC never receives your recovery key, receives your password only in the cases
+        described in the Privacy Policy, and cannot decrypt your Push Content (apart from pushes made before end-to-end
+        encryption that are still stored as they were sent). You are solely responsible for keeping your password and
+        your recovery key. If you reset your password without your recovery key, or lose both, the Push Content made
+        before then cannot be recovered by you or by MakeRocketGoNow LLC, and MakeRocketGoNow LLC shall not be held
+        liable for that loss.
       </p>
 
       <h4>CONDUCT</h4>
