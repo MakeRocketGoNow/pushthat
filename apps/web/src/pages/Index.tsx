@@ -175,7 +175,7 @@ function Features() {
     {
       Icon: DocumentArrowUpIcon,
       title: 'Files too',
-      body: `Photos, PDFs, anything up to ${formatMb(LIMITS.pro.fileBytes)}. Stored under a random name, encrypted like everything else, and gone when they expire.`,
+      body: `Photos, PDFs, anything up to ${formatMb(LIMITS.pro.fileBytes)} on Pro (${formatMb(LIMITS.free.fileBytes)} on Free). Stored under a random name, encrypted like everything else, and gone when they expire.`,
     },
     {
       Icon: MagnifyingGlassIcon,
