@@ -189,7 +189,7 @@ function Features() {
     {
       Icon: DevicePhoneMobileIcon,
       title: 'Every device you own',
-      body: 'Android, iPhone, Mac, the web, and a Chrome extension. The same account and the same list on all of them.',
+      body: 'The web today, then Android, iPhone, Mac and a Chrome extension as each reaches its store. The same account and the same list on all of them.',
     },
     {
       Icon: CodeBracketIcon,
@@ -277,7 +277,9 @@ export function IndexPage() {
               How it’s encrypted
             </a>
           </div>
-          <p className={styles.finePrint}>Free plan, no card. Android, iPhone, Mac, the web and Chrome.</p>
+          <p className={styles.finePrint}>
+            Free plan, no card. The web today; Android, iPhone, Mac and Chrome as they reach the stores.
+          </p>
         </div>
         <HeroVisual />
       </header>
