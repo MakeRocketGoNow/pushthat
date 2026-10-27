@@ -39,9 +39,11 @@ export function deadTokens(tokens: readonly string[], responses: readonly SendRe
  * There is no plaintext message any more. The rules refuse a plaintext push, so none is
  * created, and one that got past them would have its title, URL and device name sent
  * nowhere: the server does not announce content, whatever shape it arrives in. An app
- * from before encryption looks for a `url` in the data, finds none, and shows nothing,
- * which is the spec's Old app versions. The domain fallback for a push with no title went
- * with it; receivers take the domain from the URL they decrypt.
+ * from before encryption finds no `url` in the data and opens nothing (docs/e2ee.md, Old
+ * app versions), though what it shows differs: Android shows nothing, iOS shows the
+ * system's "New push" from the APNs block, and the old Chrome extension shows its own
+ * "Push sent successfully". The domain fallback for a push with no title went with it;
+ * receivers take the domain from the URL they decrypt.
  */
 export function pushMessageOf(pushId: string, push: Record<string, unknown>): BaseMessage {
   return {
