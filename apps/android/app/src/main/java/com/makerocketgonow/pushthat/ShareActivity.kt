@@ -251,9 +251,7 @@ class ShareActivity : AppCompatActivity() {
                 pushStore.create(prepared)
                     .addOnSuccessListener {
                         Log.d(TAG, "Link saved with ID: $pushId")
-                        // Schedule title scraping as a background task
-                        TitleScrapingWorker.enqueue(applicationContext, pushId)
-                        finish()
+                        onPushSaved(prepared)
                     }
                     .addOnFailureListener { e ->
                         Log.e(TAG, "Error saving link", e)
@@ -267,16 +265,31 @@ class ShareActivity : AppCompatActivity() {
     }
 
     /**
-     * A push the server did not take. Refused by the rules: final, the upload goes and the
-     * user is told why (the month's limit, or the generic failure when this install's key is
-     * one a reset replaced). Unreachable: queued, ciphertext and id as they are, for
-     * `RetryPushWorker`. Anything else: final, as before.
+     * A push the server did not take. Refused by the rules: final unless it had landed after
+     * all, the upload goes and the user is told why (the month's limit, or the generic
+     * failure when this install's key is one a reset replaced). Unreachable: queued,
+     * ciphertext and id as they are, for `RetryPushWorker`. Anything else: final, as before.
      */
     private fun onPushFailed(e: Exception, keys: PushKeys, prepared: PreparedPush) {
         if (isPermissionError(e)) {
-            // At 3 files a month on Free this is the common path.
-            prepared.objectPath?.let { discardUpload(it) }
             lifecycleScope.launch {
+                // The SDK resends a write whose acknowledgement was lost, and the resend of a
+                // create is an update of the push it made, which the rules refuse. Without
+                // this check that push was reported as past the limit and a file push's
+                // object deleted under it. A check that fails counts as not landed, as on the
+                // web: a refusal is far likelier than a lost acknowledgement.
+                val landed = try {
+                    pushStore.landed(prepared)
+                } catch (checkFailed: Exception) {
+                    false
+                }
+                if (landed) {
+                    Log.d(TAG, "The refused push had landed: ${prepared.id}")
+                    onPushSaved(prepared)
+                    return@launch
+                }
+                // At 3 files a month on Free this is the common path.
+                prepared.objectPath?.let { discardUpload(it) }
                 val message = if (pushStore.keyIsStale(keys) == true) {
                     R.string.push_failed_message_generic
                 } else {
@@ -312,6 +325,12 @@ class ShareActivity : AppCompatActivity() {
                 getString(R.string.push_failed_message_generic)
             )
         }
+    }
+
+    /** A push that is in Firestore: a link's title is scraped in the background, and the share is done. */
+    private fun onPushSaved(prepared: PreparedPush) {
+        if (prepared.type == PushContent.TYPE_URL) TitleScrapingWorker.enqueue(applicationContext, prepared.id)
+        finish()
     }
 
     /**
@@ -387,7 +406,7 @@ class ShareActivity : AppCompatActivity() {
                 pushStore.create(prepared)
                     .addOnSuccessListener {
                         Log.d(TAG, "File saved with ID: $pushId")
-                        finish()
+                        onPushSaved(prepared)
                     }
                     .addOnFailureListener { e ->
                         Log.e(TAG, "Error saving file", e)
