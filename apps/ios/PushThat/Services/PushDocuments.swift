@@ -13,10 +13,14 @@ enum PushDocuments {
     enum PushError: LocalizedError {
         /// A session with no account key on this device does not push.
         case noKey
+        /// The rules refused the create, and the push could not be read back to tell whether
+        /// an earlier attempt of it had landed (`create`).
+        case unconfirmed
 
         var errorDescription: String? {
             switch self {
             case .noKey: return "Open PushThat and sign in to unlock your pushes, then try again."
+            case .unconfirmed: return "Could not confirm that this push was saved. Check your pushes before trying again."
             }
         }
     }
@@ -36,8 +40,30 @@ enum PushDocuments {
     }
 
     /// Creates the push document with `set` on its chosen id.
+    ///
+    /// A permission refusal is not always what it says. The SDK resends a write whose
+    /// acknowledgement was lost, and once the first attempt has landed the resend of a
+    /// create is an update, which the rules refuse. So after a refusal the push is read
+    /// back from the server. Found, it landed, and this returns as if the write had been
+    /// acknowledged. Refused, it does not exist (the read rule checks the owner of the
+    /// document, and a missing one has none), and the refusal is thrown: it is final.
+    /// Any other failure of the read leaves it unknown, `PushError.unconfirmed`, and the
+    /// caller keeps whatever the push points at, which may belong to a push that exists.
     static func create(_ push: PreparedPush, firestore: Firestore) async throws {
-        try await firestore.collection("pushes").document(push.pushId).setData(firestoreData(push))
+        let document = firestore.collection("pushes").document(push.pushId)
+        do {
+            try await document.setData(firestoreData(push))
+        } catch where isPermissionDenied(error) {
+            let landed: Bool
+            do {
+                landed = try await document.getDocument(source: .server).exists
+            } catch where isPermissionDenied(error) {
+                landed = false
+            } catch {
+                throw PushError.unconfirmed
+            }
+            if !landed { throw error }
+        }
     }
 
     static func firestoreData(_ push: PreparedPush) -> [String: Any] {
@@ -63,8 +89,9 @@ enum PushDocuments {
     /// Encrypts the file to a temporary file, uploads that as
     /// `uploads/{uid}/{objectId}` (`application/octet-stream`, a random name, so the
     /// object says nothing about the file), then creates the push. A push the rules refuse
-    /// takes its object with it, so nothing is left for the orphan sweep. The temporary
-    /// file is deleted either way.
+    /// takes its object with it, so nothing is left for the orphan sweep, unless `create`
+    /// could not tell whether it landed: then the object stays, since deleting it could
+    /// leave a push that exists with no file. The temporary file is deleted either way.
     ///
     /// `encrypt` writes the sealed file to the URL it is given, from wherever the bytes are
     /// (`E2eeCrypto.encryptFile(fk:prefix:source:destination:)` or `data:`); it runs off
@@ -101,7 +128,9 @@ enum PushDocuments {
             try await create(push, firestore: firestore)
             return push
         } catch {
-            try? await object.delete()
+            if case PushError.unconfirmed = error {} else {
+                try? await object.delete()
+            }
             throw error
         }
     }
