@@ -16,6 +16,9 @@ googleServices = "4.5.0"
 # 1.17.0 is the newest that pairs with compileSdk 36; 1.19.0 wants compileSdk 37.
 coreKtx = "1.17.0"
 junit = "4.13.2"
+# Android's org.json is a stub in JVM unit tests (every method throws), so the tests that
+# read packages/push-test/vectors.json put the real one ahead of it.
+orgJson = "20250517"
 junitVersion = "1.3.0"
 espressoCore = "3.7.0"
 appcompat = "1.8.0"
@@ -25,6 +28,7 @@ playServicesSafetynet = "18.1.0"
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }
+org-json = { group = "org.json", name = "json", version.ref = "orgJson" }
 androidx-junit = { group = "androidx.test.ext", name = "junit", version.ref = "junitVersion" }
 androidx-espresso-core = { group = "androidx.test.espresso", name = "espresso-core", version.ref = "espressoCore" }
 androidx-appcompat = { group = "androidx.appcompat", name = "appcompat", version.ref = "appcompat" }

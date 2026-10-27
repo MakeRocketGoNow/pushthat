@@ -1,101 +1,161 @@
 <?xml version="1.0" encoding="utf-8"?>
-<androidx.constraintlayout.widget.ConstraintLayout
+<!-- One screen for every step before the push list: the sign-in and registration form,
+     the recovery key prompt and the recovery key itself. LoginActivity shows the views
+     each step needs. A ScrollView, since the recovery key and its copy do not fit a small
+     phone with the keyboard up. -->
+<ScrollView
   xmlns:android="http://schemas.android.com/apk/res/android"
-  xmlns:app="http://schemas.android.com/apk/res-auto"
   android:id="@+id/loginRoot"
   android:layout_width="match_parent"
   android:layout_height="match_parent"
   android:background="@color/color_background"
+  android:clipToPadding="false"
+  android:fillViewport="true"
   android:padding="24dp">
 
-  <ImageView
-    android:id="@+id/logoImage"
-    android:layout_width="96dp"
-    android:layout_height="96dp"
-    android:layout_marginTop="40dp"
-    android:src="@drawable/logo"
-    android:contentDescription="@string/logo_description"
-    app:layout_constraintBottom_toTopOf="@id/titleText"
-    app:layout_constraintEnd_toEndOf="parent"
-    app:layout_constraintStart_toStartOf="parent"
-    app:layout_constraintTop_toTopOf="parent"
-    app:layout_constraintVertical_chainStyle="packed" />
-
-  <TextView
-    android:id="@+id/titleText"
-    android:layout_width="wrap_content"
-    android:layout_height="wrap_content"
-    android:layout_marginTop="24dp"
-    android:text="@string/sign_in_to_pushthat"
-    android:textColor="@color/color_text"
-    android:textSize="24sp"
-    android:textStyle="bold"
-    app:layout_constraintBottom_toTopOf="@id/emailInput"
-    app:layout_constraintEnd_toEndOf="parent"
-    app:layout_constraintStart_toStartOf="parent"
-    app:layout_constraintTop_toBottomOf="@id/logoImage" />
-
-  <EditText
-    android:id="@+id/emailInput"
+  <LinearLayout
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:layout_marginTop="24dp"
-    android:background="@drawable/input_background"
-    android:hint="@string/email"
-    android:inputType="textEmailAddress"
-    android:padding="16dp"
-    android:textColor="@color/color_text"
-    android:textColorHint="@color/input_hint"
-    android:autofillHints="emailAddress"
-    app:layout_constraintBottom_toTopOf="@id/passwordInput"
-    app:layout_constraintTop_toBottomOf="@id/titleText" />
+    android:gravity="center_vertical"
+    android:orientation="vertical">
 
-  <EditText
-    android:id="@+id/passwordInput"
-    android:layout_width="match_parent"
-    android:layout_height="wrap_content"
-    android:layout_marginTop="16dp"
-    android:background="@drawable/input_background"
-    android:hint="@string/password"
-    android:inputType="textPassword"
-    android:padding="16dp"
-    android:textColor="@color/color_text"
-    android:textColorHint="@color/input_hint"
-    android:autofillHints="password"
-    app:layout_constraintBottom_toTopOf="@id/forgotPasswordText"
-    app:layout_constraintTop_toBottomOf="@id/emailInput" />
+    <ImageView
+      android:id="@+id/logoImage"
+      android:layout_width="96dp"
+      android:layout_height="96dp"
+      android:layout_gravity="center_horizontal"
+      android:layout_marginTop="40dp"
+      android:src="@drawable/logo"
+      android:contentDescription="@string/logo_description" />
 
-  <TextView
-    android:id="@+id/forgotPasswordText"
-    android:layout_width="wrap_content"
-    android:layout_height="wrap_content"
-    android:layout_marginTop="16dp"
-    android:text="@string/forgot_password"
-    android:textColor="@color/color_text_secondary"
-    android:padding="8dp"
-    app:layout_constraintEnd_toEndOf="parent"
-    app:layout_constraintTop_toBottomOf="@id/passwordInput" />
+    <TextView
+      android:id="@+id/titleText"
+      style="@style/Widget.LinkShare.Title"
+      android:layout_width="wrap_content"
+      android:layout_height="wrap_content"
+      android:layout_gravity="center_horizontal"
+      android:layout_marginTop="24dp"
+      android:gravity="center"
+      android:text="@string/sign_in_to_pushthat" />
 
-  <Button
-    android:id="@+id/loginButton"
-    android:layout_width="match_parent"
-    android:layout_height="wrap_content"
-    android:layout_marginTop="48dp"
-    android:background="@drawable/button_background"
-    android:text="@string/sign_in"
-    android:textColor="@color/black"
-    android:padding="16dp"
-    app:layout_constraintTop_toBottomOf="@id/forgotPasswordText" />
+    <TextView
+      android:id="@+id/bodyText"
+      style="@style/Widget.LinkShare.Body"
+      android:layout_width="match_parent"
+      android:layout_height="wrap_content"
+      android:layout_marginTop="16dp"
+      android:visibility="gone" />
 
-  <Button
-    android:id="@+id/registerButton"
-    android:layout_width="match_parent"
-    android:layout_height="wrap_content"
-    android:layout_marginTop="16dp"
-    android:background="@drawable/button_outline_background"
-    android:padding="16dp"
-    android:text="@string/register"
-    android:textColor="@color/color_action"
-    app:layout_constraintTop_toBottomOf="@id/loginButton" />
+    <!-- The signed-in account, on the unlock prompt, in place of the email field. -->
+    <TextView
+      android:id="@+id/accountEmailText"
+      android:layout_width="match_parent"
+      android:layout_height="wrap_content"
+      android:layout_marginTop="24dp"
+      android:textColor="@color/color_text"
+      android:textSize="16sp"
+      android:textStyle="bold"
+      android:visibility="gone" />
 
-</androidx.constraintlayout.widget.ConstraintLayout>
+    <EditText
+      android:id="@+id/emailInput"
+      style="@style/Widget.LinkShare.Input"
+      android:layout_width="match_parent"
+      android:layout_height="wrap_content"
+      android:layout_marginTop="24dp"
+      android:hint="@string/email"
+      android:inputType="textEmailAddress"
+      android:autofillHints="emailAddress" />
+
+    <EditText
+      android:id="@+id/passwordInput"
+      style="@style/Widget.LinkShare.Input"
+      android:layout_width="match_parent"
+      android:layout_height="wrap_content"
+      android:layout_marginTop="16dp"
+      android:hint="@string/password"
+      android:inputType="textPassword"
+      android:autofillHints="password" />
+
+    <!-- The sign-up rule, said before Register rather than only when it fails, as the web
+         and iOS do. Shown on the sign-in form too, which is also the registration form;
+         LoginActivity fills in the number and hides it on the unlock prompt, where the
+         password already exists. -->
+    <TextView
+      android:id="@+id/passwordRuleText"
+      style="@style/Widget.LinkShare.Body"
+      android:layout_width="match_parent"
+      android:layout_height="wrap_content"
+      android:layout_marginTop="8dp"
+      android:textSize="14sp" />
+
+    <TextView
+      android:id="@+id/forgotPasswordText"
+      android:layout_width="wrap_content"
+      android:layout_height="wrap_content"
+      android:layout_gravity="end"
+      android:layout_marginTop="16dp"
+      android:text="@string/forgot_password"
+      android:textColor="@color/color_text_secondary"
+      android:padding="8dp" />
+
+    <!-- Not a password field: the key is read off paper or another screen, and seeing it
+         is how a mistyped symbol gets caught. -->
+    <EditText
+      android:id="@+id/recoveryInput"
+      style="@style/Widget.LinkShare.Input"
+      android:layout_width="match_parent"
+      android:layout_height="wrap_content"
+      android:layout_marginTop="24dp"
+      android:fontFamily="monospace"
+      android:hint="@string/recovery_key_hint"
+      android:importantForAutofill="no"
+      android:inputType="textCapCharacters|textNoSuggestions|textVisiblePassword"
+      android:visibility="gone" />
+
+    <include
+      android:id="@+id/recoveryKeyView"
+      layout="@layout/view_recovery_key"
+      android:layout_width="match_parent"
+      android:layout_height="wrap_content"
+      android:layout_marginTop="24dp"
+      android:visibility="gone" />
+
+    <!-- A live region, so TalkBack reads a failed step out: the error appears away from the
+         button that was pressed, and nothing else on the screen changes to say it failed. -->
+    <TextView
+      android:id="@+id/errorText"
+      style="@style/Widget.LinkShare.ErrorText"
+      android:layout_width="match_parent"
+      android:layout_height="wrap_content"
+      android:layout_marginTop="16dp"
+      android:accessibilityLiveRegion="polite"
+      android:visibility="gone" />
+
+    <ProgressBar
+      android:id="@+id/progress"
+      android:layout_width="wrap_content"
+      android:layout_height="wrap_content"
+      android:layout_gravity="center_horizontal"
+      android:layout_marginTop="16dp"
+      android:indeterminateTint="@color/color_primary"
+      android:visibility="gone" />
+
+    <Button
+      android:id="@+id/loginButton"
+      style="@style/Widget.LinkShare.PrimaryButton"
+      android:layout_width="match_parent"
+      android:layout_height="wrap_content"
+      android:layout_marginTop="32dp"
+      android:text="@string/sign_in" />
+
+    <Button
+      android:id="@+id/registerButton"
+      style="@style/Widget.LinkShare.OutlineButton"
+      android:layout_width="match_parent"
+      android:layout_height="wrap_content"
+      android:layout_marginTop="16dp"
+      android:text="@string/register" />
+
+  </LinearLayout>
+</ScrollView>

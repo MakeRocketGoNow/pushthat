@@ -4,6 +4,8 @@ import { Link, useSearchParams } from 'react-router';
 
 import Button from '@/components/Button';
 import GlowButton from '@/components/GlowButton';
+import styles from '@/components/KeyStep.module.css';
+import { RecoveryKey } from '@/components/RecoveryKey';
 import {
   KeysChangedError,
   PasswordChangedError,
@@ -17,11 +19,7 @@ import {
   setNewPassword,
   startNewKeys,
 } from '@/services/passwordReset';
-
-import styles from './ResetPassword.module.css';
-
-// What docs/e2ee.md asks of a new password at sign-up, since the password is the key.
-const MIN_PASSWORD_LENGTH = 10;
+import { MIN_PASSWORD_LENGTH } from '@/services/signIn';
 
 /*
  * A new recovery key is stored on the server before it is shown, and the reset link is
@@ -323,9 +321,8 @@ export function ResetPassword() {
             <h2 tabIndex={-1} className={styles.title}>
               Your password is changed
             </h2>
-            {/* True once phase 3's sign-in (docs/e2ee.md) treats a working password with no
-                key it can open as this page does; the reset email reaches this page only
-                after those clients are out (docs/deploying.md). */}
+            {/* The sign-in (services/signIn.ts, and its copy on each app) asks for the
+                recovery key when a working password opens no wrap, as this page does. */}
             <p className={styles.message}>
               The keys to your pushes could not be updated. Sign in with your new password and the app will finish.
             </p>
@@ -493,7 +490,6 @@ function NewRecoveryKey({
   onDone: () => void;
 }) {
   const [saved, setSaved] = useState(false);
-  const [copied, setCopied] = useState<'no' | 'yes' | 'failed'>('no');
 
   // Closing the tab ends the sessionStorage copy too, so the browser asks first until the
   // user says they saved the key.
@@ -507,17 +503,6 @@ function NewRecoveryKey({
     window.addEventListener('beforeunload', ask);
     return () => window.removeEventListener('beforeunload', ask);
   }, [saved]);
-
-  const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(recoveryKey);
-      setCopied('yes');
-    } catch {
-      // No clipboard (an insecure context, or permission refused): say so, since the button
-      // would otherwise look as if it had worked, and the key is on screen to copy by hand.
-      setCopied('failed');
-    }
-  };
 
   return (
     <>
@@ -539,16 +524,7 @@ function NewRecoveryKey({
           Some of your locked pushes could not be deleted. They stay in your list, where you can delete them.
         </p>
       )}
-      <code className={styles.recoveryKey}>{recoveryKey}</code>
-      <Button type="button" outline className={styles.button} onClick={copy}>
-        {copied === 'yes' ? 'Copied' : copied === 'failed' ? 'Copy failed, select the key above' : 'Copy'}
-      </Button>
-      <label className={styles.checkbox}>
-        <input type="checkbox" checked={saved} onChange={(e) => setSaved(e.target.checked)} />I saved it
-      </label>
-      <GlowButton type="button" className={styles.button} disabled={!saved} onClick={onDone}>
-        Continue
-      </GlowButton>
+      <RecoveryKey recoveryKey={recoveryKey} onSavedChange={setSaved} onDone={onDone} />
     </>
   );
 }

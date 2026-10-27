@@ -19,6 +19,16 @@ the same thing from the command line:
 xcodebuild -project PushThat.xcodeproj -scheme PushThat -destination 'generic/platform=iOS Simulator' build
 ```
 
+The `PushThatTests` target checks the encryption keys ([e2ee](e2ee.md)) byte for byte
+against `packages/push-test/vectors.json`, which it copies in from the repository, and
+checks what a sign-in and each key write decide from the stored keys (`AccountKeyMaps.swift`,
+kept apart from the Firestore calls so the tests need no Firebase). It runs
+on any simulator you have (`xcrun simctl list devices available`):
+
+```bash
+xcodebuild -project PushThat.xcodeproj -scheme PushThat -destination 'platform=iOS Simulator,name=iPhone 16 Pro' test
+```
+
 The project carries no development team (`DEVELOPMENT_TEAM` is empty), so signing for a
 device needs your own: select the project, then each of the two targets, Signing &
 Capabilities, and pick a team. A simulator build needs none.

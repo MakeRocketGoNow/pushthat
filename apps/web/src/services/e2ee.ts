@@ -1,13 +1,14 @@
 // The end-to-end encryption keys (docs/e2ee.md at the repository root), as far as the web
-// app needs them so far: deriving the password's keys, and wrapping the account key under
-// them and under the recovery key, which is what the password reset page does. Phase 3
-// adds the rest.
+// app needs them so far: deriving the password's keys, wrapping the account key under them
+// and under the recovery key (the sign-in and the password reset page), and the account
+// key's subkeys, raw and in the non-extractable form the app stores. The push envelope,
+// files and search come with phase 4.
 //
 // Lifted from the reference implementation, packages/push-test/e2ee.mjs, which is written
 // on WebCrypto and btoa/atob so that it runs in the browser unchanged; this is that code
-// with types, and taking raw bytes only (the reference also takes a CryptoKey, which the
-// reset page never holds). A change here that changes a byte is a change to the
-// specification: `npm run test:vectors` checks every function against vectors.json.
+// with types, and the wraps take raw bytes only (the reference also takes a CryptoKey,
+// which nothing here holds while wrapping). A change here that changes a byte is a change
+// to the specification: `npm run test:keys` checks every function against vectors.json.
 //
 // Only erasable TypeScript (no enums, no parameter properties) and no imports, so that
 // Node runs this file as it is for the vector test.
@@ -168,6 +169,54 @@ export const deriveKeys = async (email: string, password: string): Promise<Deriv
 
 export const newAccountKey = (): Uint8Array => randomBytes(32);
 export const newWrapId = (): string => base64url(randomBytes(8));
+export const newDeviceId = (): string => base64url(randomBytes(16));
+
+export interface AccountSubkeys {
+  metaKey: Uint8Array;
+  searchKey: Uint8Array;
+}
+
+/** The two subkeys as bytes, written out as the spec writes them; the vectors pin these. */
+export const accountSubkeys = async (accountKey: Uint8Array): Promise<AccountSubkeys> => ({
+  metaKey: await hkdfOneBlock(accountKey, 'pushthat/meta/v1'),
+  searchKey: await hkdfOneBlock(accountKey, 'pushthat/search/v1'),
+});
+
+/**
+ * The account key as the web app keeps it after sign-in (docs/e2ee.md, Where keys live
+ * on each device): an HKDF base key that cannot be exported, which IndexedDB stores as
+ * it is. A script on the page can derive the subkeys from it and use them, and can never
+ * read a byte of any of them.
+ */
+export const accountBaseKey = (accountKey: Uint8Array): Promise<CryptoKey> =>
+  subtle.importKey('raw', accountKey, 'HKDF', false, ['deriveKey']);
+
+/**
+ * The subkeys from the stored base key, by WebCrypto's own HKDF with an empty salt, which
+ * is byte for byte `accountSubkeys` (the vector test checks one against the other). Also
+ * not extractable.
+ */
+export const accountSubkeyKeys = async (base: CryptoKey): Promise<{ metaKey: CryptoKey; searchKey: CryptoKey }> => {
+  const hkdf = (label: string): HkdfParams => ({
+    name: 'HKDF',
+    hash: 'SHA-256',
+    salt: new Uint8Array(0),
+    info: utf8(label),
+  });
+  return {
+    metaKey: await subtle.deriveKey(hkdf('pushthat/meta/v1'), base, { name: 'AES-GCM', length: 256 }, false, [
+      'encrypt',
+      'decrypt',
+    ]),
+    searchKey: await subtle.deriveKey(
+      hkdf('pushthat/search/v1'),
+      base,
+      { name: 'HMAC', hash: 'SHA-256', length: 256 },
+      false,
+      ['sign']
+    ),
+  };
+};
 
 const wrapAad = (uid: string): Uint8Array => utf8('pushthat/wrap/v1:' + uid);
 

@@ -13,6 +13,16 @@
         android:title="@string/plan"
         android:theme="@style/PopupMenuTextStyle" />
       <item
+        android:id="@+id/nav_change_password"
+        android:icon="@drawable/ic_lock"
+        android:title="@string/change_password"
+        android:theme="@style/PopupMenuTextStyle" />
+      <item
+        android:id="@+id/nav_new_recovery_key"
+        android:icon="@drawable/ic_key"
+        android:title="@string/new_recovery_key"
+        android:theme="@style/PopupMenuTextStyle" />
+      <item
         android:id="@+id/nav_logout"
         android:icon="@drawable/ic_logout"
         android:title="@string/logout"

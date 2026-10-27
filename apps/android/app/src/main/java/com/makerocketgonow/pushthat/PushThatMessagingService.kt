@@ -18,6 +18,7 @@ import com.google.firebase.messaging.FirebaseMessagingService
 import com.google.firebase.messaging.RemoteMessage
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import androidx.core.app.TaskStackBuilder
+import com.makerocketgonow.pushthat.e2ee.AccountKeyStore
 
 class PushThatMessagingService : FirebaseMessagingService() {
     private val TAG = "PushThatMessaging"
@@ -131,6 +132,9 @@ class PushThatMessagingService : FirebaseMessagingService() {
     private fun updateUserFcmToken(token: String) {
         val currentUser = FirebaseAuth.getInstance().currentUser
         if (currentUser == null) {
+            // A session that ended other than by Logout leaves the key behind; it goes now
+            // (see LoginActivity.onCreate).
+            AccountKeyStore.clear(this)
             Log.w(TAG, "No user logged in, cannot update FCM token")
             return
         }

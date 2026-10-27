@@ -2,6 +2,7 @@ import { User, signOut as firebaseSignOut, getAuth, onAuthStateChanged } from 'f
 import { createContext, useContext, useEffect, useState } from 'react';
 
 import { auth } from '@/config/firebase';
+import { sendToExtension } from '@/services/extension';
 
 interface AuthContextType {
   isAuthenticated: boolean;
@@ -28,10 +29,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setUser(user);
       setLoading(false);
 
-      if (chrome && chrome.runtime && chrome.runtime.sendMessage) {
-        console.debug('Sending message to background script');
-        chrome.runtime.sendMessage({ type: 'ON_AUTH_STATE_CHANGED', user: user });
-      }
+      sendToExtension({ type: 'ON_AUTH_STATE_CHANGED', user: user });
     });
 
     return unsubscribe;

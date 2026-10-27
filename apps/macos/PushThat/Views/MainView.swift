@@ -3,10 +3,13 @@ import PhotosUI
 import UniformTypeIdentifiers
 
 struct MainView: View {
+    @EnvironmentObject var authViewModel: AuthViewModel
     @StateObject private var viewModel = PushListViewModel()
     @State private var searchText = ""
     @State private var isDragOver = false
     @State private var showPlan = false
+    @State private var showChangePassword = false
+    @State private var confirmNewRecoveryKey = false
 
     var body: some View {
         NavigationStack {
@@ -38,6 +41,11 @@ struct MainView: View {
                 PlanView()
                     .frame(minWidth: 360, minHeight: 320)
             }
+            .accountSettings(
+                authViewModel: authViewModel,
+                showChangePassword: $showChangePassword,
+                confirmNewRecoveryKey: $confirmNewRecoveryKey
+            )
             .alert("Error", isPresented: $viewModel.showError) {
                 Button("OK") {}
             } message: {
@@ -182,7 +190,15 @@ struct MainView: View {
                     Label("Plan", systemImage: "star")
                 }
 
-                Button(action: { viewModel.logout() }) {
+                Button(action: { showChangePassword = true }) {
+                    Label("Change password", systemImage: "key")
+                }
+
+                Button(action: { confirmNewRecoveryKey = true }) {
+                    Label("Show a new recovery key", systemImage: "lock.rotation")
+                }
+
+                Button(action: { authViewModel.signOut() }) {
                     Label("Logout", systemImage: "rectangle.portrait.and.arrow.right")
                 }
             } label: {
@@ -263,6 +279,7 @@ struct MainView: View {
 
 #Preview {
     MainView()
+        .environmentObject(AuthViewModel())
 }
 
 // MARK: - Plan

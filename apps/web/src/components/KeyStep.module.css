@@ -1,4 +1,6 @@
-/* The sign-in page's frame (Login.module.css), so the reset reads as part of signing in. */
+/* The frame of the password reset page and of the key steps behind the route guard
+   (KeyGate), after the sign-in page's (Login.module.css), so both read as part of
+   signing in. One file, so that a fix to either is a fix to both. */
 .container {
   min-height: var(--min-height);
   display: flex;
@@ -81,31 +83,6 @@
 .button:disabled {
   cursor: default;
   opacity: 0.6;
-}
-
-/* Large and monospaced, so the 32 symbols can be read back and written down. A line
-   breaks at a hyphen, between groups, and inside one only on a screen too narrow for a
-   group. */
-.recoveryKey {
-  display: block;
-  padding: 12px;
-  border: 1px solid var(--color-border);
-  border-radius: 4px;
-  background-color: var(--color-surface);
-  color: var(--color-text);
-  font-size: 1.125rem;
-  letter-spacing: 1px;
-  overflow-wrap: break-word;
-  user-select: all;
-}
-
-.checkbox {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  margin-top: 1.5rem;
-  color: var(--color-text);
 }
 
 .footer {

@@ -77,7 +77,7 @@ Only `accountKey` is kept after sign-in; `masterKey` is dropped as soon as the a
 | Android          | A Keystore-wrapped entry in app storage, readable by `ShareActivity`, `RetryPushWorker` and `PushThatMessagingService`                                |
 | iOS, macOS       | Keychain in the access group `group.com.makerocketgonow.pushthat`, `kSecAttrAccessibleAfterFirstUnlock`, so the share extensions and the notification service extension read it while the phone is locked |
 | Web              | A non-extractable `CryptoKey` in IndexedDB: the page can use it, scripts cannot export it                                                           |
-| Chrome extension | The same, in the service worker's IndexedDB; the bundled web page hands the raw key to the worker over `chrome.runtime.sendMessage` once at sign-in, alongside the `ON_AUTH_STATE_CHANGED` message it sends today |
+| Chrome extension | The same IndexedDB: the bundled web page and the service worker share the extension's origin, so the key the page stores at sign-in is the worker's too, and its bytes are never sent between them |
 
 A device that holds a Firebase session but no key (an install that updated while signed in) prompts for the password once and derives.
 

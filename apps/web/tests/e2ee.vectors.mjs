@@ -1,6 +1,6 @@
 // The web app's copy of the encryption keys (src/services/e2ee.ts) against the test
 // vectors the reference produced (packages/push-test/vectors.json): `npm run
-// test:vectors`. Node runs the TypeScript as it is, by stripping its types, so nothing is
+// test:keys`. Node runs the TypeScript as it is, by stripping its types, so nothing is
 // built first. Not a `*.test.mjs`, which `npm run test:rules` would pick up and run under
 // the emulators it does not need.
 import assert from 'node:assert/strict';
@@ -9,10 +9,16 @@ import { describe, test } from 'node:test';
 
 import {
   KDF,
+  accountBaseKey,
+  accountSubkeyKeys,
+  accountSubkeys,
+  aesGcmSeal,
   base64,
   decodeRecoveryKey,
   deriveKeys,
   encodeRecoveryKey,
+  hmacSha256,
+  newDeviceId,
   recoveryWrappingKey,
   unwrapAccountKey,
   wrapAccountKey,
@@ -33,6 +39,40 @@ describe('the keys from the password and the email', () => {
     assert.equal(hex(derived.authKey), keys.authKey);
     assert.equal(hex(derived.masterKey), keys.masterKey);
     assert.equal(derived.firebasePassword, keys.firebasePassword);
+  });
+});
+
+describe('the account key and its subkeys', () => {
+  const { account, push } = vectors;
+  const accountKey = fromHex(account.accountKey);
+
+  test('match the vector byte for byte', async () => {
+    const { metaKey, searchKey } = await accountSubkeys(accountKey);
+    assert.equal(hex(metaKey), account.metaKey);
+    assert.equal(hex(searchKey), account.searchKey);
+  });
+
+  // What the app stores is the non-extractable base key, and the subkeys come from it by
+  // WebCrypto's HKDF; they cannot be read to compare, so compare what they do instead.
+  test('the stored form gives the same subkeys', async () => {
+    const { metaKey, searchKey } = await accountSubkeyKeys(await accountBaseKey(accountKey));
+    const raw = await accountSubkeys(accountKey);
+    assert.equal(metaKey.extractable, false);
+    assert.equal(searchKey.extractable, false);
+
+    const message = new TextEncoder().encode('a message');
+    const signed = new Uint8Array(await crypto.subtle.sign('HMAC', searchKey, message));
+    assert.equal(hex(signed), hex(await hmacSha256(raw.searchKey, message)));
+
+    const nonce = fromHex(push.nonce);
+    const aad = fromHex(push.aad);
+    const params = { name: 'AES-GCM', iv: nonce, additionalData: aad, tagLength: 128 };
+    const sealed = new Uint8Array(await crypto.subtle.encrypt(params, metaKey, message));
+    assert.equal(hex(sealed), hex(await aesGcmSeal(raw.metaKey, nonce, message, aad)));
+  });
+
+  test('a device id is 16 bytes in unpadded base64url', () => {
+    assert.match(newDeviceId(), /^[A-Za-z0-9_-]{22}$/);
   });
 });
 
@@ -61,6 +101,7 @@ describe('the account key wraps', () => {
     assert.equal(hex(wrappingKey), recovery.wrappingKey);
     const wrap = await wrapAccountKey(wrappingKey, accountKey, account.uid, 'recovery', fromHex(recovery.wrap.nonce));
     assert.deepEqual(wrap, { by: 'recovery', n: recovery.wrap.n, ct: recovery.wrap.ct });
+    assert.equal(hex(await unwrapAccountKey(wrappingKey, wrap, account.uid)), account.accountKey);
   });
 
   test('a recovery key read back as someone would type it', () => {
