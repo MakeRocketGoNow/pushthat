@@ -5,6 +5,14 @@
  */
 
 .container {
+  /*
+   * The page's three shades of secondary text, named so the palette changes in one
+   * place: body copy, the copy inside cards and steps, and fine print.
+   */
+  --text-body: rgba(255, 255, 255, 0.78);
+  --text-muted: rgba(255, 255, 255, 0.72);
+  --text-faint: rgba(255, 255, 255, 0.6);
+
   display: flex;
   flex-direction: column;
   gap: 96px;
@@ -68,7 +76,7 @@
 .subtitle {
   font-size: clamp(17px, 1.6vw, 19px);
   line-height: 1.55;
-  color: rgba(255, 255, 255, 0.78);
+  color: var(--text-body);
   max-width: 56ch;
 }
 
@@ -99,7 +107,7 @@
 
 .finePrint {
   font-size: 14px;
-  color: rgba(255, 255, 255, 0.55);
+  color: var(--text-faint);
 }
 
 /*
@@ -232,7 +240,7 @@
 .intro {
   font-size: 18px;
   line-height: 1.55;
-  color: rgba(255, 255, 255, 0.78);
+  color: var(--text-body);
   max-width: 64ch;
 }
 
@@ -260,7 +268,7 @@
   font-size: 20px;
 }
 .step p {
-  color: rgba(255, 255, 255, 0.72);
+  color: var(--text-muted);
   line-height: 1.55;
 }
 
@@ -293,7 +301,7 @@
 .bandText p {
   font-size: 17px;
   line-height: 1.6;
-  color: rgba(255, 255, 255, 0.78);
+  color: var(--text-body);
 }
 
 .bandVisual {
@@ -375,7 +383,7 @@
   font-size: 18px;
 }
 .card p {
-  color: rgba(255, 255, 255, 0.72);
+  color: var(--text-muted);
   line-height: 1.55;
   font-size: 15px;
 }
@@ -389,7 +397,7 @@
 .honest {
   font-size: 15px;
   line-height: 1.6;
-  color: rgba(255, 255, 255, 0.72);
+  color: var(--text-muted);
   max-width: 72ch;
 }
 .honest strong {
@@ -442,7 +450,7 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
-  color: rgba(255, 255, 255, 0.78);
+  color: var(--text-body);
 }
 .tierPro {
   border-color: var(--color-primary);
@@ -462,11 +470,11 @@
   font-size: 14px;
   font-weight: 400;
   letter-spacing: 0;
-  color: rgba(255, 255, 255, 0.6);
+  color: var(--text-faint);
 }
 .pricingNote {
   max-width: 560px;
-  color: rgba(255, 255, 255, 0.6);
+  color: var(--text-faint);
   font-size: 15px;
 }
 
@@ -483,7 +491,7 @@
   padding-top: 20px;
   gap: 12px;
   font-size: 14px;
-  color: rgba(255, 255, 255, 0.6);
+  color: var(--text-faint);
 }
 .footerBrand {
   display: inline-flex;
@@ -496,7 +504,7 @@
   gap: 16px;
 }
 .footerNav a {
-  color: rgba(255, 255, 255, 0.8);
+  color: var(--text-body);
   text-decoration: none;
 }
 .footerNav a:hover {
