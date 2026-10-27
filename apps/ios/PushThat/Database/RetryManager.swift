@@ -86,7 +86,8 @@ class RetryManager {
                         do {
                             try await PushDocuments.create(push, firestore: db)
                         } catch where PushDocuments.isPermissionDenied(error) {
-                            await dropRefused(push)
+                            // Not known yet whether it landed: the row stays for the next run.
+                            guard await dropRefused(push) else { continue }
                         }
                         context.delete(pending)
                         try context.save()
@@ -116,10 +117,19 @@ class RetryManager {
 
     /// After a refusal, read from the server: an earlier attempt whose reply was lost may
     /// have landed, and then this set was an update the rules refuse. That push exists and
-    /// keeps its object; only one that never landed loses its upload.
-    private func dropRefused(_ push: PreparedPush) async {
-        let exists = (try? await db.collection("pushes").document(push.pushId).getDocument(source: .server).exists) ?? false
-        guard !exists, push.type == "file", let objectPath = push.objectPath else { return }
-        try? await Storage.storage().reference(withPath: objectPath).delete()
+    /// keeps its object; only one that never landed loses its upload. False when the read
+    /// itself fails (offline, say): a failed read is not "never landed", and deleting on it
+    /// could take the object of a push that exists, so the row waits for the next run.
+    private func dropRefused(_ push: PreparedPush) async -> Bool {
+        let exists: Bool
+        do {
+            exists = try await db.collection("pushes").document(push.pushId).getDocument(source: .server).exists
+        } catch {
+            return false
+        }
+        if !exists, push.type == "file", let objectPath = push.objectPath {
+            try? await Storage.storage().reference(withPath: objectPath).delete()
+        }
+        return true
     }
 }
