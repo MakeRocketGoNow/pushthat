@@ -53,7 +53,7 @@ function HowItWorks() {
     },
     {
       title: 'Share it',
-      body: 'Tap PushThat in the share sheet on your phone. On a computer, paste it into PushThat on the web or in the Chrome extension. A link, a page, a photo, a PDF.',
+      body: 'Tap PushThat in the share sheet on your phone. On a computer, paste a link or pick a file in PushThat on the web or in the Chrome extension. A link, a page, a photo, a PDF.',
     },
     {
       title: 'It is already there',
