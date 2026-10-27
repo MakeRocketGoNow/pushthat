@@ -80,8 +80,10 @@ export function Security() {
           install from us are what you trust.
         </li>
         <li>
-          <strong>Files pushed before encryption.</strong> A file pushed before your app updated was stored as it was
-          sent, under its own name, and stays that way until it expires, within {LIMITS.pro.keepDays} days.
+          <strong>Pushes made before encryption.</strong> A link pushed before your apps updated, and its title, stay as
+          they were sent until an updated app signs in to your account and encrypts them in place, which it does on its
+          own. A file pushed before then was stored as it was sent, under its own name, and stays that way until it
+          expires, within {LIMITS.pro.keepDays} days.
         </li>
         <li>
           <strong>An unlocked device.</strong> The key is kept in the device&rsquo;s secure storage, where the app can
