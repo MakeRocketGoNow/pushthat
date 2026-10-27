@@ -1,9 +1,11 @@
 import { FirebaseError } from 'firebase/app';
 
-import { LIMITS } from '@/config/plan';
-
-import { isExtensionPage } from './extension';
-import { PlanReport } from './plan';
+// By file name and without the `@/` alias, so that `npm run test:keys` can load this in plain
+// Node (tests/pushRefusal.mjs), as it does keyDecisions.ts. plan.ts is read for its type
+// alone, which Node strips, so its Firebase Functions import is never loaded there.
+import { LIMITS } from '../config/plan.ts';
+import { isExtensionPage } from './extension.ts';
+import type { PlanReport } from './plan.ts';
 
 /**
  * What the Push page says when the Firestore rules refuse a push. The rules say no as a
