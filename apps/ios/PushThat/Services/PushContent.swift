@@ -36,10 +36,12 @@ enum PushContent: Equatable {
     }
 
     /// What the blind index is made from: a URL push's title and URL together, so a push
-    /// with no title yet is found by its host and path, and a file push's name.
+    /// with no title yet is found by its host and path, and a file push's name. The title is
+    /// cut as the envelope cuts it, so no push is found by words it does not hold, and an
+    /// overlong title cannot crowd the URL's tokens out of the 3000.
     var searchText: String {
         switch self {
-        case let .url(url, title, _): return title + " " + url
+        case let .url(url, title, _): return String(title.prefix(Self.maxTitleLength)) + " " + url
         case let .file(file): return file.name
         }
     }
