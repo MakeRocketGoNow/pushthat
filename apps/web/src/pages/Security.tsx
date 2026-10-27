@@ -8,8 +8,8 @@ import { MIN_PASSWORD_LENGTH } from '@/services/signIn';
 /**
  * Security, `/security`: the gist of docs/e2ee.md for the people it protects. What is
  * encrypted, what is not, what a lost password costs, and the recovery key. Public, like
- * Support, since the sign-up and the Plan page link here and the reader may not have an
- * account yet.
+ * Support, since the front page and Support link here and the reader may not have an
+ * account yet; the Plan page links here too.
  *
  * It says what is not protected as plainly as what is: the reason for a key made from the
  * password is that the user can see what it does, and a page that only listed the
