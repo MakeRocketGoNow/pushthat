@@ -103,21 +103,22 @@ async function openKeys(owner: KeyOwner, user: User, keys: DerivedKeys, legacy: 
 
   switch (outcome.kind) {
     case 'opened':
-      if (!legacy) return finish({ user, keys, legacy }, outcome.accountKey);
+      if (!legacy) return finish({ user, keys, legacy }, outcome.accountKey, outcome.e2ee.keyVersion);
       // Keys this password opens on an account Firebase still knows by the raw password:
       // an earlier migration wrote them and stopped before `updatePassword`, so the user
       // may never have seen the recovery key. A new one, shown now, is one they have.
       return finish(
         { user, keys, legacy },
         outcome.accountKey,
+        outcome.e2ee.keyVersion,
         await replaceRecoveryKey(owner, outcome.accountKey, outcome.e2ee.keyVersion)
       );
     case 'needsRecovery':
       return { kind: 'needsRecovery', session: { owner, user, keys, legacy, e2ee: outcome.e2ee } };
     case 'needsNewKeys': {
       // A legacy account's first sign-in, or an account whose keys nothing opens.
-      const { accountKey, recoveryKey } = await startNewKeys(owner, keys.masterKey, { e2ee: outcome.e2ee });
-      return finish({ user, keys, legacy }, accountKey, recoveryKey);
+      const { accountKey, recoveryKey, e2ee } = await startNewKeys(owner, keys.masterKey, { e2ee: outcome.e2ee });
+      return finish({ user, keys, legacy }, accountKey, e2ee.keyVersion, recoveryKey);
     }
   }
 }
@@ -127,14 +128,19 @@ export async function register(email: string, password: string): Promise<KeysRes
   const keys = await deriveKeys(email, password);
   const { user } = await createUserWithEmailAndPassword(auth, email, keys.firebasePassword);
   const owner: KeyOwner = { db: getFirestore(app), uid: user.uid, email };
-  const { accountKey, recoveryKey } = await startNewKeys(owner, keys.masterKey, { e2ee: undefined });
-  return finish({ user, keys, legacy: false }, accountKey, recoveryKey);
+  const { accountKey, recoveryKey, e2ee } = await startNewKeys(owner, keys.masterKey, { e2ee: undefined });
+  return finish({ user, keys, legacy: false }, accountKey, e2ee.keyVersion, recoveryKey);
 }
 
 /** Opens the account key with the recovery key and wraps it under this password. */
 export async function recover(session: KeySession, recoveryText: string): Promise<KeysResult> {
-  const { accountKey } = await rewrapWithRecoveryKey(session.owner, session.e2ee, session.keys.masterKey, recoveryText);
-  return finish(session, accountKey);
+  const { accountKey, e2ee } = await rewrapWithRecoveryKey(
+    session.owner,
+    session.e2ee,
+    session.keys.masterKey,
+    recoveryText
+  );
+  return finish(session, accountKey, e2ee.keyVersion);
 }
 
 /**
@@ -144,10 +150,10 @@ export async function recover(session: KeySession, recoveryText: string): Promis
  * key), this throws `KeysChangedError` rather than undo that.
  */
 export async function startOver(session: KeySession): Promise<KeysResult> {
-  const { accountKey, recoveryKey } = await startNewKeys(session.owner, session.keys.masterKey, {
+  const { accountKey, recoveryKey, e2ee } = await startNewKeys(session.owner, session.keys.masterKey, {
     e2ee: session.e2ee,
   });
-  return finish(session, accountKey, recoveryKey);
+  return finish(session, accountKey, e2ee.keyVersion, recoveryKey);
 }
 
 /**
@@ -166,13 +172,13 @@ export async function startOver(session: KeySession): Promise<KeysResult> {
 async function finish(
   session: Pick<KeySession, 'user' | 'keys' | 'legacy'>,
   accountKey: Uint8Array,
+  keyVersion: number,
   recoveryKey?: string
 ): Promise<KeysResult> {
   if (session.legacy) await updatePassword(session.user, session.keys.firebasePassword);
   try {
-    await saveAccountKey(session.user.uid, accountKey, recoveryKey);
-    // Made here so that the install has its id from its first sign-in, before phase 4's
-    // pushes need one.
+    await saveAccountKey(session.user.uid, accountKey, keyVersion, recoveryKey);
+    // Made here so that the install has its id from its first sign-in, before its first push.
     await deviceId();
   } catch (error) {
     if (!recoveryKey) throw error;

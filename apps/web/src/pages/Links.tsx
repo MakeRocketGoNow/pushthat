@@ -1,5 +1,6 @@
 import {
   DocumentData,
+  QueryConstraint,
   QueryDocumentSnapshot,
   QuerySnapshot,
   collection,
@@ -20,7 +21,8 @@ import PushesList from '@/components/PushesList';
 import { TrashIcon } from '@/components/icons/TrashIcon';
 import { useAuth } from '@/contexts/AuthContext';
 import { useDebounce } from '@/hooks/useDebounce';
-import { Push, PushData } from '@/types/pushes';
+import { KEYS_UNAVAILABLE, usePushKeys } from '@/hooks/usePushKeys';
+import { type Push, type PushKeys, readPush, searchTokenFor } from '@/services/pushes';
 
 import styles from './Links.module.css';
 
@@ -40,29 +42,35 @@ export default function Links() {
   const [lastDoc, setLastDoc] = useState<QueryDocumentSnapshot | null>(null);
   const observerTarget = useRef<HTMLDivElement>(null);
   const lastRefreshTime = useRef<number>(Date.now());
+  const { keys, failed: keysFailed } = usePushKeys();
+
+  // The search, as the stored tokens have it: the blind token of the term's first word
+  // (docs/e2ee.md, Search). A plaintext push not yet migrated is not found by a search,
+  // only listed; the migration that runs on sign-in is what makes it findable again.
+  const searchConstraints = async (keys: PushKeys, search?: string): Promise<QueryConstraint[]> => {
+    const token = search ? await searchTokenFor(keys, search) : undefined;
+    return token ? [where('searchTokens', 'array-contains', token)] : [];
+  };
 
   const fetchPushes = async (search?: string) => {
-    if (!user) return;
+    if (!user || !keys) return;
 
     try {
       setLoading(true);
       const db = getFirestore();
       const pushesRef = collection(db, 'pushes');
 
-      // Build base query constraints
-      const constraints = [where('userId', '==', user.uid), orderBy('createdAt', 'desc'), limit(ITEMS_PER_PAGE)];
-
-      // Add search constraint if search term exists
-      if (search?.trim()) {
-        // Convert search term to lowercase for case-insensitive search
-        const searchLower = search.toLowerCase();
-        constraints.push(where('searchTokens', 'array-contains', searchLower));
-      }
+      const constraints = [
+        where('userId', '==', user.uid),
+        orderBy('createdAt', 'desc'),
+        limit(ITEMS_PER_PAGE),
+        ...(await searchConstraints(keys, search)),
+      ];
 
       const q = query(pushesRef, ...constraints);
       const querySnapshot = await getDocs(q);
 
-      const pushesData = processPushesSnapshot(querySnapshot);
+      const pushesData = await processPushesSnapshot(querySnapshot, keys);
 
       setLastDoc(querySnapshot.docs[querySnapshot.docs.length - 1] || null);
       setHasMore(querySnapshot.docs.length === ITEMS_PER_PAGE);
@@ -76,7 +84,7 @@ export default function Links() {
   };
 
   const loadMore = async () => {
-    if (!user || !hasMore || !lastDoc || loading) return;
+    if (!user || !keys || !hasMore || !lastDoc || loading) return;
 
     try {
       setLoading(true);
@@ -88,17 +96,13 @@ export default function Links() {
         orderBy('createdAt', 'desc'),
         startAfter(lastDoc),
         limit(ITEMS_PER_PAGE),
+        ...(await searchConstraints(keys, debouncedSearchTerm)),
       ];
-
-      if (debouncedSearchTerm?.trim()) {
-        const searchLower = debouncedSearchTerm.toLowerCase();
-        constraints.push(where('searchTokens', 'array-contains', searchLower));
-      }
 
       const q = query(pushesRef, ...constraints);
       const querySnapshot = await getDocs(q);
 
-      const newPushesData = processPushesSnapshot(querySnapshot);
+      const newPushesData = await processPushesSnapshot(querySnapshot, keys);
 
       setLastDoc(querySnapshot.docs[querySnapshot.docs.length - 1] || null);
       setHasMore(querySnapshot.docs.length === ITEMS_PER_PAGE);
@@ -111,28 +115,9 @@ export default function Links() {
     }
   };
 
-  // Helper function to process snapshot data
-  const processPushesSnapshot = (querySnapshot: QuerySnapshot<DocumentData, DocumentData>) => {
-    const pushesData: Push[] = [];
-    querySnapshot.forEach((doc: QueryDocumentSnapshot<DocumentData>) => {
-      const data = doc.data();
-      let host = '';
-      try {
-        host = new URL(data.url).hostname;
-      } catch (error) {
-        console.error('Error parsing URL:', error);
-      }
-      const favicon = `https://www.google.com/s2/favicons?domain=${encodeURIComponent(host)}&sz=256`;
-
-      pushesData.push({
-        ...(data as PushData),
-        id: doc.id,
-        favicon,
-        createdAt: data.createdAt.toDate(),
-      });
-    });
-    return pushesData;
-  };
+  // Each push in whichever shape it was stored, decrypted where it is encrypted.
+  const processPushesSnapshot = (querySnapshot: QuerySnapshot<DocumentData, DocumentData>, keys: PushKeys) =>
+    Promise.all(querySnapshot.docs.map((doc: QueryDocumentSnapshot<DocumentData>) => readPush(doc, keys)));
 
   // Set up intersection observer
   useEffect(() => {
@@ -157,7 +142,7 @@ export default function Links() {
     setHasMore(true);
     setPushes([]);
     fetchPushes(debouncedSearchTerm);
-  }, [debouncedSearchTerm, user]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [debouncedSearchTerm, user, keys]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const handleVisibilityChange = () => {
@@ -176,7 +161,9 @@ export default function Links() {
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [debouncedSearchTerm]); // eslint-disable-line react-hooks/exhaustive-deps
+    // `keys` too: they are read from IndexedDB after the first render, and a handler bound
+    // before then would hold a fetchPushes that has none and returns without reading.
+  }, [debouncedSearchTerm, user, keys]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Handle search input changes
   const handleSearch = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -246,8 +233,8 @@ export default function Links() {
 
       <PushesList
         pushes={pushes}
-        error={error}
-        loading={loading && pushes.length === 0}
+        error={keysFailed ? KEYS_UNAVAILABLE : error}
+        loading={(loading || (!keys && !keysFailed)) && pushes.length === 0}
         selectedPushes={selectedPushes}
         onSelectedPushesChange={setSelectedPushes}
       />

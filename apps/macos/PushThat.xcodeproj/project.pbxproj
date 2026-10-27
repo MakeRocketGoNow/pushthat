@@ -54,6 +54,17 @@
 		A1000020226B52E90000000A /* UnlockView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000020226B52E90000000B /* UnlockView.swift */; };
 		A1000020226B52E90000000C /* RecoveryPromptView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000020226B52E90000000D /* RecoveryPromptView.swift */; };
 		A1000020226B52E90000000E /* AccountSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000020226B52E90000000F /* AccountSettings.swift */; };
+		A1000022226B52E900000010 /* PushContent.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000022226B52E900000001 /* PushContent.swift */; };
+		A1000022226B52E900000011 /* PushDocuments.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000022226B52E900000002 /* PushDocuments.swift */; };
+		A1000022226B52E900000012 /* PushMigration.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000022226B52E900000003 /* PushMigration.swift */; };
+		A1000022226B52E900000013 /* PushFileOpener.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000022226B52E900000004 /* PushFileOpener.swift */; };
+		A1000022226B52E900000020 /* E2eeCrypto.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000020226B52E900000002 /* E2eeCrypto.swift */; };
+		A1000022226B52E900000021 /* AccountKeyStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000020226B52E900000005 /* AccountKeyStore.swift */; };
+		A1000022226B52E900000022 /* PushContent.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000022226B52E900000001 /* PushContent.swift */; };
+		A1000022226B52E900000023 /* PushDocuments.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000022226B52E900000002 /* PushDocuments.swift */; };
+		A1000022226B52E900000030 /* SearchTokenGenerator.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000005226B52E900000002 /* SearchTokenGenerator.swift */; };
+		A1000022226B52E900000031 /* PushContent.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000022226B52E900000001 /* PushContent.swift */; };
+		A1000022226B52E900000032 /* AccountKeyStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000020226B52E900000005 /* AccountKeyStore.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -122,6 +133,10 @@
 		A1000020226B52E90000000B /* UnlockView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UnlockView.swift; sourceTree = "<group>"; };
 		A1000020226B52E90000000D /* RecoveryPromptView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecoveryPromptView.swift; sourceTree = "<group>"; };
 		A1000020226B52E90000000F /* AccountSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountSettings.swift; sourceTree = "<group>"; };
+		A1000022226B52E900000001 /* PushContent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PushContent.swift; sourceTree = "<group>"; };
+		A1000022226B52E900000002 /* PushDocuments.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PushDocuments.swift; sourceTree = "<group>"; };
+		A1000022226B52E900000003 /* PushMigration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PushMigration.swift; sourceTree = "<group>"; };
+		A1000022226B52E900000004 /* PushFileOpener.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PushFileOpener.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -256,6 +271,10 @@
 				A1000020226B52E900000002 /* E2eeCrypto.swift */,
 				A1000020226B52E900000005 /* AccountKeyStore.swift */,
 				A1000020226B52E900000007 /* AccountKeyService.swift */,
+				A1000022226B52E900000001 /* PushContent.swift */,
+				A1000022226B52E900000002 /* PushDocuments.swift */,
+				A1000022226B52E900000003 /* PushMigration.swift */,
+				A1000022226B52E900000004 /* PushFileOpener.swift */,
 				A1000020226B52E900000011 /* AccountKeyMaps.swift */,
 			);
 			path = Services;
@@ -462,6 +481,10 @@
 				A1000020226B52E90000000A /* UnlockView.swift in Sources */,
 				A1000020226B52E90000000C /* RecoveryPromptView.swift in Sources */,
 				A1000020226B52E90000000E /* AccountSettings.swift in Sources */,
+				A1000022226B52E900000010 /* PushContent.swift in Sources */,
+				A1000022226B52E900000011 /* PushDocuments.swift in Sources */,
+				A1000022226B52E900000012 /* PushMigration.swift in Sources */,
+				A1000022226B52E900000013 /* PushFileOpener.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -472,6 +495,10 @@
 				A1000009226B52E900000001 /* ShareViewController.swift in Sources */,
 				A1000009226B52E900000008 /* SearchTokenGenerator.swift in Sources */,
 				A1000009226B52E900000009 /* FileUploadUtils.swift in Sources */,
+				A1000022226B52E900000020 /* E2eeCrypto.swift in Sources */,
+				A1000022226B52E900000021 /* AccountKeyStore.swift in Sources */,
+				A1000022226B52E900000022 /* PushContent.swift in Sources */,
+				A1000022226B52E900000023 /* PushDocuments.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -481,6 +508,9 @@
 			files = (
 				A1000021226B52E900000003 /* E2eeVectorTests.swift in Sources */,
 				A1000020226B52E900000003 /* E2eeCrypto.swift in Sources */,
+				A1000022226B52E900000030 /* SearchTokenGenerator.swift in Sources */,
+				A1000022226B52E900000031 /* PushContent.swift in Sources */,
+				A1000022226B52E900000032 /* AccountKeyStore.swift in Sources */,
 				A1000020226B52E900000012 /* AccountKeyMaps.swift in Sources */,
 				A1000021226B52E90000000F /* AccountKeyMapsTests.swift in Sources */,
 			);

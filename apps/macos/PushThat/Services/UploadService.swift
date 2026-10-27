@@ -80,15 +80,16 @@ class UploadService: ObservableObject {
         isUploading = true
         uploadError = nil
 
-        // Start accessing security-scoped resource
+        // The file is read where it is, a chunk at a time, while it is encrypted: held for
+        // the whole upload, the security scope is released once it is done.
         let accessing = url.startAccessingSecurityScopedResource()
-
-        // Read the data synchronously while we have access
-        let data: Data
-        let fileName: String
+        let fileName = url.lastPathComponent
+        let size: Int64
         do {
-            data = try Data(contentsOf: url)
-            fileName = url.lastPathComponent
+            guard let bytes = try url.resourceValues(forKeys: [.fileSizeKey]).fileSize else {
+                throw CocoaError(.fileReadUnknown)
+            }
+            size = Int64(bytes)
         } catch {
             if accessing {
                 url.stopAccessingSecurityScopedResource()
@@ -99,21 +100,35 @@ class UploadService: ObservableObject {
             return
         }
 
-        // Release security-scoped access now that we have the data
-        if accessing {
-            url.stopAccessingSecurityScopedResource()
-        }
-
         Task {
+            defer {
+                if accessing {
+                    url.stopAccessingSecurityScopedResource()
+                }
+            }
             // The tier's file size, which the Storage rules enforce; said here before the upload starts.
             let pro = await PlanService.isPro(userId: userId)
-            if FileUploadUtils.exceedsMaxFileSize(data, isPro: pro) {
+            if FileUploadUtils.exceedsMaxFileSize(bytes: size, isPro: pro) {
                 uploadError = FileUploadUtils.tooLargeMessage("File", isPro: pro)
                 isUploading = false
                 completion(false)
                 return
             }
-            await uploadFileData(data: data, fileName: fileName, userId: userId, completion: completion)
+            do {
+                try await FileUploadUtils.uploadFileAndCreateDocument(
+                    fileURL: url,
+                    fileName: fileName,
+                    userId: userId,
+                    storage: storage,
+                    firestore: db
+                )
+                isUploading = false
+                completion(true)
+            } catch {
+                uploadError = "Upload failed: \(error.localizedDescription)"
+                isUploading = false
+                completion(false)
+            }
         }
     }
 
@@ -121,7 +136,7 @@ class UploadService: ObservableObject {
 
     private func uploadFileData(data: Data, fileName: String, userId: String, completion: @escaping (Bool) -> Void) async {
         do {
-            _ = try await FileUploadUtils.uploadFileAndCreateDocument(
+            try await FileUploadUtils.uploadFileAndCreateDocument(
                 data: data,
                 fileName: fileName,
                 userId: userId,

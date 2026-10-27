@@ -138,15 +138,25 @@ Streaming encryption on upload means a 100 MB file never needs to be in memory t
 
 ## Search
 
-Every client queries `searchTokens` with `array-contains` (the Links page, `MainActivity`'s list, `PushListViewModel`) and writes them with a prefix generator (`SearchTokenGenerator.swift`, `generateSearchTokens` on Android and the web, which differ as described below). That stays, with every token replaced by its blind index:
+Every client queries `searchTokens` with `array-contains` (the Links page, `MainActivity`'s list, `PushListViewModel`) and writes them with a prefix generator. That stays, with every token replaced by its blind index:
 
 ```
 token' = base64url(HMAC-SHA256(searchKey, token))[0:16]     // 96 bits
 ```
 
-The token is HMACed as UTF-8, and 16 base64url characters are 96 bits exactly. A search HMACs the lowercased term the same way and runs the same query, against the composite index the query uses today.
+The token is HMACed as UTF-8, and 16 base64url characters are 96 bits exactly. The query is the one each client runs today, against the composite index it already uses.
 
-The three generators are not byte-identical today: the web app and Android drop punctuation and split on whitespace, where `\w` keeps underscores and only ASCII letters, and iOS splits on anything that is not a letter or a digit. Once the tokens are blinded, a title tokenized two ways gives two different indexes, so phase 4 has to settle on one rule before it ships. The reference tokenizes by the iOS rule with two things pinned that Swift leaves to its String: the text is NFC-normalized, then lowercased, then split on anything that is not a letter, a combining mark or a digit, and a prefix is a count of code points (Swift counts grapheme clusters, which only differs on a cluster that NFC cannot compose into one code point). A search term is normalized the same way before it is HMACed. The vector pins the HMAC per token, so a client checks the HMAC apart from its generator. What the server learns is that two documents share a token and how many tokens each has; because the generator emits every prefix, two titles that share a three-letter prefix share a token. That was weighed against client-side search over a decrypted local cache, which leaks nothing but needs a cache on every platform and loads the whole history on the web, and the blind index was chosen for the first version. It can be replaced per client later without a data change, since the tokens are derivable from the envelope.
+Once the tokens are blinded, a title tokenized two ways gives two indexes that never meet, so every client tokenizes by one rule, the reference's `searchTokens`:
+
+1. The text is NFC-normalized, then lowercased by the full Unicode mapping without a locale.
+2. It is split on every run of code points that are not a letter, a combining mark or a digit (`[^\p{L}\p{M}\p{N}]+`).
+3. Every prefix of every word is a token, counted in code points, and the tokens are kept once each in the order first seen, at most 3000 of them (the rules' bound).
+
+A URL push tokenizes its title and its URL together, so a push with no title yet is found by its host and path; a file push tokenizes its name. A search normalizes and splits the term by the same rule and looks up its first word, so "github repo" finds what "github" finds, as the single `array-contains` always has; a term with no word in it is no search.
+
+This was decided in phase 4. The three generators had drifted: the web app and Android dropped punctuation and split on whitespace (where `\w` keeps underscores and knows only ASCII letters), and iOS split on anything that is not a letter or a digit. The iOS rule was kept because it is the only one that treats every script alike, with two things pinned that Swift leaves to its String: NFC first, so a composed search term finds a decomposed title, and prefixes by code point, which every platform counts cheaply, where Swift counts grapheme clusters (the two differ only on a cluster that NFC cannot compose into one code point). Pushes made before differ in how they were split, which does not matter: the migration below tokenizes each one again by this rule as it encrypts it. The vector pins the tokens of one title and the HMAC of each, so a client checks its generator and its HMAC apart.
+
+What the server learns is that two documents share a token and how many tokens each has; because the generator emits every prefix, two titles that share a three-letter prefix share a token. That was weighed against client-side search over a decrypted local cache, which leaks nothing but needs a cache on every platform and loads the whole history on the web, and the blind index was chosen for the first version. It can be replaced per client later without a data change, since the tokens are derivable from the envelope.
 
 ## Notifications
 
@@ -168,6 +178,8 @@ apns:    { payload: { aps: { alert: { title: "New push" }, "mutable-content": 1,
 - **macOS.** The app is usually running and decrypts in-process; a notification service extension is possible on macOS too and can be added when the iOS one is proven.
 
 Echo suppression compares `deviceId` instead of the device's model name, which also stops two phones of the same model hiding each other's pushes.
+
+One case it does not cover: a link pushed from pushthat.link in a Chrome that also has the extension opens in a new tab there. The site and the extension are two origins with two IndexedDBs, so two device ids, where the old comparison of user agents happened to match them (and also hid every push between two machines on the same Chrome version). Closing it needs the site to ask the extension for its id, through `externally_connectable` and the extension's published id, which the repository does not have yet; until then the duplicate tab is the cost.
 
 ## Titles
 

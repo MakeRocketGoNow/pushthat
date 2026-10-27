@@ -1,6 +1,8 @@
 import Foundation
 import BackgroundTasks
+import FirebaseAuth
 import FirebaseFirestore
+import FirebaseStorage
 import SwiftData
 
 /// Manages background retry of failed push uploads
@@ -62,11 +64,16 @@ class RetryManager {
 
     // MARK: - Retry Logic
 
-    /// Retry all pending pushes stored in local database
+    /// Retry all pending pushes stored in the local database.
+    ///
+    /// A prepared push is written as it was sealed: the same id and ciphertext on every
+    /// attempt. One queued before the encryption update is sealed now under a new id, and
+    /// waits while this device holds no key. A refusal by the rules is final (a key a
+    /// reset replaced, a push over a limit): the push is dropped and a file's upload with
+    /// it. `PushDocuments.create` has already told a refusal from an earlier attempt that
+    /// landed after all (which returns as written, and whose object stays) and from one it
+    /// could not check (`PushError.unconfirmed`, which leaves the row for the next run).
     func retryPendingPushes() {
-        // This would use SwiftData to fetch pending pushes
-        // For now, we'll implement a simple version
-
         Task {
             do {
                 let container = try ModelContainer(for: PendingPush.self)
@@ -75,10 +82,22 @@ class RetryManager {
                 let descriptor = FetchDescriptor<PendingPush>()
                 let pendingPushes = try context.fetch(descriptor)
 
-                for push in pendingPushes {
+                for pending in pendingPushes {
                     do {
-                        try await uploadPendingPush(push)
-                        context.delete(push)
+                        guard let push = try preparedPush(for: pending, in: context) else { continue }
+                        // Under another account, or none, the rules refuse both the write and
+                        // the read back, which reads as "never landed" and would drop the push
+                        // and its file: it waits for its own account, as on Android.
+                        guard push.userId == Auth.auth().currentUser?.uid else { continue }
+                        do {
+                            try await PushDocuments.create(push, firestore: db)
+                        } catch where PushDocuments.isPermissionDenied(error) {
+                            // Read back and missing: this push never landed.
+                            if push.type == "file", let objectPath = push.objectPath {
+                                try? await Storage.storage().reference(withPath: objectPath).delete()
+                            }
+                        }
+                        context.delete(pending)
                         try context.save()
                     } catch {
                         print("Failed to retry push: \(error)")
@@ -90,8 +109,17 @@ class RetryManager {
         }
     }
 
-    private func uploadPendingPush(_ push: PendingPush) async throws {
-        let data = push.toFirestoreData()
-        _ = try await db.collection("pushes").addDocument(data: data)
+    /// The push to write for a queued one, sealing a pre-update one in place so that its
+    /// next attempt reuses the id; nil while there is no key to seal it with.
+    private func preparedPush(for pending: PendingPush, in context: ModelContext) throws -> PreparedPush? {
+        if let push = pending.preparedPush { return push }
+        guard let userId = pending.userId, !userId.isEmpty, let keys = PushKeys.load(uid: userId) else { return nil }
+        let push = try pending.prepareLegacy(keys: keys, pushId: db.collection("pushes").document().documentID)
+        pending.pushId = push.pushId
+        pending.prepared = try JSONEncoder().encode(push)
+        pending.url = ""
+        pending.title = ""
+        try context.save()
+        return push
     }
 }

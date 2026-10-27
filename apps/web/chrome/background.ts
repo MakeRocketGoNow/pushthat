@@ -4,13 +4,24 @@
 /// <reference types="vite/client" />
 import { Axiom } from '@axiomhq/js';
 import { User } from 'firebase/auth';
-import { arrayUnion, doc, getDoc, getFirestore, serverTimestamp, setDoc, updateDoc } from 'firebase/firestore';
+import {
+  arrayUnion,
+  doc,
+  getDoc,
+  getDocFromServer,
+  getFirestore,
+  serverTimestamp,
+  setDoc,
+  updateDoc,
+} from 'firebase/firestore';
 import { getToken } from 'firebase/messaging';
 import { getMessaging } from 'firebase/messaging/sw';
 
 // import { onBackgroundMessage } from 'firebase/messaging/sw';
 
-import { app } from '../src/config/firebase';
+import { app, auth } from '../src/config/firebase';
+import { deviceId } from '../src/services/keyStore';
+import { type Push, loadPushKeys, readPush } from '../src/services/pushes';
 
 declare const self: ServiceWorkerGlobalScope & typeof globalThis;
 
@@ -116,12 +127,72 @@ self.addEventListener('push', (event) => {
   event.waitUntil(handlePush(event));
 });
 
+/**
+ * An encrypted push's message carries its id and nothing readable (docs/e2ee.md,
+ * Notifications), so the worker reads the document and decrypts it with the key the
+ * extension's page stored at sign-in, which is the worker's too: they share the extension's
+ * origin, and with it IndexedDB and the Firebase session. Undefined when it cannot (no key
+ * on this device, signed out, offline, a key a reset replaced): the push is in the list,
+ * which decrypts when opened.
+ */
+async function readReceivedPush(pushId: string): Promise<Push | undefined> {
+  await auth.authStateReady();
+  const uid = auth.currentUser?.uid;
+  if (!uid) return undefined;
+  const db = getFirestore(app);
+  const keys = await loadPushKeys(db, uid);
+  if (!keys) return undefined;
+  // From the server: the push was made a moment ago, on another device.
+  const push = await readPush(await getDocFromServer(doc(db, 'pushes', pushId)), keys);
+  return push.locked ? undefined : push;
+}
+
+/**
+ * An encrypted push: skipped when this browser sent it, which compares the install's
+ * device id now that the push no longer says which browser it came from. A URL opens in a
+ * tab, as it always has. A file has no URL to open, so its push opens the extension's own
+ * page, where the list decrypts and saves it on a click.
+ */
+async function handleEncryptedPush(data: { pushId?: string; deviceId?: string }) {
+  if (data.deviceId && data.deviceId === (await deviceId())) {
+    await debug('Skipping a push this browser sent');
+    return;
+  }
+  let push: Push | undefined;
+  try {
+    push = data.pushId ? await readReceivedPush(data.pushId) : undefined;
+  } catch (error) {
+    await logError('Could not read a received push:', { error: String(error) });
+  }
+
+  if (push?.url && push.type === 'url') {
+    try {
+      await chrome.tabs.create({ url: push.url });
+    } catch (error) {
+      logError('Error opening push URL:', { error: String(error) });
+    }
+  }
+  const page = chrome.runtime.getURL('index.html');
+  await self.registration.showNotification(push?.title || 'New push', {
+    body: push?.type === 'url' ? push.url : push ? 'File' : '',
+    icon: '/icons/icon128.png',
+    silent: true,
+    data: { url: push?.type === 'url' ? push.url : page },
+  });
+}
+
 async function handlePush(event: PushEvent) {
   const data = event.data?.json()?.data;
-  debug('Received push notification ', { data });
+  // The data says which push, never what is in it; the URL is not logged once decrypted.
+  debug('Received push notification ', { pushId: data?.pushId, type: data?.type });
 
   try {
-    // Open the push URL in a new tab.
+    if (data?.pushId && !data.url) {
+      await handleEncryptedPush(data);
+      return;
+    }
+    // A plaintext push, from a client that has not updated, until phase 5 of
+    // docs/e2ee.md refuses them: open the push URL in a new tab, as before.
     if (data?.url && data?.deviceName !== navigator.userAgent) {
       try {
         await chrome.tabs.create({ url: data.url });

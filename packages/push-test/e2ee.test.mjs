@@ -42,6 +42,7 @@ import {
   sealChunk,
   sealPush,
   searchTokens,
+  MAX_SEARCH_TOKENS,
   sha256,
   TAG_LENGTH,
   unwrapAccountKey,
@@ -264,6 +265,14 @@ test("the token generator keeps accents, composes them, and counts code points",
   assert.deepEqual(searchTokens("\u0939\u093f"), ["\u0939", "\u0939\u093f"]);
   // An astral letter is one code point, never half a surrogate pair.
   assert.deepEqual(searchTokens("\u{20000}x"), ["\u{20000}", "\u{20000}x"]);
+});
+
+test("the token generator stops at the rules' bound, keeping the first tokens", () => {
+  // One word of 3001 distinct prefixes and a second word: the first 3000 prefixes survive.
+  const tokens = searchTokens("a".repeat(3001) + " b");
+  assert.equal(tokens.length, MAX_SEARCH_TOKENS);
+  assert.equal(tokens[0], "a");
+  assert.equal(tokens.at(-1), "a".repeat(3000));
 });
 
 test("blind tokens are 16 base64url characters of the HMAC and match the vector", async () => {

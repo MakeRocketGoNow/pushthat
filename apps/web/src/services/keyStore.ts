@@ -23,6 +23,14 @@ interface StoredAccountKey {
   uid: string;
   key: CryptoKey;
   /**
+   * The account's `e2ee.keyVersion` the key was opened at, which every push records. Kept
+   * here rather than read from the user document at push time: after a reset elsewhere the
+   * document has moved on and this key has not, and a push labelled with the new version
+   * but sealed under the old key is one no device could open. With the stored version the
+   * rules refuse it instead. A key saved before phase 4 has none (see pushes.ts).
+   */
+  keyVersion?: number;
+  /**
    * A recovery key made with this key and not yet confirmed with "I saved it". The user
    * leaves the page to save it (a password manager, a note), which is when a tab gets
    * reloaded or discarded; held only in React state it was gone, and the account kept a
@@ -35,6 +43,8 @@ interface StoredAccountKey {
 
 export interface LoadedAccountKey {
   key: CryptoKey;
+  /** The version the key belongs to; absent on a key saved before phase 4. */
+  keyVersion?: number;
   recoveryKey?: string;
 }
 
@@ -98,19 +108,39 @@ async function run<T>(mode: IDBTransactionMode, use: (store: IDBObjectStore) => 
 }
 
 /**
- * Keeps `accountKey` for `uid` as a key that cannot be exported, with the recovery key
- * just made for it, if one was, until `confirmRecoveryKey`. The caller drops the bytes.
+ * Keeps `accountKey` for `uid` as a key that cannot be exported, with the version it was
+ * opened at and the recovery key just made for it, if one was, until `confirmRecoveryKey`.
+ * The caller drops the bytes.
  */
-export async function saveAccountKey(uid: string, accountKey: Uint8Array, recoveryKey?: string): Promise<void> {
-  const stored: StoredAccountKey = { uid, key: await accountBaseKey(accountKey), ...(recoveryKey && { recoveryKey }) };
+export async function saveAccountKey(
+  uid: string,
+  accountKey: Uint8Array,
+  keyVersion: number,
+  recoveryKey?: string
+): Promise<void> {
+  const stored: StoredAccountKey = {
+    uid,
+    key: await accountBaseKey(accountKey),
+    keyVersion,
+    ...(recoveryKey && { recoveryKey }),
+  };
   await run('readwrite', (store) => store.put(stored, ACCOUNT));
   announce();
 }
 
-/** The stored account key, if there is one and it is `uid`'s, with an unconfirmed recovery key. */
+/** The stored account key, if there is one and it is `uid`'s, with its version and an unconfirmed recovery key. */
 export async function loadAccountKey(uid: string): Promise<LoadedAccountKey | undefined> {
   const stored = await run<StoredAccountKey | undefined>('readonly', (store) => store.get(ACCOUNT));
-  return stored?.uid === uid ? { key: stored.key, recoveryKey: stored.recoveryKey } : undefined;
+  return stored?.uid === uid
+    ? { key: stored.key, keyVersion: stored.keyVersion, recoveryKey: stored.recoveryKey }
+    : undefined;
+}
+
+/** Records the version of a key saved before versions were kept, once it has been read. */
+export async function rememberKeyVersion(uid: string, keyVersion: number): Promise<void> {
+  const stored = await run<StoredAccountKey | undefined>('readonly', (store) => store.get(ACCOUNT));
+  if (stored?.uid !== uid || stored.keyVersion !== undefined) return;
+  await run('readwrite', (store) => store.put({ ...stored, keyVersion }, ACCOUNT));
 }
 
 /** "I saved it": the recovery key is the user's now, and leaves the store. */
@@ -123,7 +153,10 @@ export async function confirmRecoveryKey(uid: string): Promise<void> {
     const request = store.get(ACCOUNT);
     request.onsuccess = () => {
       const stored = request.result as StoredAccountKey | undefined;
-      if (stored?.uid === uid && stored.recoveryKey) store.put({ uid: stored.uid, key: stored.key }, ACCOUNT);
+      if (stored?.uid === uid && stored.recoveryKey) {
+        const { recoveryKey: _confirmed, ...kept } = stored;
+        store.put(kept, ACCOUNT);
+      }
     };
     transaction.oncomplete = () => resolve();
     transaction.onerror = () => reject(transaction.error);

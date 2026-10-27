@@ -25,7 +25,13 @@ import android.view.MenuItem
 import androidx.appcompat.widget.Toolbar
 import com.makerocketgonow.pushthat.workers.RetryPushWorker
 import com.makerocketgonow.pushthat.e2ee.AccountKeyStore
+import com.makerocketgonow.pushthat.e2ee.E2ee
 import com.makerocketgonow.pushthat.e2ee.MIN_NEW_PASSWORD_LENGTH
+import com.makerocketgonow.pushthat.e2ee.PushContent
+import com.makerocketgonow.pushthat.e2ee.PushDocument
+import com.makerocketgonow.pushthat.e2ee.PushKeys
+import com.makerocketgonow.pushthat.e2ee.PushMigration
+import com.makerocketgonow.pushthat.e2ee.forgetSession
 import com.makerocketgonow.pushthat.e2ee.signOut
 import android.content.ClipboardManager
 import android.content.ClipData
@@ -56,7 +62,10 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.repeatOnLifecycle
 import android.widget.EditText
 import android.widget.ScrollView
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 // Move extractRootDomain to top-level
 private fun extractRootDomain(url: String): String {
@@ -76,6 +85,9 @@ class MainActivity : AppCompatActivity() {
     private lateinit var pushRecyclerView: RecyclerView
     private lateinit var swipeRefreshLayout: SwipeRefreshLayout
     private lateinit var auth: FirebaseAuth
+    /** Null until the key has been opened off the main thread in `onCreate`. */
+    private var keys: PushKeys? = null
+    private var openingFile = false
     private val db = Firebase.firestore
     private var selectedItems = mutableSetOf<String>()
     private var menu: Menu? = null
@@ -84,7 +96,7 @@ class MainActivity : AppCompatActivity() {
     private var planDialog: AlertDialog? = null
     private lateinit var keySettings: KeySettingsViewModel
     private var keySettingsDialog: AlertDialog? = null
-    private lateinit var deleteProgressBar: ProgressBar
+    private lateinit var listProgressBar: ProgressBar
     private lateinit var searchLayout: View
     private lateinit var selectionLayout: View
     private lateinit var selectAllText: TextView
@@ -121,7 +133,7 @@ class MainActivity : AppCompatActivity() {
         applyWindowInsets()
 
         auth = Firebase.auth
-        deleteProgressBar = findViewById(R.id.deleteProgressBar)
+        listProgressBar = findViewById(R.id.listProgressBar)
 
         // Initialize toolbar views
         searchLayout = findViewById(R.id.searchLayout)
@@ -162,6 +174,23 @@ class MainActivity : AppCompatActivity() {
             finish()
             return
         }
+        // The key is opened off the main thread (a Keystore call, see AccountKeyStore.hasKey),
+        // and the list waits for it: until then loadPushRecords has nothing to read with.
+        val uid = user.uid
+        lifecycleScope.launch {
+            val loaded = withContext(Dispatchers.IO) { AccountKeyStore.pushKeys(this@MainActivity, uid) }
+            if (loaded == null) {
+                // The key was there by the file and did not open; load has cleared it.
+                startActivity(Intent(this@MainActivity, LoginActivity::class.java))
+                finish()
+                return@launch
+            }
+            keys = loaded
+            // The account's plaintext pushes, encrypted in place in the background. Here,
+            // since this is where every start with a key and every sign-in or unlock arrives.
+            PushMigration.startOnce(loaded)
+            loadPushRecords(true)
+        }
 
         pushRecyclerView = findViewById(R.id.pushRecyclerView)
         swipeRefreshLayout = findViewById(R.id.swipeRefreshLayout)
@@ -179,7 +208,8 @@ class MainActivity : AppCompatActivity() {
 
                     // Create new search with debounce
                     searchRunnable = Runnable {
-                        currentSearchQuery = newText?.takeIf { it.isNotBlank() }?.lowercase()
+                        // As typed: loadPushRecords normalizes it the way the tokens were.
+                        currentSearchQuery = newText?.takeIf { it.isNotBlank() }
                         // Reset pagination
                         lastVisibleDocument = null
                         hasMoreData = true
@@ -209,7 +239,7 @@ class MainActivity : AppCompatActivity() {
             onItemSelected(url, isSelected)
         }, { isEmpty ->
             findViewById<TextView>(R.id.emptyStateText).visibility = if (isEmpty) View.VISIBLE else View.GONE
-        })
+        }, { push -> openPush(push) })
         pushRecyclerView.adapter = pushAdapter
 
         // Add scroll listener for pagination
@@ -287,20 +317,25 @@ class MainActivity : AppCompatActivity() {
         if (currentUser == null) {
             // The session ended while the list was open (see LoginActivity.onCreate): the
             // key goes with it.
-            AccountKeyStore.clear(this)
+            forgetSession(this)
             pushAdapter.updatePushes(emptyList())
             swipeRefreshLayout.isRefreshing = false
             return
         }
 
+        val keys = keys ?: run {
+            swipeRefreshLayout.isRefreshing = false
+            return
+        }
         isLoading = true
 
         var query = db.collection("pushes")
             .whereEqualTo("userId", currentUser.uid)
 
-        // Add search constraint if search term exists
-        currentSearchQuery?.let { searchTerm ->
-            query = query.whereArrayContains("searchTokens", searchTerm)
+        // A search looks up the blind token of the term's first word, the same index every
+        // client writes (docs/e2ee.md, Search). A term with no word in it is no search.
+        currentSearchQuery?.let { E2ee.searchTermToken(keys.searchKey, it) }?.let { token ->
+            query = query.whereArrayContains("searchTokens", token)
         }
 
         query = query.orderBy("createdAt", Query.Direction.DESCENDING)
@@ -323,13 +358,7 @@ class MainActivity : AppCompatActivity() {
                 return@addOnSuccessListener
             }
 
-            val pushes = snapshot.documents.mapNotNull { doc ->
-                val createdAt = doc.getTimestamp("createdAt")
-                val url = doc.getString("url") ?: return@mapNotNull null
-                val title = doc.getString("title")?.takeIf { it.isNotBlank() } ?: url
-                val ext = doc.getString("ext")
-                PushItem(doc.id, url, title, createdAt?.toDate(), ext)
-            }
+            val pushes = snapshot.documents.mapNotNull { doc -> pushItem(keys, doc) }
 
             // Update the last visible document for pagination
             lastVisibleDocument = snapshot.documents.lastOrNull()
@@ -342,6 +371,80 @@ class MainActivity : AppCompatActivity() {
         }.addOnFailureListener { e ->
             Log.e("MainActivity", "Error loading pushes", e)
             isLoading = false
+        }
+    }
+
+    /**
+     * A row from either shape of push: decrypted when it has an envelope (until phase 5,
+     * a push may still be plaintext), locked when this install cannot open it.
+     */
+    private fun pushItem(keys: PushKeys, doc: DocumentSnapshot): PushItem? {
+        val data = doc.data ?: return null
+        val createdAt = doc.getTimestamp("createdAt")?.toDate()
+        return when (val read = PushDocument.read(keys, doc.id, data)) {
+            null -> null
+            is PushDocument.Read.Plain ->
+                PushItem(doc.id, read.title.ifBlank { read.url }, createdAt, read.url, read.ext, PushTarget.Link(read.url))
+            PushDocument.Read.Locked ->
+                PushItem(doc.id, getString(R.string.locked_push), createdAt, null, null, PushTarget.Locked)
+            is PushDocument.Read.Opened -> when (val content = read.content) {
+                is PushContent.Url ->
+                    PushItem(doc.id, content.title.ifBlank { content.url }, createdAt, content.url, content.ext, PushTarget.Link(content.url))
+                is PushContent.File -> {
+                    val target = doc.getString("objectPath")?.let { PushTarget.File(it, content) } ?: PushTarget.Locked
+                    PushItem(doc.id, content.name, createdAt, null, content.ext, target)
+                }
+            }
+        }
+    }
+
+    private fun openPush(push: PushItem) {
+        when (val target = push.target) {
+            is PushTarget.Link -> try {
+                startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(target.url)))
+            } catch (e: Exception) {
+                Log.e(TAG, "Error opening URL", e)
+            }
+            is PushTarget.File -> openFile(target)
+            PushTarget.Locked -> AlertDialog.Builder(this, R.style.DeleteDialogStyle)
+                .setTitle(R.string.locked_push)
+                .setMessage(R.string.locked_push_message)
+                .setPositiveButton(R.string.ok, null)
+                .show()
+        }
+    }
+
+    /**
+     * Downloads, decrypts and opens a file push, with the list's progress bar up meanwhile.
+     * One at a time: a second tap while a large file downloads would start it again.
+     */
+    private fun openFile(target: PushTarget.File) {
+        if (openingFile) return
+        openingFile = true
+        listProgressBar.visibility = View.VISIBLE
+        val file = target.content
+        lifecycleScope.launch {
+            val result = runCatching {
+                withContext(Dispatchers.IO) { PushFiles.fetch(this@MainActivity, target.objectPath, file.name, file.fk, file.np) }
+            }
+            openingFile = false
+            listProgressBar.visibility = View.GONE
+            // Signed out while the file was on its way (this scope cancelled, or the session
+            // ended under the open): `PushFiles.fetch` has removed what it wrote, nothing is
+            // opened, and a failure to decrypt would be the wrong thing to say.
+            if (result.exceptionOrNull() is CancellationException) return@launch
+            result.onSuccess { opened ->
+                try {
+                    PushFiles.view(this@MainActivity, opened, file.mime, file.ext)
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error opening file", e)
+                }
+            }.onFailure { e ->
+                // A download that failed and a file that did not decrypt alike: in both cases
+                // nothing was opened and nothing partial is left.
+                Log.e(TAG, "Error fetching file", e)
+                Toast.makeText(this@MainActivity, R.string.file_decrypt_failed, Toast.LENGTH_LONG).show()
+            }
         }
     }
 
@@ -604,7 +707,7 @@ class MainActivity : AppCompatActivity() {
         auth.currentUser ?: return
 
         // Show progress and disable interactions
-        deleteProgressBar.visibility = View.VISIBLE
+        listProgressBar.visibility = View.VISIBLE
         pushRecyclerView.isEnabled = false
         swipeRefreshLayout.isEnabled = false
 
@@ -619,7 +722,7 @@ class MainActivity : AppCompatActivity() {
                     deletedCount++
                     if (deletedCount == totalItems) {
                         // All items deleted, restore UI
-                        deleteProgressBar.visibility = View.GONE
+                        listProgressBar.visibility = View.GONE
                         pushRecyclerView.isEnabled = true
                         swipeRefreshLayout.isEnabled = true
                         clearSelection()
@@ -633,7 +736,7 @@ class MainActivity : AppCompatActivity() {
                     deletedCount++
                     if (deletedCount == totalItems) {
                         // Restore UI even if some deletions failed
-                        deleteProgressBar.visibility = View.GONE
+                        listProgressBar.visibility = View.GONE
                         pushRecyclerView.isEnabled = true
                         swipeRefreshLayout.isEnabled = true
                         clearSelection()
@@ -738,18 +841,32 @@ class MainActivity : AppCompatActivity() {
     }
 }
 
-// Add these new classes at the bottom of the file
+/** What tapping a row does. */
+sealed class PushTarget {
+    /** A URL push, or a plaintext file push, which still carries its download URL. */
+    data class Link(val url: String) : PushTarget()
+
+    /** An encrypted file push: downloaded by [objectPath], decrypted unless `legacyPlain`. */
+    class File(val objectPath: String, val content: PushContent.File) : PushTarget()
+
+    /** A push this install cannot open: it says so, and can be deleted. */
+    data object Locked : PushTarget()
+}
+
 data class PushItem(
     val id: String,
-    val url: String,
     val title: String,
     val createdAt: Date?,
-    val ext: String? = null
+    /** The URL the favicon comes from; none for an encrypted file or a locked push. */
+    val iconUrl: String?,
+    val ext: String?,
+    val target: PushTarget,
 )
 
 class PushAdapter(
     private val onItemSelected: (String, Boolean) -> Unit,
-    private val onEmptyStateChanged: (Boolean) -> Unit
+    private val onEmptyStateChanged: (Boolean) -> Unit,
+    private val onItemClicked: (PushItem) -> Unit,
 ) : RecyclerView.Adapter<PushAdapter.PushViewHolder>() {
     private var pushes: List<PushItem> = emptyList()
     private var selectedIds = mutableSetOf<String>()
@@ -797,7 +914,7 @@ class PushAdapter(
 
         fun bind(push: PushItem) {
             // Load favicon or file icon
-            avatarImage.loadFavicon(push.url, push.ext)
+            avatarImage.loadFavicon(push.iconUrl, push.ext)
 
             // Set title
             titleText.text = push.title
@@ -823,21 +940,27 @@ class PushAdapter(
             }
 
             // Set click listener for the item
-            itemView.setOnClickListener {
-                try {
-                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(push.url))
-                    itemView.context.startActivity(intent)
-                } catch (e: Exception) {
-                    Log.e("PushViewHolder", "Error opening URL", e)
-                }
-            }
+            itemView.setOnClickListener { onItemClicked(push) }
 
-            itemView.setOnLongClickListener {
-                val clipboard = itemView.context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                val clip = ClipData.newPlainText("URL", push.url)
-                clipboard.setPrimaryClip(clip)
-                Toast.makeText(itemView.context, "URL copied to clipboard", Toast.LENGTH_SHORT).show()
-                true
+            // Copies a URL. An encrypted file push has none (no download URL is stored), so it
+            // copies the file's name, as "Copy name" does on iOS and macOS. A locked push's
+            // content is unknown, so a long press on it offers nothing.
+            val copy: Triple<String, String, Int>? = when (val target = push.target) {
+                is PushTarget.Link -> Triple("URL", target.url, R.string.url_copied)
+                is PushTarget.File -> Triple("Name", target.content.name, R.string.name_copied)
+                PushTarget.Locked -> null
+            }
+            if (copy == null) {
+                itemView.setOnLongClickListener(null)
+                itemView.isLongClickable = false
+            } else {
+                val (label, text, copied) = copy
+                itemView.setOnLongClickListener {
+                    val clipboard = itemView.context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                    clipboard.setPrimaryClip(ClipData.newPlainText(label, text))
+                    Toast.makeText(itemView.context, copied, Toast.LENGTH_SHORT).show()
+                    true
+                }
             }
 
             avatarImage.setOnCheckedChangeListener { _, isChecked ->

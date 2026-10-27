@@ -54,6 +54,16 @@ A run from any other branch runs the checks and deploys nothing.
   so the first deploy of a function that uses a new secret is made by hand
   (`npm run deploy` in `functions/`), which grants the functions' account access to it.
 - **The Firestore indexes**, which aren't in `firebase.json`.
+- **The Storage bucket's CORS.** Since phase 4 of [end-to-end encryption](e2ee.md) the web
+  app and the Chrome extension read an encrypted file through the SDK (`getBlob`) and
+  decrypt it in the page, rather than opening a download URL, and a browser reads the
+  bucket from another origin only if the bucket says it may. Set once, from
+  `apps/web`, with `gcloud storage buckets update gs://push-that.firebasestorage.app
+  --cors-file=storage.cors.json`. Any origin may send a GET: a read still needs the
+  user's own token, which goes in a header and not a cookie, so the CORS policy is not
+  what keeps one account out of another's files (`storage.rules` is). Without it, opening
+  a file on the web fails with "This file could not be decrypted." and a CORS error in
+  the console; the apps are not affected.
 - **The password reset email's action URL**, a console setting: Authentication →
   Templates → Password reset → edit → Customize action URL, set to
   `https://pushthat.link/reset` (see [end-to-end encryption](e2ee.md), Password reset).

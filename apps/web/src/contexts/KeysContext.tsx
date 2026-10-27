@@ -1,7 +1,8 @@
 import { FirebaseError } from 'firebase/app';
+import { getFirestore } from 'firebase/firestore';
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 
-import { auth } from '@/config/firebase';
+import { app, auth } from '@/config/firebase';
 import { useAuth } from '@/contexts/AuthContext';
 import { KeysChangedError, WrongRecoveryKeyError } from '@/services/accountKeys';
 import {
@@ -11,6 +12,7 @@ import {
   loadAccountKey,
   onAccountKeyChanged,
 } from '@/services/keyStore';
+import { type PushKeys, loadPushKeys, migratePushes } from '@/services/pushes';
 import * as signInService from '@/services/signIn';
 import { type KeySession, type KeysResult } from '@/services/signIn';
 
@@ -36,6 +38,10 @@ export type KeyStep =
 
 interface KeysContextType {
   step: KeyStep;
+  /** The keys pushes are written and read with, once `step` is ready and they are loaded. */
+  pushKeys: PushKeys | undefined;
+  /** The step is ready and the push keys could not be loaded. */
+  pushKeysFailed: boolean;
   /** Rejects when the sign-in itself fails, for the sign-in page to say why. */
   signIn: (email: string, password: string) => Promise<void>;
   register: (email: string, password: string) => Promise<void>;
@@ -65,6 +71,15 @@ const stepFor = (stored: LoadedAccountKey | undefined): KeyStep =>
       ? { name: 'recoveryKey', recoveryKey: stored.recoveryKey }
       : { name: 'ready' };
 
+// A ready key whose version cannot be known (pushes.ts, loadPushKeys: one saved before keys
+// carried their version, on an account a reset has moved past version 1) asks for the
+// password like a missing one, whose sign-in stores the key with its version.
+const checkedStepFor = async (uid: string, stored: LoadedAccountKey | undefined): Promise<KeyStep> => {
+  const step = stepFor(stored);
+  if (step.name !== 'ready' || stored?.keyVersion !== undefined) return step;
+  return (await loadPushKeys(getFirestore(app), uid)) ? step : { name: 'unlock' };
+};
+
 const KEYS_CHANGED = 'Your keys were changed on another device. Enter your password again.';
 
 // `updatePassword`, which a legacy account's last step calls, wants a recent sign-in, and
@@ -92,19 +107,57 @@ export function KeysProvider({ children }: { children: React.ReactNode }) {
     }
     let current = true;
     setStep({ name: 'checking' });
-    loadAccountKey(uid).then(
-      (key) => {
-        if (current && !flowing.current) setStep(stepFor(key));
+    loadAccountKey(uid)
+      .then((key) => checkedStepFor(uid, key))
+      .then(
+        (next) => {
+          if (current && !flowing.current) setStep(next);
+        },
+        (error) => {
+          console.error('Could not read the account key:', error);
+          if (current && !flowing.current) setStep({ name: 'unlock' });
+        }
+      );
+    return () => {
+      current = false;
+    };
+  }, [uid]);
+
+  // The keys pushes are written and read with, loaded once when this device holds the
+  // account key and shared by every page, rather than each page reading IndexedDB and
+  // deriving the subkeys again on mount. `pushKeysFailed` is a ready key that could not be
+  // loaded after all (IndexedDB refusing, in a private window that blocks it).
+  const [pushKeys, setPushKeys] = useState<PushKeys | undefined>(undefined);
+  const [pushKeysFailed, setPushKeysFailed] = useState(false);
+  // With them, the account's plaintext pushes are encrypted in place (docs/e2ee.md,
+  // Migration), in the background and once per account per page load: a pass cut short
+  // leaves the mark unset and the next load carries on. Here rather than in a page, so it
+  // runs whichever page the user lands on.
+  const migrated = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    setPushKeys(undefined);
+    setPushKeysFailed(false);
+    if (step.name !== 'ready' || !uid) return;
+    let current = true;
+    const db = getFirestore(app);
+    loadPushKeys(db, uid).then(
+      (keys) => {
+        if (!current) return;
+        setPushKeys(keys);
+        setPushKeysFailed(!keys);
+        if (!keys || migrated.current === uid) return;
+        migrated.current = uid;
+        migratePushes(db, keys).catch((error) => console.error('The push migration stopped:', error));
       },
       (error) => {
-        console.error('Could not read the account key:', error);
-        if (current && !flowing.current) setStep({ name: 'unlock' });
+        console.error('Could not read the push keys:', error);
+        if (current) setPushKeysFailed(true);
       }
     );
     return () => {
       current = false;
     };
-  }, [uid]);
+  }, [step.name, uid]);
 
   // Another tab stored the key this tab is asking the password for: take it. Only from
   // the password prompt; the other steps are in the middle of something of their own,
@@ -114,8 +167,9 @@ export function KeysProvider({ children }: { children: React.ReactNode }) {
     return onAccountKeyChanged(() => {
       if (flowing.current) return;
       loadAccountKey(uid).then(
-        (stored) => {
-          if (stored && !flowing.current) setStep(stepFor(stored));
+        async (stored) => {
+          const next = stored && (await checkedStepFor(uid, stored));
+          if (next && !flowing.current) setStep(next);
         },
         (error) => console.error('Could not read the account key:', error)
       );
@@ -234,7 +288,19 @@ export function KeysProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <KeysContext.Provider
-      value={{ step, signIn, register, unlock, recover, withoutRecovery, backToRecovery, startOver, savedRecoveryKey }}
+      value={{
+        step,
+        pushKeys,
+        pushKeysFailed,
+        signIn,
+        register,
+        unlock,
+        recover,
+        withoutRecovery,
+        backToRecovery,
+        startOver,
+        savedRecoveryKey,
+      }}
     >
       {children}
     </KeysContext.Provider>

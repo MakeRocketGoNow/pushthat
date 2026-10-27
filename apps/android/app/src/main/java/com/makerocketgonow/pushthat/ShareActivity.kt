@@ -5,7 +5,6 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
-import android.provider.Settings
 import android.util.Log
 import android.view.animation.Animation
 import android.view.animation.RotateAnimation
@@ -14,13 +13,23 @@ import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.auth
-import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestoreException
+import com.google.firebase.firestore.Source
 import com.google.firebase.firestore.firestore
 import com.google.firebase.Firebase
+import com.google.firebase.storage.StorageMetadata
 import com.google.firebase.storage.storage
 import com.makerocketgonow.pushthat.data.AppDatabase
 import com.makerocketgonow.pushthat.data.PendingPush
+import com.makerocketgonow.pushthat.e2ee.AccountKeyStore
+import com.makerocketgonow.pushthat.e2ee.E2ee
+import com.makerocketgonow.pushthat.e2ee.FileCipher
+import com.makerocketgonow.pushthat.e2ee.PreparedPush
+import com.makerocketgonow.pushthat.e2ee.PushContent
+import com.makerocketgonow.pushthat.e2ee.PushDocument
+import com.makerocketgonow.pushthat.e2ee.PushKeys
+import com.makerocketgonow.pushthat.e2ee.PushStore
+import com.makerocketgonow.pushthat.e2ee.PushTooLargeException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -30,6 +39,8 @@ import androidx.work.*
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.jsoup.Jsoup
+import java.io.ByteArrayInputStream
+import java.io.File
 import java.io.IOException
 import java.util.concurrent.TimeUnit
 import org.apache.commons.validator.routines.UrlValidator
@@ -39,6 +50,7 @@ class ShareActivity : AppCompatActivity() {
     private lateinit var auth: FirebaseAuth
     private val db = Firebase.firestore
     private val storage = Firebase.storage
+    private val pushStore = PushStore()
     private lateinit var appDatabase: AppDatabase
     private val urlValidator = UrlValidator(arrayOf("http", "https"))
 
@@ -63,65 +75,48 @@ class ShareActivity : AppCompatActivity() {
         auth = Firebase.auth
         appDatabase = AppDatabase.getDatabase(this)
 
-        // Log complete intent details
-        Log.d(TAG, "Intent details:")
-        Log.d(TAG, "Action: ${intent?.action}")
-        Log.d(TAG, "Type: ${intent?.type}")
-        Log.d(TAG, "Categories: ${intent?.categories}")
-        Log.d(TAG, "Data: ${intent?.data}")
-        Log.d(TAG, "Package: ${intent?.`package`}")
+        // What kind of share, never what was shared: the text, subject and stream of a share
+        // are the push itself, and logcat is readable by anything with adb or a bug report.
+        Log.d(TAG, "Share: ${intent?.action} ${intent?.type}")
 
-        intent?.extras?.let { bundle ->
-            Log.d(TAG, "Extras:")
-            for (key in bundle.keySet()) {
-                @Suppress("DEPRECATION")
-                Log.d(TAG, "$key: ${bundle.get(key)}")
-            }
-        }
-
-        // Check if user is signed in
-        if (auth.currentUser == null) {
+        // Signed in, and holding the account key, as MainActivity asks. A session without
+        // the key (an install that updated while signed in) goes to LoginActivity's password
+        // prompt rather than pushing: there is nothing to encrypt with, and a plaintext push
+        // is what the encryption exists to stop. The share itself is not kept.
+        val user = auth.currentUser
+        if (user == null || !AccountKeyStore.hasKey(this, user.uid)) {
             startActivity(Intent(this, LoginActivity::class.java))
             finish()
             return
         }
 
-        try {
-            // Handle shared content
-            if (intent?.action == Intent.ACTION_SEND) {
-                when (intent.type) {
-                    "text/plain" -> shareLink(intent)
-                    else -> shareFile(intent)
+        // The key is opened off the main thread, a Keystore call, as in MainActivity. One the
+        // file says is there and that does not open has been cleared by then, and the share
+        // goes to the password prompt like a missing key.
+        val uid = user.uid
+        lifecycleScope.launch {
+            val keys = withContext(Dispatchers.IO) { AccountKeyStore.pushKeys(this@ShareActivity, uid) }
+            if (keys == null) {
+                startActivity(Intent(this@ShareActivity, LoginActivity::class.java))
+                finish()
+                return@launch
+            }
+            try {
+                // Handle shared content
+                if (intent?.action == Intent.ACTION_SEND) {
+                    when (intent.type) {
+                        "text/plain" -> shareLink(intent, keys)
+                        else -> shareFile(intent, keys)
+                    }
+                } else {
+                    Log.w(TAG, "Received intent with action: ${intent?.action} and type: ${intent?.type}")
+                    finish()
                 }
-            } else {
-                Log.w(TAG, "Received intent with action: ${intent?.action} and type: ${intent?.type}")
+            } catch (e: Exception) {
+                Log.e(TAG, "Error in onCreate", e)
                 finish()
             }
-        } catch (e: Exception) {
-            Log.e(TAG, "Error in onCreate", e)
-            finish()
         }
-    }
-
-    private fun scheduleUrlTitleScraping(documentId: String, url: String, initialTitle: String) {
-        val data = workDataOf(
-            "documentId" to documentId,
-            "url" to url,
-            "initialTitle" to initialTitle
-        )
-
-        val constraints = Constraints.Builder()
-            .setRequiredNetworkType(NetworkType.CONNECTED)
-            .build()
-
-        val titleScrapingWork = OneTimeWorkRequestBuilder<TitleScrapingWorker>()
-            .setInputData(data)
-            .setConstraints(constraints)
-            .setBackoffCriteria(BackoffPolicy.LINEAR, 10, TimeUnit.SECONDS)
-            .build()
-
-        WorkManager.getInstance(applicationContext)
-            .enqueue(titleScrapingWork)
     }
 
     private fun getUrl(urlString: String): String {
@@ -213,11 +208,10 @@ class ShareActivity : AppCompatActivity() {
         return ""
     }
 
-    private fun shareLink(intent: Intent) {
+    private fun shareLink(intent: Intent, keys: PushKeys) {
         lifecycleScope.launch {
             try {
                 val sharedText = intent.getStringExtra(Intent.EXTRA_TEXT)
-                Log.d(TAG, "Received shared text: $sharedText")
                 if (sharedText == null) {
                     Log.w(TAG, "No shared text received")
                     finish()
@@ -227,7 +221,7 @@ class ShareActivity : AppCompatActivity() {
                 // Try to extract URL from the shared text (which may contain title, source, and URL)
                 val extractedUrl = extractUrlFromText(sharedText)
                 if (extractedUrl == null) {
-                    Log.w(TAG, "No valid URL found in shared text: $sharedText")
+                    Log.w(TAG, "No valid URL found in shared text")
                     Toast.makeText(this@ShareActivity, getString(R.string.no_url_found), Toast.LENGTH_SHORT).show()
                     finish()
                     return@launch
@@ -241,80 +235,30 @@ class ShareActivity : AppCompatActivity() {
                     ?: intent.getStringExtra(Intent.EXTRA_SUBJECT)
                     ?: extractTitleFromText(sharedText)
 
-                val deviceName = Settings.Global.getString(contentResolver, "device_name")
-
                 // Extract file extension from URL path
-                val ext = uri.lastPathSegment?.let { path ->
-                    path.substringAfterLast('.', "").takeIf { it.isNotEmpty() }
+                val ext = uri.lastPathSegment?.substringAfterLast('.', "") ?: ""
+
+                // The id first: the envelope's AAD names it, so a ciphertext cannot be moved
+                // to another document.
+                val pushId = db.collection("pushes").document().id
+                val prepared = try {
+                    PreparedPush.prepare(keys, pushId, PushContent.Url(validatedUrl, initialTitle, ext))
+                } catch (e: PushTooLargeException) {
+                    Log.w(TAG, "The link is too long to push")
+                    // Said as it is: the generic failure's "try again later" never works here.
+                    showErrorDialog(getString(R.string.push_failed_title), getString(R.string.push_failed_link_too_long))
+                    return@launch
                 }
 
-                val push = hashMapOf(
-                    "url" to validatedUrl,
-                    "userId" to auth.currentUser?.uid,
-                    "createdAt" to FieldValue.serverTimestamp(),
-                    "title" to initialTitle,
-                    "type" to "url",
-                    "deviceName" to (deviceName ?: android.os.Build.MODEL),
-                    "searchTokens" to generateSearchTokens("$initialTitle $validatedUrl"),
-                    "ext" to ext
-                )
-
-                Log.d(TAG, "Saving initial link to Firestore: $push")
-
-                try {
-                    db.collection("pushes")
-                        .add(push)
-                        .addOnSuccessListener { documentReference ->
-                            Log.d(TAG, "Link saved with ID: ${documentReference.id}")
-                            // Schedule title scraping as a background task
-                            scheduleUrlTitleScraping(documentReference.id, uri.toString(), initialTitle)
-                            finish()
-                        }
-                        .addOnFailureListener { e ->
-                            Log.e(TAG, "Error saving link", e)
-
-                            // Check if it's a permission error (license limit)
-                            if (isPermissionError(e)) {
-                                // Show error dialog - don't save to local DB as it will fail again
-                                showErrorDialog(
-                                    getString(R.string.push_failed_title),
-                                    getString(R.string.push_failed_message_limit)
-                                )
-                            } else if (isNetworkError(e)) {
-                                // Network error - save to local DB for retry, but still show dialog
-                                lifecycleScope.launch(Dispatchers.IO) {
-                                    try {
-                                        val pendingPush = PendingPush(
-                                            url = uri.toString(),
-                                            userId = auth.currentUser?.uid,
-                                            createdAt = System.currentTimeMillis(),
-                                            title = initialTitle,
-                                            type = "url",
-                                            deviceName = deviceName ?: android.os.Build.MODEL
-                                        )
-                                        appDatabase.pendingPushDao().insert(pendingPush)
-                                        Log.d(TAG, "Saved failed push to local database")
-                                    } catch (dbException: Exception) {
-                                        Log.e(TAG, "Error saving to local database", dbException)
-                                    }
-                                }
-                                showErrorDialog(
-                                    getString(R.string.push_failed_title),
-                                    getString(R.string.push_failed_message_generic)
-                                )
-                            } else {
-                                // Other errors - show generic error dialog
-                                showErrorDialog(
-                                    getString(R.string.push_failed_title),
-                                    getString(R.string.push_failed_message_generic)
-                                )
-                            }
-                        }
-                } catch (e: Exception) {
-                    Log.e(TAG, "Error in Firestore operation", e)
-                    finish()
-                }
-
+                pushStore.create(prepared)
+                    .addOnSuccessListener {
+                        Log.d(TAG, "Link saved with ID: $pushId")
+                        onPushSaved(prepared)
+                    }
+                    .addOnFailureListener { e ->
+                        Log.e(TAG, "Error saving link", e)
+                        onPushFailed(e, keys, prepared)
+                    }
             } catch (e: Exception) {
                 Log.e(TAG, "Error in shareLink", e)
                 finish()
@@ -322,75 +266,97 @@ class ShareActivity : AppCompatActivity() {
         }
     }
 
-    private fun generateSearchTokens(text: String): List<String> {
-        // Convert to lowercase and split into words
-        val words = text
-            .lowercase()
-            .replace(Regex("[^\\w\\s]"), "") // Remove special characters
-            .split(Regex("\\s+")) // Split on whitespace
-            .filter { it.isNotEmpty() }
-
-        val tokens = mutableSetOf<String>()
-
-        // Add full words
-        tokens.addAll(words)
-
-        // Add partial matches (substrings)
-        words.forEach { word ->
-            for (i in 1..word.length) {
-                tokens.add(word.substring(0, i))
+    /** Keeps [prepared], ciphertext and id as they are, for `RetryPushWorker`. */
+    private fun queueForRetry(prepared: PreparedPush) {
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                val pendingPush = PendingPush(
+                    url = "",
+                    userId = prepared.userId,
+                    createdAt = System.currentTimeMillis(),
+                    type = prepared.type,
+                    prepared = prepared.toJson()
+                )
+                appDatabase.pendingPushDao().insert(pendingPush)
+                Log.d(TAG, "Saved failed push to local database")
+            } catch (dbException: Exception) {
+                Log.e(TAG, "Error saving to local database", dbException)
             }
         }
-
-        return tokens.toList()
     }
 
-    private fun generateUniqueFileName(originalName: String, attempt: Int = 0): String {
-        if (attempt == 0) return originalName
-
-        val lastDotIndex = originalName.lastIndexOf('.')
-        val nameWithoutExt = if (lastDotIndex == -1) originalName else originalName.substring(0, lastDotIndex)
-        val extension = if (lastDotIndex == -1) "" else originalName.substring(lastDotIndex)
-
-        // Check if name already ends with a number pattern like " (1)" or " (2)"
-        // If so, extract base name and add attempt to existing number
-        val pattern = Regex("""^(.+) \((\d+)\)$""")
-        val match = pattern.matchEntire(nameWithoutExt)
-
-        return if (match != null) {
-            val baseName = match.groupValues[1]
-            val existingNum = match.groupValues[2].toInt()
-            val newNum = existingNum + attempt
-            "$baseName ($newNum)$extension"
+    /**
+     * A push the server did not take. Refused by the rules: final unless it had landed after
+     * all, the upload goes and the user is told why (the month's limit, or that the keys
+     * changed when this install's key is one a reset replaced). Unreachable: queued,
+     * ciphertext and id as they are, for `RetryPushWorker`. Anything else: final, as before.
+     */
+    private fun onPushFailed(e: Exception, keys: PushKeys, prepared: PreparedPush) {
+        if (isPermissionError(e)) {
+            lifecycleScope.launch {
+                // The SDK resends a write whose acknowledgement was lost, and the resend of a
+                // create is an update of the push it made, which the rules refuse. Without
+                // this check that push was reported as past the limit and a file push's
+                // object deleted under it. A check that fails says nothing either way: the push
+                // is queued with its upload, and `RetryPushWorker` settles it once it can read
+                // (deleting the file could leave a push that exists with none; the apps and the
+                // web keep it too).
+                val landed = try {
+                    pushStore.landed(prepared)
+                } catch (checkFailed: Exception) {
+                    Log.w(TAG, "Could not tell whether a refused push had landed; queued")
+                    queueForRetry(prepared)
+                    showErrorDialog(
+                        getString(R.string.push_failed_title),
+                        getString(R.string.push_failed_message_generic)
+                    )
+                    return@launch
+                }
+                if (landed) {
+                    Log.d(TAG, "The refused push had landed: ${prepared.id}")
+                    onPushSaved(prepared)
+                    return@launch
+                }
+                // At 3 files a month on Free this is the common path.
+                prepared.objectPath?.let { discardUpload(it) }
+                // A stale key is told apart from the limit and named: trying again cannot
+                // work, since only signing in again stores the new key. The web says the same.
+                val message = if (pushStore.keyIsStale(keys) == true) {
+                    R.string.keys_changed_here
+                } else {
+                    R.string.push_failed_message_limit
+                }
+                showErrorDialog(getString(R.string.push_failed_title), getString(message))
+            }
+        } else if (isNetworkError(e)) {
+            queueForRetry(prepared)
+            showErrorDialog(
+                getString(R.string.push_failed_title),
+                getString(R.string.push_failed_message_generic)
+            )
         } else {
-            "$nameWithoutExt ($attempt)$extension"
+            // Nothing retries this, so the upload would be orphaned.
+            prepared.objectPath?.let { discardUpload(it) }
+            showErrorDialog(
+                getString(R.string.push_failed_title),
+                getString(R.string.push_failed_message_generic)
+            )
         }
     }
 
-    private suspend fun checkFileExists(storageRef: String): Boolean {
-        return try {
-            storage.reference.child(storageRef).metadata.await()
-            true
-        } catch (e: Exception) {
-            false
-        }
+    /** A push that is in Firestore: a link's title is scraped in the background, and the share is done. */
+    private fun onPushSaved(prepared: PreparedPush) {
+        if (prepared.type == PushContent.TYPE_URL) TitleScrapingWorker.enqueue(applicationContext, prepared.id)
+        finish()
     }
 
-    private suspend fun getUniqueStorageRef(userId: String, fileName: String): String {
-        var attempt = 0
-        var uniqueFileName = fileName
-        var storageRef = "uploads/$userId/$uniqueFileName"
-
-        while (checkFileExists(storageRef)) {
-            attempt++
-            uniqueFileName = generateUniqueFileName(fileName, attempt)
-            storageRef = "uploads/$userId/$uniqueFileName"
-        }
-
-        return storageRef
-    }
-
-    private fun shareFile(intent: Intent) {
+    /**
+     * A shared file, encrypted on the phone before it leaves: streamed through `FileCipher`
+     * into a temporary file in the cache (never the whole file in memory), uploaded under a
+     * random name as `application/octet-stream`, and only then the push that names it, with
+     * the file's key, name and type inside the envelope.
+     */
+    private fun shareFile(intent: Intent, keys: PushKeys) {
         lifecycleScope.launch {
             try {
                 val uri = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -406,7 +372,7 @@ class ShareActivity : AppCompatActivity() {
                 }
 
                 // Get file size
-                val fileSize = contentResolver.openFileDescriptor(uri, "r")?.statSize ?: run {
+                val fileSize = contentResolver.openFileDescriptor(uri, "r")?.use { it.statSize } ?: run {
                     Log.w(TAG, "Could not determine file size")
                     Toast.makeText(this@ShareActivity, getString(R.string.file_size_error), Toast.LENGTH_SHORT).show()
                     finish()
@@ -414,106 +380,80 @@ class ShareActivity : AppCompatActivity() {
                 }
 
                 // The tier's file size, which the Storage rules enforce; said here before the upload
-                // starts, when the tier can be read. `>=`, as the rule has it.
+                // starts, when the tier can be read. `>=`, as the rule has it. The rule measures
+                // the encrypted object, 12 bytes and 16 a MiB larger than the file, and a file
+                // just under the limit can be just over it encrypted: refused here, with the
+                // limit named, rather than by the upload with a generic error.
                 val maxFileBytes = Plan.maxFileBytes()
-                if (maxFileBytes != null && fileSize >= maxFileBytes) {
+                if (maxFileBytes != null && E2ee.encryptedFileSize(fileSize) >= maxFileBytes) {
                     Toast.makeText(this@ShareActivity, getString(R.string.file_too_large, Plan.megabytes(maxFileBytes)), Toast.LENGTH_LONG).show()
                     finish()
                     return@launch
                 }
 
                 val fileName = getFileName(uri)
-                val deviceName = Settings.Global.getString(contentResolver, "device_name")
-                val ext = fileName.substringAfterLast('.', "").takeIf { it.isNotEmpty() }
+                val ext = fileName.substringAfterLast('.', "").lowercase()
+                val mime = contentResolver.getType(uri) ?: "application/octet-stream"
+                val fk = E2ee.newFileKey()
+                val prefix = E2ee.newFilePrefix()
+                // A random name: the file's own name is in the envelope, not in Storage.
+                val objectPath = "uploads/${keys.uid}/${E2ee.newObjectId()}"
 
-                // Get unique storage reference
-                val storageRef = getUniqueStorageRef(auth.currentUser!!.uid, fileName)
-                val finalFileName = storageRef.split('/').last()
-
-                try {
-                    // Upload file to Firebase Storage
-                    val uploadTask = storage.reference.child(storageRef)
-                        .putStream(contentResolver.openInputStream(uri)!!)
-                        .await()
-
-                    // Get download URL
-                    val downloadUrl = uploadTask.storage.downloadUrl.await().toString()
-
-                    // Create Firestore document
-                    val push = hashMapOf(
-                        "url" to downloadUrl,
-                        "userId" to auth.currentUser?.uid,
-                        "createdAt" to FieldValue.serverTimestamp(),
-                        "title" to finalFileName,
-                        "type" to "file",
-                        "deviceName" to (deviceName ?: android.os.Build.MODEL),
-                        "searchTokens" to generateSearchTokens("$finalFileName $downloadUrl"),
-                        "ext" to ext
-                    )
-
-                    Log.d(TAG, "Saving file to Firestore: $push")
-
-                    db.collection("pushes")
-                        .add(push)
-                        .addOnSuccessListener { documentReference ->
-                            Log.d(TAG, "File saved with ID: ${documentReference.id}")
-                            finish()
-                        }
-                        .addOnFailureListener { e ->
-                            Log.e(TAG, "Error saving file", e)
-
-                            // Check if it's a permission error (license limit)
-                            if (isPermissionError(e)) {
-                                // At 3 files a month on Free this is the common path.
-                                discardUpload(storageRef)
-                                // Show error dialog - don't save to local DB as it will fail again
-                                showErrorDialog(
-                                    getString(R.string.push_failed_title),
-                                    getString(R.string.push_failed_message_limit)
-                                )
-                            } else if (isNetworkError(e)) {
-                                // Network error - save to local DB for retry, but still show dialog
-                                lifecycleScope.launch(Dispatchers.IO) {
-                                    try {
-                                        val pendingPush = PendingPush(
-                                            url = downloadUrl,
-                                            userId = auth.currentUser?.uid,
-                                            createdAt = System.currentTimeMillis(),
-                                            title = finalFileName,
-                                            type = "file",
-                                            deviceName = deviceName ?: android.os.Build.MODEL
-                                        )
-                                        appDatabase.pendingPushDao().insert(pendingPush)
-                                        Log.d(TAG, "Saved failed push to local database")
-                                    } catch (dbException: Exception) {
-                                        Log.e(TAG, "Error saving to local database", dbException)
-                                    }
-                                }
-                                showErrorDialog(
-                                    getString(R.string.push_failed_title),
-                                    getString(R.string.push_failed_message_generic)
-                                )
-                            } else {
-                                // Other errors: nothing retries this, so the upload would be orphaned.
-                                discardUpload(storageRef)
-                                // Other errors - show generic error dialog
-                                showErrorDialog(
-                                    getString(R.string.push_failed_title),
-                                    getString(R.string.push_failed_message_generic)
-                                )
-                            }
-                        }
+                val plaintextSize = try {
+                    uploadEncrypted(uri, fk, prefix, objectPath)
                 } catch (e: Exception) {
                     Log.e(TAG, "Error uploading file", e)
-                    // A failure after the upload went through (the download URL, say) leaves the object too.
-                    discardUpload(storageRef)
+                    // A failure after the upload went through leaves the object too.
+                    discardUpload(objectPath)
                     Toast.makeText(this@ShareActivity, getString(R.string.file_upload_error), Toast.LENGTH_SHORT).show()
                     finish()
+                    return@launch
                 }
+
+                val pushId = db.collection("pushes").document().id
+                val content = PushContent.File(fileName, mime, plaintextSize, ext, fk, prefix)
+                val prepared = try {
+                    PreparedPush.prepare(keys, pushId, content, objectPath)
+                } catch (e: PushTooLargeException) {
+                    discardUpload(objectPath)
+                    showErrorDialog(getString(R.string.push_failed_title), getString(R.string.push_failed_file_name_too_long))
+                    return@launch
+                }
+
+                pushStore.create(prepared)
+                    .addOnSuccessListener {
+                        Log.d(TAG, "File saved with ID: $pushId")
+                        onPushSaved(prepared)
+                    }
+                    .addOnFailureListener { e ->
+                        Log.e(TAG, "Error saving file", e)
+                        onPushFailed(e, keys, prepared)
+                    }
             } catch (e: Exception) {
                 Log.e(TAG, "Error in shareFile", e)
                 finish()
             }
+        }
+    }
+
+    /**
+     * Encrypts [uri] into a temporary file and uploads that to [objectPath]; returns the
+     * plaintext size, counted as it was read rather than taken from the provider, which may
+     * not know it. The temporary file goes whatever happens.
+     */
+    private suspend fun uploadEncrypted(uri: Uri, fk: ByteArray, prefix: ByteArray, objectPath: String): Long {
+        val dir = File(cacheDir, "uploads").apply { mkdirs() }
+        val temp = File.createTempFile("push", ".pte", dir)
+        try {
+            val size = withContext(Dispatchers.IO) {
+                val source = contentResolver.openInputStream(uri) ?: throw IOException("the file could not be opened")
+                source.use { FileCipher.encryptToFile(fk, prefix, it, temp) }
+            }
+            val metadata = StorageMetadata.Builder().setContentType("application/octet-stream").build()
+            storage.reference.child(objectPath).putFile(Uri.fromFile(temp), metadata).await()
+            return size
+        } finally {
+            temp.delete()
         }
     }
 
@@ -579,6 +519,21 @@ class ShareActivity : AppCompatActivity() {
     }
 }
 
+/**
+ * Fills in a URL push's title from the page, once the device has a network. Runs for this
+ * device's own pushes (the share sheet's title, if any, is replaced by the page's) and for
+ * a received push whose title is empty, since a web push now goes out without one: the web
+ * app can no longer ask a server for it without the server learning the URL.
+ *
+ * Given only the push's id, so neither the URL nor the title waits in WorkManager's
+ * database: it reads the document from the server and decrypts it. On an encrypted push
+ * the update is exactly `enc` and `searchTokens` (`isEncryptedRetitle`): the URL and its
+ * extension again with the new title under a fresh nonce, and the blind index of the new
+ * title and the URL. Only under the push's own key version, and only when that is the one
+ * this install holds; another device scraping the same push writes the same title, and
+ * the last write wins. A plaintext push (a job queued before this version) gets its title
+ * alone, as before; the migration encrypts it.
+ */
 class TitleScrapingWorker(
     context: Context,
     workerParams: WorkerParameters
@@ -587,37 +542,45 @@ class TitleScrapingWorker(
     private val db = Firebase.firestore
 
     override suspend fun doWork(): Result {
-        Log.d(TAG, "Starting title scraping")
-
-        val documentId = inputData.getString("documentId") ?: run {
+        val documentId = inputData.getString(KEY_DOCUMENT_ID) ?: run {
             Log.e(TAG, "Missing documentId")
             return Result.failure()
         }
-        val url = inputData.getString("url") ?: run {
-            Log.e(TAG, "Missing URL")
-            return Result.failure()
-        }
-        val initialTitle = inputData.getString("initialTitle") ?: ""
+        val uid = Firebase.auth.currentUser?.uid ?: return Result.failure()
+        val keys = AccountKeyStore.pushKeys(applicationContext, uid) ?: return Result.failure()
 
         return try {
-            val scrapedTitle = scrapeTitle(url)
-            if (!scrapedTitle.isNullOrBlank() && scrapedTitle != initialTitle) {
-                Log.d(TAG, "Found title: $scrapedTitle")
-                val updates = hashMapOf<String, Any>(
-                    "title" to scrapedTitle,
-                    "searchTokens" to generateSearchTokens("$scrapedTitle $url")
-                )
-
-                withContext(Dispatchers.IO) {
-                    db.collection("pushes")
-                        .document(documentId)
-                        .update(updates)
-                        .await()
+            val ref = db.collection("pushes").document(documentId)
+            val snapshot = ref.get(Source.SERVER).await()
+            val data = snapshot.data ?: return Result.success()
+            val updates: Map<String, Any> = when (val push = PushDocument.read(keys, documentId, data)) {
+                is PushDocument.Read.Opened -> {
+                    val content = push.content as? PushContent.Url ?: return Result.success()
+                    val title = scrapeTitle(content.url)
+                    if (title.isNullOrBlank() || title == content.title) return Result.success()
+                    val prepared = PreparedPush.prepare(keys, documentId, content.copy(title = title))
+                    mapOf("enc" to prepared.enc.toMap(), "searchTokens" to prepared.searchTokens)
                 }
-                Result.success()
-            } else {
-                Result.success()
+                is PushDocument.Read.Plain -> {
+                    if (push.type != PushContent.TYPE_URL) return Result.success()
+                    val title = scrapeTitle(push.url)
+                    if (title.isNullOrBlank() || title == push.title) return Result.success()
+                    mapOf("title" to PreparedPush.cutTitle(title))
+                }
+                PushDocument.Read.Locked, null -> return Result.success()
             }
+            ref.update(updates).await()
+            Result.success()
+        } catch (e: FirebaseFirestoreException) {
+            Log.e(TAG, "Error saving scraped title", e)
+            // A refusal is final: the push is gone or is no longer this account's to change.
+            if (e.code == FirebaseFirestoreException.Code.PERMISSION_DENIED) Result.failure() else Result.retry()
+        } catch (e: PushTooLargeException) {
+            // The URL with the scraped title does not fit `enc.ct`'s bound, and the page will
+            // give the same title next time: the push keeps the title it has. Retried, as the
+            // catch below would, it ran for as long as WorkManager kept the job.
+            Log.w(TAG, "The scraped title does not fit the push")
+            Result.success()
         } catch (e: Exception) {
             Log.e(TAG, "Error saving scraped title", e)
             Result.retry()
@@ -639,36 +602,52 @@ class TitleScrapingWorker(
                         return@withContext null
                     }
 
-                    val html = response.body?.string()
-                    if (html == null) {
-                        Log.e(TAG, "Empty response")
-                        return@withContext null
-                    }
-
-                    val doc = Jsoup.parse(html)
+                    // The pushes left untitled are mostly links to files (PDFs, video,
+                    // archives), which have no title to find, and the worker runs for received
+                    // ones too. Only an HTML page is read, and only its first 256 KiB, where
+                    // the <title> is: `string()` pulled a whole file into memory. iOS and
+                    // macOS read the same.
+                    val body = response.body
+                    val type = body.contentType()
+                    if (type == null || !type.subtype.lowercase().contains("html")) return@withContext null
+                    val source = body.source()
+                    source.request(MAX_PAGE_BYTES)
+                    val bytes = source.buffer.readByteArray(minOf(source.buffer.size, MAX_PAGE_BYTES))
+                    // The header's charset, or, when it names none, whatever the page's
+                    // <meta> says. The cap can cut the last character in two, well past the
+                    // <title>, so that costs nothing.
+                    val doc = Jsoup.parse(ByteArrayInputStream(bytes), type.charset()?.name(), url)
                     doc.title().takeIf { it.isNotBlank() }
                 }
             } catch (e: IOException) {
-                Log.e(TAG, "Error scraping title", e)
+                // The exception's type only: its message can name the page's host.
+                Log.e(TAG, "Error scraping title: ${e.javaClass.simpleName}")
+                null
+            } catch (e: IllegalArgumentException) {
+                // OkHttp refuses a URL it cannot parse; there is no title to find.
                 null
             }
         }
     }
 
-    private fun generateSearchTokens(text: String): List<String> {
-        val words = text
-            .lowercase()
-            .replace(Regex("[^\\w\\s]"), "")
-            .split(Regex("\\s+"))
-            .filter { it.isNotEmpty() }
+    companion object {
+        private const val KEY_DOCUMENT_ID = "documentId"
 
-        val tokens = mutableSetOf<String>()
-        tokens.addAll(words)
-        words.forEach { word ->
-            for (i in 1..word.length) {
-                tokens.add(word.substring(0, i))
-            }
+        /** How much of a page the title is looked for in. */
+        private const val MAX_PAGE_BYTES = 256L * 1024
+
+        fun enqueue(context: Context, documentId: String) {
+            val constraints = Constraints.Builder()
+                .setRequiredNetworkType(NetworkType.CONNECTED)
+                .build()
+
+            val titleScrapingWork = OneTimeWorkRequestBuilder<TitleScrapingWorker>()
+                .setInputData(workDataOf(KEY_DOCUMENT_ID to documentId))
+                .setConstraints(constraints)
+                .setBackoffCriteria(BackoffPolicy.LINEAR, 10, TimeUnit.SECONDS)
+                .build()
+
+            WorkManager.getInstance(context).enqueue(titleScrapingWork)
         }
-        return tokens.toList()
     }
 }
