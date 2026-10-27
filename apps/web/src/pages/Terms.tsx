@@ -144,10 +144,10 @@ export default function Terms() {
         made from your password, as described in the Privacy Policy and at https://pushthat.link/security. When you
         register, you are shown a recovery key, which is the only other way to unlock your Push Content. MakeRocketGoNow
         LLC never receives your recovery key, receives your password only in the cases described in the Privacy Policy,
-        and cannot decrypt your Push Content. You are solely responsible for keeping your password and your recovery
-        key. If you reset your password without your recovery key, or lose both, the Push Content made before then
-        cannot be recovered by you or by MakeRocketGoNow LLC, and MakeRocketGoNow LLC shall not be held liable for that
-        loss.
+        and cannot decrypt your Push Content (apart from pushes made before end-to-end encryption that are still stored
+        as they were sent). You are solely responsible for keeping your password and your recovery key. If you reset
+        your password without your recovery key, or lose both, the Push Content made before then cannot be recovered by
+        you or by MakeRocketGoNow LLC, and MakeRocketGoNow LLC shall not be held liable for that loss.
       </p>
 
       <h4>CONDUCT</h4>
@@ -228,9 +228,9 @@ export default function Terms() {
 
       <p>
         MakeRocketGoNow LLC herein reserves the right to refuse and/or delete any content currently available through
-        our Services. Because Push Content is end-to-end encrypted, MakeRocketGoNow LLC does not and cannot pre-screen
-        or review it. In addition, we reserve the right to remove and/or delete any such content that would violate the
-        TOS or which would otherwise be considered offensive to other visitors, users and/or members.
+        our Services. Because Push Content is end-to-end encrypted, MakeRocketGoNow LLC does not pre-screen or review
+        it. In addition, we reserve the right to remove and/or delete any such content that would violate the TOS or
+        which would otherwise be considered offensive to other visitors, users and/or members.
       </p>
 
       <p>
@@ -253,7 +253,8 @@ export default function Terms() {
 
       <p>
         Push Content can be accessed, preserved and/or disclosed only in its encrypted form, which MakeRocketGoNow LLC
-        cannot decrypt.
+        cannot decrypt, apart from pushes made before end-to-end encryption that are still stored as they were sent, as
+        described in the Privacy Policy.
       </p>
 
       <p>
