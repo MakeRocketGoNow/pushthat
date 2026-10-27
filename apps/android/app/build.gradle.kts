@@ -41,9 +41,13 @@ android {
          * Every bundle Play accepts needs a version code it has not seen, so CI passes one
          * that only rises (the workflow says how it is derived). A local build keeps 8,
          * the code this file carried before CI took over, which Play will not take
-         * again: bundles for Play come from CI now.
+         * again: bundles for Play come from CI now. A value that is set but not a number
+         * fails the build here, rather than quietly becoming 8 and surfacing later as Play
+         * refusing the upload.
          */
-        versionCode = System.getenv("PUSHTHAT_VERSION_CODE")?.toIntOrNull() ?: 8
+        versionCode = System.getenv("PUSHTHAT_VERSION_CODE")?.let {
+            it.toIntOrNull() ?: error("PUSHTHAT_VERSION_CODE is not a number: $it")
+        } ?: 8
         versionName = "1.2.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
