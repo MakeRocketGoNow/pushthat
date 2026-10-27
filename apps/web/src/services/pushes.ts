@@ -89,6 +89,20 @@ export async function loadPushKeys(db: Firestore, uid: string): Promise<PushKeys
   return { uid, metaKey, searchKey, keyVersion, deviceId: await deviceId() };
 }
 
+/**
+ * Whether the account's keys have moved past this device's: a reset elsewhere replaced the
+ * account key, and the rules refuse every push this device makes until it signs in again.
+ * A read that fails says nothing either way, and counts as not stale.
+ */
+export async function keyIsStale(db: Firestore, keys: PushKeys): Promise<boolean> {
+  try {
+    const current = (await getDoc(doc(db, 'users', keys.uid))).data()?.e2ee?.keyVersion;
+    return typeof current === 'number' && current !== keys.keyVersion;
+  } catch {
+    return false;
+  }
+}
+
 // ---------------------------------------------------------------------------------------
 // Reading
 

@@ -9,12 +9,25 @@ import { LIMITS, formatMb } from '@/config/plan';
 import { usePlan } from '@/hooks/usePlan';
 import { usePushKeys } from '@/hooks/usePushKeys';
 import { PlanReport } from '@/services/plan';
-import { PushTooLongError, createFilePush, createUrlPush, encryptedSize } from '@/services/pushes';
+import {
+  type PushKeys,
+  PushTooLongError,
+  createFilePush,
+  createUrlPush,
+  encryptedSize,
+  keyIsStale,
+} from '@/services/pushes';
 
 import styles from './Push.module.css';
 
-/** The rules refuse a push past the month's limit as a permission error: the only one of the create rule's refusals this page's own documents can hit. */
-const isLimitRefusal = (error: unknown) => error instanceof FirebaseError && error.code === 'permission-denied';
+/**
+ * Whether a refused push was refused for the month's limit. The rules say both that and a
+ * key a reset elsewhere has replaced (`isCurrentKeyVersion`) as a permission error, the only
+ * two of the create rule's refusals this page's own documents can hit; the second is told
+ * apart by reading the account's current version, and is not the plan's doing.
+ */
+const isLimitRefusal = async (error: unknown, keys: PushKeys) =>
+  error instanceof FirebaseError && error.code === 'permission-denied' && !(await keyIsStale(getFirestore(), keys));
 
 /** The sentence for a push past the month's limit, naming the number and, on Free, what Pro allows. */
 const limitMessage = (plan: PlanReport | undefined, type: 'url' | 'file') => {
@@ -94,10 +107,11 @@ export default function Push() {
       setUrl('');
     } catch (error) {
       console.error('Error saving link:', error);
+      const atLimit = await isLimitRefusal(error, keys);
       // The limit reached on another device: read the plan again so the next try is stopped here.
-      if (isLimitRefusal(error)) void refreshPlan();
+      if (atLimit) void refreshPlan();
       setError(
-        isLimitRefusal(error)
+        atLimit
           ? limitMessage(plan, 'url')
           : error instanceof PushTooLongError
             ? 'That link is too long to push.'
@@ -154,9 +168,10 @@ export default function Push() {
       if (fileInput) fileInput.value = '';
     } catch (error) {
       console.error('Error saving file:', error);
-      if (isLimitRefusal(error)) void refreshPlan();
+      const atLimit = await isLimitRefusal(error, keys);
+      if (atLimit) void refreshPlan();
       setError(
-        isLimitRefusal(error)
+        atLimit
           ? limitMessage(plan, 'file')
           : error instanceof PushTooLongError
             ? 'That file name is too long to push.'
