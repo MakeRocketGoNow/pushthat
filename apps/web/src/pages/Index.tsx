@@ -49,7 +49,7 @@ function HowItWorks() {
   const steps = [
     {
       title: 'Sign in everywhere',
-      body: 'One account on your phone, your computer and Chrome. Your password unlocks the key on each device, and it never leaves them.',
+      body: 'One account on your phone, your computer and Chrome. Your password unlocks the key on each device.',
     },
     {
       title: 'Share it',
