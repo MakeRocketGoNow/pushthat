@@ -266,6 +266,25 @@ class ShareActivity : AppCompatActivity() {
         }
     }
 
+    /** Keeps [prepared], ciphertext and id as they are, for `RetryPushWorker`. */
+    private fun queueForRetry(prepared: PreparedPush) {
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                val pendingPush = PendingPush(
+                    url = "",
+                    userId = prepared.userId,
+                    createdAt = System.currentTimeMillis(),
+                    type = prepared.type,
+                    prepared = prepared.toJson()
+                )
+                appDatabase.pendingPushDao().insert(pendingPush)
+                Log.d(TAG, "Saved failed push to local database")
+            } catch (dbException: Exception) {
+                Log.e(TAG, "Error saving to local database", dbException)
+            }
+        }
+    }
+
     /**
      * A push the server did not take. Refused by the rules: final unless it had landed after
      * all, the upload goes and the user is told why (the month's limit, or that the keys
@@ -278,12 +297,20 @@ class ShareActivity : AppCompatActivity() {
                 // The SDK resends a write whose acknowledgement was lost, and the resend of a
                 // create is an update of the push it made, which the rules refuse. Without
                 // this check that push was reported as past the limit and a file push's
-                // object deleted under it. A check that fails counts as not landed, as on the
-                // web: a refusal is far likelier than a lost acknowledgement.
+                // object deleted under it. A check that fails says nothing either way: the push
+                // is queued with its upload, and `RetryPushWorker` settles it once it can read
+                // (deleting the file could leave a push that exists with none; the apps and the
+                // web keep it too).
                 val landed = try {
                     pushStore.landed(prepared)
                 } catch (checkFailed: Exception) {
-                    false
+                    Log.w(TAG, "Could not tell whether a refused push had landed; queued")
+                    queueForRetry(prepared)
+                    showErrorDialog(
+                        getString(R.string.push_failed_title),
+                        getString(R.string.push_failed_message_generic)
+                    )
+                    return@launch
                 }
                 if (landed) {
                     Log.d(TAG, "The refused push had landed: ${prepared.id}")
@@ -302,21 +329,7 @@ class ShareActivity : AppCompatActivity() {
                 showErrorDialog(getString(R.string.push_failed_title), getString(message))
             }
         } else if (isNetworkError(e)) {
-            lifecycleScope.launch(Dispatchers.IO) {
-                try {
-                    val pendingPush = PendingPush(
-                        url = "",
-                        userId = prepared.userId,
-                        createdAt = System.currentTimeMillis(),
-                        type = prepared.type,
-                        prepared = prepared.toJson()
-                    )
-                    appDatabase.pendingPushDao().insert(pendingPush)
-                    Log.d(TAG, "Saved failed push to local database")
-                } catch (dbException: Exception) {
-                    Log.e(TAG, "Error saving to local database", dbException)
-                }
-            }
+            queueForRetry(prepared)
             showErrorDialog(
                 getString(R.string.push_failed_title),
                 getString(R.string.push_failed_message_generic)
