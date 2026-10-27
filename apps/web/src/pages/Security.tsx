@@ -97,9 +97,10 @@ export function Security() {
       <h5>THE RECOVERY KEY</h5>
 
       <p>
-        When you create your account, PushThat shows a recovery key once: 32 letters and numbers in groups of four. It
-        is a second way to unlock your pushes, and the only one besides your password. Keep it somewhere safe and apart
-        from your devices, such as a password manager or on paper.
+        When your account&rsquo;s encryption is set up (when you create your account, or the first time an updated app
+        signs in to an account made before encryption), PushThat shows a recovery key once: 32 letters and numbers in
+        groups of four. It is a second way to unlock your pushes, and the only one besides your password. Keep it
+        somewhere safe and apart from your devices, such as a password manager or on paper.
       </p>
 
       <p>
