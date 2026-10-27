@@ -32,7 +32,11 @@ export const limitMessage = (plan: PlanReport | undefined, type: 'url' | 'file')
   return `You have used this month's ${plan.limits[type].toLocaleString()} ${what} pushes.${more}`;
 };
 
-const atLimit = (plan: PlanReport, type: 'url' | 'file') => plan.usage[type] >= plan.limits[type];
+/**
+ * Whether the plan says this month's pushes of `type` are used. The one test for it, before
+ * a push is sent and after one is refused, so the two cannot disagree about the limit.
+ */
+export const atLimit = (plan: PlanReport, type: 'url' | 'file') => plan.usage[type] >= plan.limits[type];
 
 /**
  * The sentence for a push made under a key a password reset elsewhere has replaced. Word for

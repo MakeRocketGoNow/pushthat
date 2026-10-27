@@ -6,7 +6,7 @@ import Button from '@/components/Button';
 import { LIMITS, formatMb } from '@/config/plan';
 import { usePlan } from '@/hooks/usePlan';
 import { KEYS_UNAVAILABLE, usePushKeys } from '@/hooks/usePushKeys';
-import { isRulesRefusal, limitMessage, refusalMessage } from '@/services/pushRefusal';
+import { atLimit, isRulesRefusal, limitMessage, refusalMessage } from '@/services/pushRefusal';
 import { PushTooLongError, createFilePush, createUrlPush, encryptedSize, keyIsStale } from '@/services/pushes';
 
 import styles from './Push.module.css';
@@ -32,7 +32,7 @@ export default function Push() {
 
     // Said before anything is sent: at 50 a month a Free account reaches this routinely.
     // The plan read once per mount can be stale, so the refusal below is handled too.
-    if (plan && plan.usage.url >= plan.limits.url) {
+    if (plan && atLimit(plan, 'url')) {
       // Read once per mount, so a new period or a subscription in another tab is not seen
       // until it is read again; a refusal here asks for the read, so the next try is right.
       void refreshPlan();
@@ -102,7 +102,7 @@ export default function Push() {
     // The file is uploaded before the push document is made, and only the document is
     // checked against the quota, so a refused push would leave its bytes in Storage with
     // nothing to ever delete them. Refused here first, with the plan already in hand.
-    if (plan && plan.usage.file >= plan.limits.file) {
+    if (plan && atLimit(plan, 'file')) {
       void refreshPlan();
       setError(limitMessage(plan, 'file'));
       return;
