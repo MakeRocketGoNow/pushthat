@@ -36,6 +36,9 @@ actor TitleScraperService {
         }
     }
 
+    /// How much of a page is read for its title.
+    private static let maxPageBytes = 256 * 1024
+
     /// Scrape the title from a URL
     func scrapeTitle(from urlString: String) async -> String? {
         guard let url = URL(string: urlString) else { return nil }
@@ -45,13 +48,26 @@ actor TitleScraperService {
             request.setValue("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15", forHTTPHeaderField: "User-Agent")
             request.timeoutInterval = 10
 
-            let (data, response) = try await URLSession.shared.data(for: request)
+            // Streamed, not `data(for:)`: the pushes left untitled are mostly links to files
+            // (PDFs, video, archives), which have no title to find, and the list asks for
+            // every one it shows. Only an HTML page is read, and only its first 256 KiB, where
+            // the <title> is; `timeoutInterval` bounds a stall, not a download, so without the
+            // cap a large file would be pulled into memory on every launch.
+            let (bytes, response) = try await URLSession.shared.bytes(for: request)
 
             guard let httpResponse = response as? HTTPURLResponse,
                   httpResponse.statusCode == 200,
-                  let html = String(data: data, encoding: .utf8) else {
+                  httpResponse.mimeType?.lowercased().contains("html") == true else {
                 return nil
             }
+
+            var data = Data()
+            for try await byte in bytes {
+                data.append(byte)
+                if data.count >= Self.maxPageBytes { break }
+            }
+            // Lossy, since the cap can cut a UTF-8 sequence in two.
+            let html = String(decoding: data, as: UTF8.self)
 
             return extractTitle(from: html)
         } catch {

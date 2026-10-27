@@ -1,5 +1,7 @@
+import { FirebaseError } from 'firebase/app';
 import {
   type DocumentData,
+  type DocumentReference,
   type DocumentSnapshot,
   FieldPath,
   type Firestore,
@@ -8,6 +10,7 @@ import {
   deleteField,
   doc,
   getDoc,
+  getDocFromServer,
   getDocs,
   limit,
   orderBy,
@@ -134,7 +137,7 @@ export interface Push {
 
 export const LOCKED_TITLE = 'Locked push';
 export const LOCKED_MESSAGE =
-  'This push was encrypted with a key this account no longer has. It can be deleted but not opened.';
+  'This device does not have the key this push was encrypted with. If your keys were changed on another device, sign out and sign in again to open it.';
 
 const isEnc = (value: unknown): value is Enc =>
   typeof value === 'object' &&
@@ -209,6 +212,27 @@ const MAX_TITLE = 1000;
 
 export class PushTooLongError extends Error {}
 
+/**
+ * Writes a new push, and on a refusal checks whether it had landed. The SDK resends a write
+ * whose acknowledgement was lost, and the resend of a create is an update of the push it
+ * made, which the rules refuse: without the check, that push was reported as refused (the
+ * month's limit, on this page) and a file push's object deleted under it. A read of a push
+ * that does not exist is refused too, since the read rule looks at its owner, so only a
+ * read that succeeds says it landed.
+ */
+async function createPush(pushRef: DocumentReference, push: DocumentData): Promise<void> {
+  try {
+    await setDoc(pushRef, push);
+  } catch (error) {
+    if (!(error instanceof FirebaseError && error.code === 'permission-denied')) throw error;
+    const landed = await getDocFromServer(pushRef).then(
+      (snapshot) => snapshot.exists(),
+      () => false
+    );
+    if (!landed) throw error;
+  }
+}
+
 const cut = (s: string, max: number) => Array.from(s).slice(0, max).join('');
 
 const blind = (keys: PushKeys, text: string) => blindIndex(keys.searchKey, searchTokens(text));
@@ -226,7 +250,7 @@ export async function createUrlPush(db: Firestore, keys: PushKeys, url: string, 
   const envelope: UrlEnvelope = { url, title: cut(title, MAX_TITLE), ext: '' };
   const enc = await sealPush(keys.metaKey, keys.uid, pushRef.id, envelope);
   if (enc.ct.length > MAX_CT_LENGTH) throw new PushTooLongError('the URL is too long to push');
-  await setDoc(pushRef, {
+  await createPush(pushRef, {
     userId: keys.uid,
     type: 'url',
     createdAt: serverTimestamp(),
@@ -280,7 +304,7 @@ export async function createFilePush(
     };
     const enc = await sealPush(keys.metaKey, keys.uid, pushRef.id, envelope);
     if (enc.ct.length > MAX_CT_LENGTH) throw new PushTooLongError('the file name is too long to push');
-    await setDoc(pushRef, {
+    await createPush(pushRef, {
       userId: keys.uid,
       type: 'file',
       createdAt: serverTimestamp(),
@@ -334,8 +358,8 @@ const ENCRYPTED_KEYS = new Set([
 /**
  * The single update that encrypts a plaintext push in place (docs/e2ee.md, Migration), as
  * field paths and values, or undefined for one the rules could never take: a type they do
- * not know, or a file push whose title does not name one object in the owner's folder
- * (none, or one with a "/"). In place rather than recreated, because a create would notify
+ * not know, a file push whose title does not name one object in the owner's folder (none,
+ * or one with a "/"), or one too long to seal within `enc.ct`'s bound. In place rather than recreated, because a create would notify
  * every device and count against the month.
  */
 async function migrationOf(
@@ -361,14 +385,20 @@ async function migrationOf(
     // The bytes are in Storage as they were uploaded and expire within 30 days; re-encrypting
     // them would need a download and an upload, so the push says to read them as they are.
     const envelope: FileEnvelope = { name: title, mime: '', size: 0, ext, legacyPlain: true };
-    set('enc', await sealPush(keys.metaKey, keys.uid, snapshot.id, envelope));
+    const enc = await sealPush(keys.metaKey, keys.uid, snapshot.id, envelope);
+    if (enc.ct.length > MAX_CT_LENGTH) return undefined;
+    set('enc', enc);
     set('searchTokens', await blind(keys, title));
     // The path the title named, which onPushRecordDeleted has been deleting with the push;
     // the rules hold the migration to exactly this.
     set('objectPath', `uploads/${keys.uid}/${title}`);
   } else {
     const envelope: UrlEnvelope = { url: stringOr(data.url), title, ext };
-    set('enc', await sealPush(keys.metaKey, keys.uid, snapshot.id, envelope));
+    // A push made before the rules bounded the URL can be too long to seal within enc.ct's
+    // bound; the rules would refuse it every time, so it is one they can never take.
+    const enc = await sealPush(keys.metaKey, keys.uid, snapshot.id, envelope);
+    if (enc.ct.length > MAX_CT_LENGTH) return undefined;
+    set('enc', enc);
     set('searchTokens', await blind(keys, urlSearchText(envelope)));
   }
   set('keyVersion', keys.keyVersion);

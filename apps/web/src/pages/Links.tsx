@@ -21,7 +21,7 @@ import PushesList from '@/components/PushesList';
 import { TrashIcon } from '@/components/icons/TrashIcon';
 import { useAuth } from '@/contexts/AuthContext';
 import { useDebounce } from '@/hooks/useDebounce';
-import { usePushKeys } from '@/hooks/usePushKeys';
+import { KEYS_UNAVAILABLE, usePushKeys } from '@/hooks/usePushKeys';
 import { type Push, type PushKeys, readPush, searchTokenFor } from '@/services/pushes';
 
 import styles from './Links.module.css';
@@ -161,7 +161,9 @@ export default function Links() {
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [debouncedSearchTerm]); // eslint-disable-line react-hooks/exhaustive-deps
+    // `keys` too: they are read from IndexedDB after the first render, and a handler bound
+    // before then would hold a fetchPushes that has none and returns without reading.
+  }, [debouncedSearchTerm, user, keys]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Handle search input changes
   const handleSearch = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -231,7 +233,7 @@ export default function Links() {
 
       <PushesList
         pushes={pushes}
-        error={keysFailed ? 'Your encryption key could not be read on this device. Reload the page.' : error}
+        error={keysFailed ? KEYS_UNAVAILABLE : error}
         loading={(loading || (!keys && !keysFailed)) && pushes.length === 0}
         selectedPushes={selectedPushes}
         onSelectedPushesChange={setSelectedPushes}

@@ -148,6 +148,7 @@ class PushThatMessagingService : FirebaseMessagingService() {
         (getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager).notify(notificationId, builder.build())
     }
 
+    /** The one channel every push notification goes to, made on first use (Android 8 on). */
     private fun ensureChannel(): String {
         val channelId = getString(R.string.default_notification_channel_id)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -193,9 +194,8 @@ class PushThatMessagingService : FirebaseMessagingService() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        val channelId = getString(R.string.default_notification_channel_id)
         val defaultSoundUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
-        val notificationBuilder = NotificationCompat.Builder(this, channelId)
+        val notificationBuilder = NotificationCompat.Builder(this, ensureChannel())
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle(title)
             .setContentText(messageBody)
@@ -210,16 +210,6 @@ class PushThatMessagingService : FirebaseMessagingService() {
             // )
 
         val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-
-        // Create the notification channel for Android Oreo and above
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(
-                channelId,
-                getString(R.string.default_notification_channel_name),
-                NotificationManager.IMPORTANCE_DEFAULT
-            )
-            notificationManager.createNotificationChannel(channel)
-        }
 
         // Use URL's hashCode as the notification ID to ensure uniqueness per URL
         val notificationId = messageBody.hashCode()

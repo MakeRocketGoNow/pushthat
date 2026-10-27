@@ -4,7 +4,7 @@ import FirebaseFirestore
 /// Encrypts an account's plaintext pushes in place (docs/e2ee.md, "Migration"), once the
 /// account key is on this device: at start with a key, and when sign-in or unlock has just
 /// stored one. Once per account per process, in the background, and silently: failures
-/// are logged and the next start tries again.
+/// are logged, and a pass that stopped on an error lets the next one run.
 ///
 /// In place rather than recreated, because a create would fire `onNewPushCreated` and
 /// count against the month. Each push is one `update` (`isMigration` in the rules), not a
@@ -24,11 +24,17 @@ actor PushMigration {
         "userId", "type", "createdAt", "expiresAt", "deviceId", "keyVersion", "enc", "searchTokens", "objectPath",
     ]
 
+    /// The uid is marked before the pass so that a second caller does not start another
+    /// beside it. A pass that threw (offline at launch, say: its reads are from the server)
+    /// takes the mark off again, or no pass would run until the app restarts. One that got
+    /// through with some updates refused keeps it: the rules would refuse them again, and
+    /// the next start retries them.
     func runIfNeeded(uid: String) async {
         guard started.insert(uid).inserted else { return }
         do {
             try await run(uid: uid)
         } catch {
+            started.remove(uid)
             print("Push migration stopped: \(error)")
         }
     }

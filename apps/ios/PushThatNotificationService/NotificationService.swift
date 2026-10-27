@@ -137,10 +137,15 @@ final class NotificationService: UNNotificationServiceExtension {
     /// `pushes/{pushId}` over the REST API, as plain values: the typed values Firestore
     /// returns (`{"stringValue": ...}`, `{"integerValue": "1"}`, `{"mapValue": {"fields":
     /// ...}}`) unwrapped into strings and maps. An integer stays the string the API sends.
+    ///
+    /// Only the fields `decrypted` reads, through a field mask: the whole document carries
+    /// up to 3000 search tokens, which would be downloaded and parsed for nothing inside
+    /// the extension's 24 MB.
     private static func fetch(pushId: String, idToken: String) async throws -> [String: Any] {
+        let mask = ["userId", "type", "enc", "keyVersion"].map { "mask.fieldPaths=\($0)" }.joined(separator: "&")
         guard let projectId = FirebaseApp.app()?.options.projectID,
               let id = pushId.addingPercentEncoding(withAllowedCharacters: .alphanumerics),
-              let url = URL(string: "https://firestore.googleapis.com/v1/projects/\(projectId)/databases/(default)/documents/pushes/\(id)")
+              let url = URL(string: "https://firestore.googleapis.com/v1/projects/\(projectId)/databases/(default)/documents/pushes/\(id)?\(mask)")
         else { throw ReadError.noProject }
         var request = URLRequest(url: url)
         request.setValue("Bearer \(idToken)", forHTTPHeaderField: "Authorization")

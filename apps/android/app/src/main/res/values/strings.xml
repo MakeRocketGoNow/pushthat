@@ -39,6 +39,9 @@
     <string name="push_failed_title">Unable to Save</string>
     <string name="push_failed_message_limit">You have reached this month’s push limit.</string>
     <string name="push_failed_message_generic">Failed to save push. Please try again later.</string>
+    <!-- The envelope would pass the rules' bound on its size: the same words as the web. -->
+    <string name="push_failed_link_too_long">That link is too long to push.</string>
+    <string name="push_failed_file_name_too_long">That file name is too long to push.</string>
     <string name="ok">OK</string>
     <string name="only_urls_can_be_pushed">Only URLs can be pushed</string>
     <string name="no_url_found">No valid URL found in shared content</string>
@@ -98,8 +101,11 @@
     <!-- Pushes encrypted under the account key (docs/e2ee.md, phase 4), word for word with
          the other apps. -->
     <string name="locked_push">Locked push</string>
-    <string name="locked_push_message">This push was encrypted with a key this account no longer has. It can be deleted but not opened.</string>
+    <string name="locked_push_message">This device does not have the key this push was encrypted with. If your keys were changed on another device, sign out and sign in again to open it.</string>
     <string name="file_decrypt_failed">This file could not be decrypted.</string>
     <string name="file_push_body">File</string>
+    <!-- A long press on a push copies its URL, or a file push's name, as "Copy name" does on iOS. -->
+    <string name="url_copied">URL copied to clipboard</string>
+    <string name="name_copied">Name copied</string>
     <string name="keys_changed">Your encryption keys were changed on another device while this one was setting up. Try again.</string>
 </resources>

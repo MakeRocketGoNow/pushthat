@@ -115,6 +115,13 @@ class PushDocumentTest {
         val opened = (PushDocument.read(keys, "push-5", prepared.fields()) as PushDocument.Read.Opened).content as PushContent.Url
         assertEquals(PreparedPush.MAX_TITLE_LENGTH, opened.title.length)
 
+        // An emoji across the cut goes whole rather than leaving half of it, which UTF-8
+        // would write as "?".
+        val emojiAtCut = "t".repeat(PreparedPush.MAX_TITLE_LENGTH - 1) + "\uD83D\uDE00" + "t"
+        val emojiPrepared = PreparedPush.prepare(keys, "push-7", PushContent.Url("https://example.com", emojiAtCut, ""))
+        val emojiOpened = (PushDocument.read(keys, "push-7", emojiPrepared.fields()) as PushDocument.Read.Opened).content as PushContent.Url
+        assertEquals("t".repeat(PreparedPush.MAX_TITLE_LENGTH - 1), emojiOpened.title)
+
         val absurdUrl = "https://example.com/" + "a".repeat(20_000)
         assertThrows(PushTooLargeException::class.java) {
             PreparedPush.prepare(keys, "push-6", PushContent.Url(absurdUrl, "", ""))

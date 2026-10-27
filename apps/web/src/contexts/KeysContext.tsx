@@ -12,7 +12,7 @@ import {
   loadAccountKey,
   onAccountKeyChanged,
 } from '@/services/keyStore';
-import { loadPushKeys, migratePushes } from '@/services/pushes';
+import { type PushKeys, loadPushKeys, migratePushes } from '@/services/pushes';
 import * as signInService from '@/services/signIn';
 import { type KeySession, type KeysResult } from '@/services/signIn';
 
@@ -38,6 +38,10 @@ export type KeyStep =
 
 interface KeysContextType {
   step: KeyStep;
+  /** The keys pushes are written and read with, once `step` is ready and they are loaded. */
+  pushKeys: PushKeys | undefined;
+  /** The step is ready and the push keys could not be loaded. */
+  pushKeysFailed: boolean;
   /** Rejects when the sign-in itself fails, for the sign-in page to say why. */
   signIn: (email: string, password: string) => Promise<void>;
   register: (email: string, password: string) => Promise<void>;
@@ -119,18 +123,40 @@ export function KeysProvider({ children }: { children: React.ReactNode }) {
     };
   }, [uid]);
 
-  // Once this device holds the key, the account's plaintext pushes are encrypted in place
-  // (docs/e2ee.md, Migration), in the background and once per account per page load: a
-  // pass cut short leaves the mark unset and the next load carries on. Here rather than in
-  // a page, so it runs whichever page the user lands on.
+  // The keys pushes are written and read with, loaded once when this device holds the
+  // account key and shared by every page, rather than each page reading IndexedDB and
+  // deriving the subkeys again on mount. `pushKeysFailed` is a ready key that could not be
+  // loaded after all (IndexedDB refusing, in a private window that blocks it).
+  const [pushKeys, setPushKeys] = useState<PushKeys | undefined>(undefined);
+  const [pushKeysFailed, setPushKeysFailed] = useState(false);
+  // With them, the account's plaintext pushes are encrypted in place (docs/e2ee.md,
+  // Migration), in the background and once per account per page load: a pass cut short
+  // leaves the mark unset and the next load carries on. Here rather than in a page, so it
+  // runs whichever page the user lands on.
   const migrated = useRef<string | undefined>(undefined);
   useEffect(() => {
-    if (step.name !== 'ready' || !uid || migrated.current === uid) return;
-    migrated.current = uid;
+    setPushKeys(undefined);
+    setPushKeysFailed(false);
+    if (step.name !== 'ready' || !uid) return;
+    let current = true;
     const db = getFirestore(app);
-    loadPushKeys(db, uid)
-      .then((keys) => keys && migratePushes(db, keys))
-      .catch((error) => console.error('The push migration stopped:', error));
+    loadPushKeys(db, uid).then(
+      (keys) => {
+        if (!current) return;
+        setPushKeys(keys);
+        setPushKeysFailed(!keys);
+        if (!keys || migrated.current === uid) return;
+        migrated.current = uid;
+        migratePushes(db, keys).catch((error) => console.error('The push migration stopped:', error));
+      },
+      (error) => {
+        console.error('Could not read the push keys:', error);
+        if (current) setPushKeysFailed(true);
+      }
+    );
+    return () => {
+      current = false;
+    };
   }, [step.name, uid]);
 
   // Another tab stored the key this tab is asking the password for: take it. Only from
@@ -262,7 +288,19 @@ export function KeysProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <KeysContext.Provider
-      value={{ step, signIn, register, unlock, recover, withoutRecovery, backToRecovery, startOver, savedRecoveryKey }}
+      value={{
+        step,
+        pushKeys,
+        pushKeysFailed,
+        signIn,
+        register,
+        unlock,
+        recover,
+        withoutRecovery,
+        backToRecovery,
+        startOver,
+        savedRecoveryKey,
+      }}
     >
       {children}
     </KeysContext.Provider>

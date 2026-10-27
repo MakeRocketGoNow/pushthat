@@ -34,9 +34,12 @@ export const limitMessage = (plan: PlanReport | undefined, type: 'url' | 'file')
 
 const atLimit = (plan: PlanReport, type: 'url' | 'file') => plan.usage[type] >= plan.limits[type];
 
-/** The sentence for a push made under a key a password reset elsewhere has replaced. */
+/**
+ * The sentence for a push made under a key a password reset elsewhere has replaced. Word for
+ * word what Android says (keys_changed_here).
+ */
 export const STALE_KEY_MESSAGE =
-  'Your password was changed on another device. Sign out and sign in again to push from here.';
+  'Your encryption keys were changed on another device. Sign out and sign in again to use them here.';
 
 /** The sentence for a refusal that is neither: this copy of PushThat may be out of date. */
 export const outdatedMessage = () =>

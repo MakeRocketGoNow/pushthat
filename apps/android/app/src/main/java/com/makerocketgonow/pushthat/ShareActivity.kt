@@ -39,6 +39,7 @@ import androidx.work.*
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.jsoup.Jsoup
+import java.io.ByteArrayInputStream
 import java.io.File
 import java.io.IOException
 import java.util.concurrent.TimeUnit
@@ -244,16 +245,15 @@ class ShareActivity : AppCompatActivity() {
                     PreparedPush.prepare(keys, pushId, PushContent.Url(validatedUrl, initialTitle, ext))
                 } catch (e: PushTooLargeException) {
                     Log.w(TAG, "The link is too long to push")
-                    showErrorDialog(getString(R.string.push_failed_title), getString(R.string.push_failed_message_generic))
+                    // Said as it is: the generic failure's "try again later" never works here.
+                    showErrorDialog(getString(R.string.push_failed_title), getString(R.string.push_failed_link_too_long))
                     return@launch
                 }
 
                 pushStore.create(prepared)
                     .addOnSuccessListener {
                         Log.d(TAG, "Link saved with ID: $pushId")
-                        // Schedule title scraping as a background task
-                        TitleScrapingWorker.enqueue(applicationContext, pushId)
-                        finish()
+                        onPushSaved(prepared)
                     }
                     .addOnFailureListener { e ->
                         Log.e(TAG, "Error saving link", e)
@@ -267,18 +267,35 @@ class ShareActivity : AppCompatActivity() {
     }
 
     /**
-     * A push the server did not take. Refused by the rules: final, the upload goes and the
-     * user is told why (the month's limit, or the generic failure when this install's key is
-     * one a reset replaced). Unreachable: queued, ciphertext and id as they are, for
-     * `RetryPushWorker`. Anything else: final, as before.
+     * A push the server did not take. Refused by the rules: final unless it had landed after
+     * all, the upload goes and the user is told why (the month's limit, or that the keys
+     * changed when this install's key is one a reset replaced). Unreachable: queued,
+     * ciphertext and id as they are, for `RetryPushWorker`. Anything else: final, as before.
      */
     private fun onPushFailed(e: Exception, keys: PushKeys, prepared: PreparedPush) {
         if (isPermissionError(e)) {
-            // At 3 files a month on Free this is the common path.
-            prepared.objectPath?.let { discardUpload(it) }
             lifecycleScope.launch {
+                // The SDK resends a write whose acknowledgement was lost, and the resend of a
+                // create is an update of the push it made, which the rules refuse. Without
+                // this check that push was reported as past the limit and a file push's
+                // object deleted under it. A check that fails counts as not landed, as on the
+                // web: a refusal is far likelier than a lost acknowledgement.
+                val landed = try {
+                    pushStore.landed(prepared)
+                } catch (checkFailed: Exception) {
+                    false
+                }
+                if (landed) {
+                    Log.d(TAG, "The refused push had landed: ${prepared.id}")
+                    onPushSaved(prepared)
+                    return@launch
+                }
+                // At 3 files a month on Free this is the common path.
+                prepared.objectPath?.let { discardUpload(it) }
+                // A stale key is told apart from the limit and named: trying again cannot
+                // work, since only signing in again stores the new key. The web says the same.
                 val message = if (pushStore.keyIsStale(keys) == true) {
-                    R.string.push_failed_message_generic
+                    R.string.keys_changed_here
                 } else {
                     R.string.push_failed_message_limit
                 }
@@ -312,6 +329,12 @@ class ShareActivity : AppCompatActivity() {
                 getString(R.string.push_failed_message_generic)
             )
         }
+    }
+
+    /** A push that is in Firestore: a link's title is scraped in the background, and the share is done. */
+    private fun onPushSaved(prepared: PreparedPush) {
+        if (prepared.type == PushContent.TYPE_URL) TitleScrapingWorker.enqueue(applicationContext, prepared.id)
+        finish()
     }
 
     /**
@@ -380,14 +403,14 @@ class ShareActivity : AppCompatActivity() {
                     PreparedPush.prepare(keys, pushId, content, objectPath)
                 } catch (e: PushTooLargeException) {
                     discardUpload(objectPath)
-                    showErrorDialog(getString(R.string.push_failed_title), getString(R.string.push_failed_message_generic))
+                    showErrorDialog(getString(R.string.push_failed_title), getString(R.string.push_failed_file_name_too_long))
                     return@launch
                 }
 
                 pushStore.create(prepared)
                     .addOnSuccessListener {
                         Log.d(TAG, "File saved with ID: $pushId")
-                        finish()
+                        onPushSaved(prepared)
                     }
                     .addOnFailureListener { e ->
                         Log.e(TAG, "Error saving file", e)
@@ -529,7 +552,7 @@ class TitleScrapingWorker(
                     if (push.type != PushContent.TYPE_URL) return Result.success()
                     val title = scrapeTitle(push.url)
                     if (title.isNullOrBlank() || title == push.title) return Result.success()
-                    mapOf("title" to title.take(PreparedPush.MAX_TITLE_LENGTH))
+                    mapOf("title" to PreparedPush.cutTitle(title))
                 }
                 PushDocument.Read.Locked, null -> return Result.success()
             }
@@ -539,6 +562,12 @@ class TitleScrapingWorker(
             Log.e(TAG, "Error saving scraped title", e)
             // A refusal is final: the push is gone or is no longer this account's to change.
             if (e.code == FirebaseFirestoreException.Code.PERMISSION_DENIED) Result.failure() else Result.retry()
+        } catch (e: PushTooLargeException) {
+            // The URL with the scraped title does not fit `enc.ct`'s bound, and the page will
+            // give the same title next time: the push keeps the title it has. Retried, as the
+            // catch below would, it ran for as long as WorkManager kept the job.
+            Log.w(TAG, "The scraped title does not fit the push")
+            Result.success()
         } catch (e: Exception) {
             Log.e(TAG, "Error saving scraped title", e)
             Result.retry()
@@ -560,13 +589,21 @@ class TitleScrapingWorker(
                         return@withContext null
                     }
 
-                    val html = response.body?.string()
-                    if (html == null) {
-                        Log.e(TAG, "Empty response")
-                        return@withContext null
-                    }
-
-                    val doc = Jsoup.parse(html)
+                    // The pushes left untitled are mostly links to files (PDFs, video,
+                    // archives), which have no title to find, and the worker runs for received
+                    // ones too. Only an HTML page is read, and only its first 256 KiB, where
+                    // the <title> is: `string()` pulled a whole file into memory. iOS and
+                    // macOS read the same.
+                    val body = response.body
+                    val type = body.contentType()
+                    if (type == null || !type.subtype.lowercase().contains("html")) return@withContext null
+                    val source = body.source()
+                    source.request(MAX_PAGE_BYTES)
+                    val bytes = source.buffer.readByteArray(minOf(source.buffer.size, MAX_PAGE_BYTES))
+                    // The header's charset, or, when it names none, whatever the page's
+                    // <meta> says. The cap can cut the last character in two, well past the
+                    // <title>, so that costs nothing.
+                    val doc = Jsoup.parse(ByteArrayInputStream(bytes), type.charset()?.name(), url)
                     doc.title().takeIf { it.isNotBlank() }
                 }
             } catch (e: IOException) {
@@ -582,6 +619,9 @@ class TitleScrapingWorker(
 
     companion object {
         private const val KEY_DOCUMENT_ID = "documentId"
+
+        /** How much of a page the title is looked for in. */
+        private const val MAX_PAGE_BYTES = 256L * 1024
 
         fun enqueue(context: Context, documentId: String) {
             val constraints = Constraints.Builder()

@@ -62,6 +62,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.repeatOnLifecycle
 import android.widget.EditText
 import android.widget.ScrollView
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -95,7 +96,7 @@ class MainActivity : AppCompatActivity() {
     private var planDialog: AlertDialog? = null
     private lateinit var keySettings: KeySettingsViewModel
     private var keySettingsDialog: AlertDialog? = null
-    private lateinit var deleteProgressBar: ProgressBar
+    private lateinit var listProgressBar: ProgressBar
     private lateinit var searchLayout: View
     private lateinit var selectionLayout: View
     private lateinit var selectAllText: TextView
@@ -132,7 +133,7 @@ class MainActivity : AppCompatActivity() {
         applyWindowInsets()
 
         auth = Firebase.auth
-        deleteProgressBar = findViewById(R.id.deleteProgressBar)
+        listProgressBar = findViewById(R.id.listProgressBar)
 
         // Initialize toolbar views
         searchLayout = findViewById(R.id.searchLayout)
@@ -420,14 +421,18 @@ class MainActivity : AppCompatActivity() {
     private fun openFile(target: PushTarget.File) {
         if (openingFile) return
         openingFile = true
-        deleteProgressBar.visibility = View.VISIBLE
+        listProgressBar.visibility = View.VISIBLE
         val file = target.content
         lifecycleScope.launch {
             val result = runCatching {
                 withContext(Dispatchers.IO) { PushFiles.fetch(this@MainActivity, target.objectPath, file.name, file.fk, file.np) }
             }
             openingFile = false
-            deleteProgressBar.visibility = View.GONE
+            listProgressBar.visibility = View.GONE
+            // Signed out while the file was on its way (this scope cancelled, or the session
+            // ended under the open): `PushFiles.fetch` has removed what it wrote, nothing is
+            // opened, and a failure to decrypt would be the wrong thing to say.
+            if (result.exceptionOrNull() is CancellationException) return@launch
             result.onSuccess { opened ->
                 try {
                     PushFiles.view(this@MainActivity, opened, file.mime, file.ext)
@@ -702,7 +707,7 @@ class MainActivity : AppCompatActivity() {
         auth.currentUser ?: return
 
         // Show progress and disable interactions
-        deleteProgressBar.visibility = View.VISIBLE
+        listProgressBar.visibility = View.VISIBLE
         pushRecyclerView.isEnabled = false
         swipeRefreshLayout.isEnabled = false
 
@@ -717,7 +722,7 @@ class MainActivity : AppCompatActivity() {
                     deletedCount++
                     if (deletedCount == totalItems) {
                         // All items deleted, restore UI
-                        deleteProgressBar.visibility = View.GONE
+                        listProgressBar.visibility = View.GONE
                         pushRecyclerView.isEnabled = true
                         swipeRefreshLayout.isEnabled = true
                         clearSelection()
@@ -731,7 +736,7 @@ class MainActivity : AppCompatActivity() {
                     deletedCount++
                     if (deletedCount == totalItems) {
                         // Restore UI even if some deletions failed
-                        deleteProgressBar.visibility = View.GONE
+                        listProgressBar.visibility = View.GONE
                         pushRecyclerView.isEnabled = true
                         swipeRefreshLayout.isEnabled = true
                         clearSelection()
@@ -937,18 +942,23 @@ class PushAdapter(
             // Set click listener for the item
             itemView.setOnClickListener { onItemClicked(push) }
 
-            // Copies a URL. An encrypted file push has none (no download URL is stored) and a
-            // locked one's is unknown, so a long press on those offers nothing.
-            val link = push.target as? PushTarget.Link
-            if (link == null) {
+            // Copies a URL. An encrypted file push has none (no download URL is stored), so it
+            // copies the file's name, as "Copy name" does on iOS and macOS. A locked push's
+            // content is unknown, so a long press on it offers nothing.
+            val copy: Triple<String, String, Int>? = when (val target = push.target) {
+                is PushTarget.Link -> Triple("URL", target.url, R.string.url_copied)
+                is PushTarget.File -> Triple("Name", target.content.name, R.string.name_copied)
+                PushTarget.Locked -> null
+            }
+            if (copy == null) {
                 itemView.setOnLongClickListener(null)
                 itemView.isLongClickable = false
             } else {
+                val (label, text, copied) = copy
                 itemView.setOnLongClickListener {
                     val clipboard = itemView.context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                    val clip = ClipData.newPlainText("URL", link.url)
-                    clipboard.setPrimaryClip(clip)
-                    Toast.makeText(itemView.context, "URL copied to clipboard", Toast.LENGTH_SHORT).show()
+                    clipboard.setPrimaryClip(ClipData.newPlainText(label, text))
+                    Toast.makeText(itemView.context, copied, Toast.LENGTH_SHORT).show()
                     true
                 }
             }

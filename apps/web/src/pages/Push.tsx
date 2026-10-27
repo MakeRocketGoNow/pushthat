@@ -5,15 +5,11 @@ import { useState } from 'react';
 import Button from '@/components/Button';
 import { LIMITS, formatMb } from '@/config/plan';
 import { usePlan } from '@/hooks/usePlan';
-import { usePushKeys } from '@/hooks/usePushKeys';
+import { KEYS_UNAVAILABLE, usePushKeys } from '@/hooks/usePushKeys';
 import { isRulesRefusal, limitMessage, refusalMessage } from '@/services/pushRefusal';
 import { PushTooLongError, createFilePush, createUrlPush, encryptedSize, keyIsStale } from '@/services/pushes';
 
 import styles from './Push.module.css';
-
-// The keys are read from IndexedDB as the page mounts, which takes a moment; a push sent
-// before then, or in a browser that refuses IndexedDB, is stopped with this.
-const NO_KEYS = 'Your encryption key is not ready on this device. Reload the page and try again.';
 
 export default function Push() {
   const [url, setUrl] = useState('');
@@ -30,7 +26,7 @@ export default function Push() {
 
     if (!url) return;
     if (!keys) {
-      setError(NO_KEYS);
+      setError(KEYS_UNAVAILABLE);
       return;
     }
 
@@ -87,7 +83,7 @@ export default function Push() {
 
     if (!file) return;
     if (!keys) {
-      setError(NO_KEYS);
+      setError(KEYS_UNAVAILABLE);
       return;
     }
 

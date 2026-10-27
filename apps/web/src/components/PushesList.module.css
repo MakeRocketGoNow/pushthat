@@ -24,6 +24,27 @@
   gap: 1rem;
 }
 
+/* The row of a push opened here rather than followed: a button that looks like the links. */
+.pushButton {
+  background: none;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.notice {
+  color: #dc2626;
+  margin-bottom: 1rem;
+  padding: 0.5rem;
+  border-radius: 0.25rem;
+  background-color: #fee2e2;
+  border: 1px solid #fecaca;
+}
+
 .pushIcon {
   width: 32px;
   height: 32px;
