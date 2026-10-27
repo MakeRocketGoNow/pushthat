@@ -26,10 +26,13 @@ import androidx.appcompat.widget.Toolbar
 import com.makerocketgonow.pushthat.workers.RetryPushWorker
 import com.makerocketgonow.pushthat.e2ee.AccountKeyStore
 import com.makerocketgonow.pushthat.e2ee.E2ee
+import com.makerocketgonow.pushthat.e2ee.MIN_NEW_PASSWORD_LENGTH
 import com.makerocketgonow.pushthat.e2ee.PushContent
 import com.makerocketgonow.pushthat.e2ee.PushDocument
 import com.makerocketgonow.pushthat.e2ee.PushKeys
 import com.makerocketgonow.pushthat.e2ee.PushMigration
+import com.makerocketgonow.pushthat.e2ee.forgetSession
+import com.makerocketgonow.pushthat.e2ee.signOut
 import android.content.ClipboardManager
 import android.content.ClipData
 import android.widget.Toast
@@ -76,11 +79,13 @@ private fun extractRootDomain(url: String): String {
 }
 
 class MainActivity : AppCompatActivity() {
+
     private val TAG = "MainActivity"
     private lateinit var pushRecyclerView: RecyclerView
     private lateinit var swipeRefreshLayout: SwipeRefreshLayout
     private lateinit var auth: FirebaseAuth
-    private lateinit var keys: PushKeys
+    /** Null until the key has been opened off the main thread in `onCreate`. */
+    private var keys: PushKeys? = null
     private var openingFile = false
     private val db = Firebase.firestore
     private var selectedItems = mutableSetOf<String>()
@@ -147,18 +152,44 @@ class MainActivity : AppCompatActivity() {
         }
 
         // Signed in, and holding the account key. A session without the key (an install that
-        // updated while signed in) goes to LoginActivity's password prompt before the list.
+        // updated while signed in) goes to LoginActivity's password prompt before the list,
+        // and one with a recovery key not yet confirmed to its recovery key screen, unless
+        // Settings is showing that key here (this is a rotation, not a new process).
+        keySettings = ViewModelProvider(this)[KeySettingsViewModel::class.java]
+        val settingsShowKey = keySettings.state.value.let {
+            it is KeySettingsViewModel.State.RecoveryKey || it is KeySettingsViewModel.State.Working
+        }
         val user = auth.currentUser
-        val pushKeys = user?.let { AccountKeyStore.pushKeys(this, it.uid) }
-        if (pushKeys == null) {
+        if (
+            user == null ||
+            !AccountKeyStore.hasKey(this, user.uid) ||
+            (
+                !settingsShowKey &&
+                    !LoginViewModel.recoveryKeyUnavailable &&
+                    AccountKeyStore.hasUnconfirmedRecoveryKey(this, user.uid)
+                )
+        ) {
             startActivity(Intent(this, LoginActivity::class.java))
             finish()
             return
         }
-        keys = pushKeys
-        // The account's plaintext pushes, encrypted in place in the background. Here, since
-        // this is where every start with a key and every sign-in or unlock arrives.
-        PushMigration.startOnce(pushKeys)
+        // The key is opened off the main thread (a Keystore call, see AccountKeyStore.hasKey),
+        // and the list waits for it: until then loadPushRecords has nothing to read with.
+        val uid = user.uid
+        lifecycleScope.launch {
+            val loaded = withContext(Dispatchers.IO) { AccountKeyStore.pushKeys(this@MainActivity, uid) }
+            if (loaded == null) {
+                // The key was there by the file and did not open; load has cleared it.
+                startActivity(Intent(this@MainActivity, LoginActivity::class.java))
+                finish()
+                return@launch
+            }
+            keys = loaded
+            // The account's plaintext pushes, encrypted in place in the background. Here,
+            // since this is where every start with a key and every sign-in or unlock arrives.
+            PushMigration.startOnce(loaded)
+            loadPushRecords(true)
+        }
 
         pushRecyclerView = findViewById(R.id.pushRecyclerView)
         swipeRefreshLayout = findViewById(R.id.swipeRefreshLayout)
@@ -234,7 +265,6 @@ class MainActivity : AppCompatActivity() {
         val toolbar = findViewById<Toolbar>(R.id.toolbar)
         setSupportActionBar(toolbar)
 
-        keySettings = ViewModelProvider(this)[KeySettingsViewModel::class.java]
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 keySettings.state.collect { renderKeySettings(it) }
@@ -284,11 +314,18 @@ class MainActivity : AppCompatActivity() {
     private fun loadPushRecords(isInitialLoad: Boolean) {
         val currentUser = auth.currentUser
         if (currentUser == null) {
+            // The session ended while the list was open (see LoginActivity.onCreate): the
+            // key goes with it.
+            forgetSession(this)
             pushAdapter.updatePushes(emptyList())
             swipeRefreshLayout.isRefreshing = false
             return
         }
 
+        val keys = keys ?: run {
+            swipeRefreshLayout.isRefreshing = false
+            return
+        }
         isLoading = true
 
         var query = db.collection("pushes")
@@ -320,7 +357,7 @@ class MainActivity : AppCompatActivity() {
                 return@addOnSuccessListener
             }
 
-            val pushes = snapshot.documents.mapNotNull { doc -> pushItem(doc) }
+            val pushes = snapshot.documents.mapNotNull { doc -> pushItem(keys, doc) }
 
             // Update the last visible document for pagination
             lastVisibleDocument = snapshot.documents.lastOrNull()
@@ -340,7 +377,7 @@ class MainActivity : AppCompatActivity() {
      * A row from either shape of push: decrypted when it has an envelope (until phase 5,
      * a push may still be plaintext), locked when this install cannot open it.
      */
-    private fun pushItem(doc: DocumentSnapshot): PushItem? {
+    private fun pushItem(keys: PushKeys, doc: DocumentSnapshot): PushItem? {
         val data = doc.data ?: return null
         val createdAt = doc.getTimestamp("createdAt")?.toDate()
         return when (val read = PushDocument.read(keys, doc.id, data)) {
@@ -470,12 +507,7 @@ class MainActivity : AppCompatActivity() {
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         return when (item.itemId) {
             R.id.nav_logout -> {
-                // The key first, so a sign-out that stops between the two leaves a session
-                // with no key (which asks for the password) and never a key on a phone that
-                // is signed out. deviceId stays: it belongs to the install.
-                AccountKeyStore.clear(this)
-                PushFiles.clear(this)
-                auth.signOut()
+                signOut(this, auth)
                 startActivity(Intent(this, LoginActivity::class.java))
                 finish()
                 true
@@ -570,6 +602,7 @@ class MainActivity : AppCompatActivity() {
         val current = view.findViewById<EditText>(R.id.currentPasswordInput)
         val new = view.findViewById<EditText>(R.id.newPasswordInput)
         val again = view.findViewById<EditText>(R.id.newPasswordAgainInput)
+        view.findViewById<TextView>(R.id.passwordRuleText).text = getString(R.string.password_rule, MIN_NEW_PASSWORD_LENGTH)
         val dialog = AlertDialog.Builder(this, R.style.DeleteDialogStyle)
             .setTitle(R.string.change_password)
             .setView(view)
@@ -582,7 +615,7 @@ class MainActivity : AppCompatActivity() {
             val newPassword = new.text.toString()
             when {
                 currentPassword.isEmpty() -> current.error = getString(R.string.password_required)
-                newPassword.length < LoginActivity.MIN_NEW_PASSWORD_LENGTH -> new.error = getString(R.string.password_rule)
+                newPassword.length < MIN_NEW_PASSWORD_LENGTH -> new.error = getString(R.string.password_rule, MIN_NEW_PASSWORD_LENGTH)
                 newPassword != again.text.toString() -> again.error = getString(R.string.passwords_differ)
                 else -> {
                     dialog.dismiss()
@@ -626,7 +659,7 @@ class MainActivity : AppCompatActivity() {
                 val dialog = builder.setView(scroll).setCancelable(false).show()
                 RecoveryKeyView.bind(view, state.recoveryKey) {
                     dialog.dismiss()
-                    keySettings.acknowledge()
+                    keySettings.recoveryKeySaved()
                 }
                 dialog
             }

@@ -23,6 +23,7 @@ import androidx.core.app.TaskStackBuilder
 import com.makerocketgonow.pushthat.e2ee.AccountKeyStore
 import com.makerocketgonow.pushthat.e2ee.PushContent
 import com.makerocketgonow.pushthat.e2ee.PushDocument
+import com.makerocketgonow.pushthat.e2ee.forgetSession
 import java.util.concurrent.TimeUnit
 
 class PushThatMessagingService : FirebaseMessagingService() {
@@ -228,6 +229,9 @@ class PushThatMessagingService : FirebaseMessagingService() {
     private fun updateUserFcmToken(token: String) {
         val currentUser = FirebaseAuth.getInstance().currentUser
         if (currentUser == null) {
+            // A session that ended other than by Logout leaves the key behind; it goes now
+            // (see LoginActivity.onCreate).
+            forgetSession(this)
             Log.w(TAG, "No user logged in, cannot update FCM token")
             return
         }

@@ -51,12 +51,15 @@ struct RecoveryPromptView: View {
             .frame(maxWidth: .infinity)
         }
         // Said before anything is replaced, as the reset page says it: without the key
-        // the account starts a new key and the old pushes cannot be opened again.
-        .alert("Pushes encrypted before now will not be readable on any device.", isPresented: $confirmStartOver) {
-            Button("Continue", role: .destructive) {
+        // the account starts a new key and the old pushes cannot be opened again. The
+        // title, message and button are every client's, word for word.
+        .alert("Start over without your recovery key?", isPresented: $confirmStartOver) {
+            Button("Start over", role: .destructive) {
                 authViewModel.startOverWithoutRecoveryKey()
             }
             Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Your account gets new keys and a new recovery key. Pushes encrypted before now will not be readable on any device.")
         }
     }
 

@@ -1,6 +1,6 @@
 // The web app's copy of the encryption keys (src/services/e2ee.ts) against the test
 // vectors the reference produced (packages/push-test/vectors.json): `npm run
-// test:vectors`. Node runs the TypeScript as it is, by stripping its types, so nothing is
+// test:keys`. Node runs the TypeScript as it is, by stripping its types, so nothing is
 // built first. Not a `*.test.mjs`, which `npm run test:rules` would pick up and run under
 // the emulators it does not need.
 import assert from 'node:assert/strict';

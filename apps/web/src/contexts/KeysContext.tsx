@@ -5,7 +5,13 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState } f
 import { app, auth } from '@/config/firebase';
 import { useAuth } from '@/contexts/AuthContext';
 import { KeysChangedError, WrongRecoveryKeyError } from '@/services/accountKeys';
-import { clearAccountKey } from '@/services/keyStore';
+import {
+  type LoadedAccountKey,
+  clearAccountKey,
+  confirmRecoveryKey,
+  loadAccountKey,
+  onAccountKeyChanged,
+} from '@/services/keyStore';
 import { loadPushKeys, migratePushes } from '@/services/pushes';
 import * as signInService from '@/services/signIn';
 import { type KeySession, type KeysResult } from '@/services/signIn';
@@ -40,7 +46,7 @@ interface KeysContextType {
   withoutRecovery: () => void;
   backToRecovery: () => void;
   startOver: () => Promise<void>;
-  savedRecoveryKey: () => void;
+  savedRecoveryKey: () => Promise<void>;
 }
 
 const KeysContext = createContext<KeysContextType | undefined>(undefined);
@@ -53,6 +59,23 @@ const fromResult = (result: KeysResult): KeyStep =>
       : { name: 'recovery', session: result.session };
 
 const SIGN_IN_AGAIN = 'Enter your password again to finish.';
+// What a stored key means on load: ready, or a recovery key still waiting for "I saved it".
+const stepFor = (stored: LoadedAccountKey | undefined): KeyStep =>
+  !stored
+    ? { name: 'unlock' }
+    : stored.recoveryKey
+      ? { name: 'recoveryKey', recoveryKey: stored.recoveryKey }
+      : { name: 'ready' };
+
+// A ready key whose version cannot be known (pushes.ts, loadPushKeys: one saved before keys
+// carried their version, on an account a reset has moved past version 1) asks for the
+// password like a missing one, whose sign-in stores the key with its version.
+const checkedStepFor = async (uid: string, stored: LoadedAccountKey | undefined): Promise<KeyStep> => {
+  const step = stepFor(stored);
+  if (step.name !== 'ready' || stored?.keyVersion !== undefined) return step;
+  return (await loadPushKeys(getFirestore(app), uid)) ? step : { name: 'unlock' };
+};
+
 const KEYS_CHANGED = 'Your keys were changed on another device. Enter your password again.';
 
 // `updatePassword`, which a legacy account's last step calls, wants a recent sign-in, and
@@ -80,17 +103,17 @@ export function KeysProvider({ children }: { children: React.ReactNode }) {
     }
     let current = true;
     setStep({ name: 'checking' });
-    // The push keys rather than the stored key alone, so that a key whose version cannot be
-    // known (loadPushKeys) asks for the password like a missing one.
-    loadPushKeys(getFirestore(app), uid).then(
-      (keys) => {
-        if (current && !flowing.current) setStep(keys ? { name: 'ready' } : { name: 'unlock' });
-      },
-      (error) => {
-        console.error('Could not read the account key:', error);
-        if (current && !flowing.current) setStep({ name: 'unlock' });
-      }
-    );
+    loadAccountKey(uid)
+      .then((key) => checkedStepFor(uid, key))
+      .then(
+        (next) => {
+          if (current && !flowing.current) setStep(next);
+        },
+        (error) => {
+          console.error('Could not read the account key:', error);
+          if (current && !flowing.current) setStep({ name: 'unlock' });
+        }
+      );
     return () => {
       current = false;
     };
@@ -109,6 +132,23 @@ export function KeysProvider({ children }: { children: React.ReactNode }) {
       .then((keys) => keys && migratePushes(db, keys))
       .catch((error) => console.error('The push migration stopped:', error));
   }, [step.name, uid]);
+
+  // Another tab stored the key this tab is asking the password for: take it. Only from
+  // the password prompt; the other steps are in the middle of something of their own,
+  // and a sign-out reaches every tab through the auth state.
+  useEffect(() => {
+    if (!uid || step.name !== 'unlock') return;
+    return onAccountKeyChanged(() => {
+      if (flowing.current) return;
+      loadAccountKey(uid).then(
+        async (stored) => {
+          const next = stored && (await checkedStepFor(uid, stored));
+          if (next && !flowing.current) setStep(next);
+        },
+        (error) => console.error('Could not read the account key:', error)
+      );
+    });
+  }, [uid, step.name]);
 
   // A sign-in, a registration or an unlock: anything that may sign in partway through.
   const flow = useCallback(async (action: () => Promise<KeysResult>, signedInAlready: boolean) => {
@@ -134,6 +174,12 @@ export function KeysProvider({ children }: { children: React.ReactNode }) {
       if (!signedInAlready) throw error;
     } finally {
       flowing.current = false;
+      // A sign-out while the flow ran (Logout in another tab) was skipped by the check
+      // above, and the flow may have stored a key after it; nothing else would clear it.
+      if (!auth.currentUser) {
+        setStep({ name: 'signedOut' });
+        clearAccountKey().catch((error) => console.error('Could not clear the account key:', error));
+      }
     }
   }, []);
 
@@ -185,9 +231,11 @@ export function KeysProvider({ children }: { children: React.ReactNode }) {
     } catch (error) {
       console.error('Starting new keys failed:', error);
       setStep(
-        needsSignInAgain(error)
-          ? { name: 'unlock', error: SIGN_IN_AGAIN }
-          : { name: 'withoutRecovery', session, error: 'Your new keys could not be saved. Try again.' }
+        error instanceof KeysChangedError
+          ? { name: 'unlock', error: KEYS_CHANGED }
+          : needsSignInAgain(error)
+            ? { name: 'unlock', error: SIGN_IN_AGAIN }
+            : { name: 'withoutRecovery', session, error: 'Your new keys could not be saved. Try again.' }
       );
     }
   }, [step]);
@@ -198,7 +246,19 @@ export function KeysProvider({ children }: { children: React.ReactNode }) {
   const backToRecovery = useCallback(() => {
     if (step.name === 'withoutRecovery') setStep({ name: 'recovery', session: step.session });
   }, [step]);
-  const savedRecoveryKey = useCallback(() => setStep({ name: 'ready' }), []);
+  const savedRecoveryKey = useCallback(async () => {
+    if (!uid) return;
+    try {
+      await confirmRecoveryKey(uid);
+      // Read back rather than assumed: if the key could not be stored, this is the
+      // password prompt.
+      const stored = await loadAccountKey(uid);
+      setStep(stored ? { name: 'ready' } : { name: 'unlock' });
+    } catch (error) {
+      console.error('Could not confirm the recovery key:', error);
+      setStep({ name: 'unlock', error: 'Your keys could not be set up. Try again.' });
+    }
+  }, [uid]);
 
   return (
     <KeysContext.Provider

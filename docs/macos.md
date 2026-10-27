@@ -20,9 +20,11 @@ xcodebuild -project PushThat.xcodeproj -scheme PushThat -destination 'platform=m
 
 The `PushThatTests` target checks the encryption ([e2ee](e2ee.md)) byte for byte against
 `packages/push-test/vectors.json`: the keys, the push envelope, the search tokens and their
-blind index, and the file format. It compiles the files it tests instead of loading the
-app, and the scheme does not build the app for testing, so the vectors are checked even
-while the app itself does not build (see the deployment target below):
+blind index, and the file format. It also checks what a sign-in and each key write decide
+from the stored keys (`AccountKeyMaps.swift`, kept apart from the Firestore calls so the
+tests need no Firebase). It compiles the files it tests instead of loading the app, and the
+scheme does not build the app for testing, so they are checked even while the app itself
+does not build (see the deployment target below):
 
 ```bash
 xcodebuild -project PushThat.xcodeproj -scheme PushThat -destination 'platform=macOS' CODE_SIGNING_ALLOWED=NO test

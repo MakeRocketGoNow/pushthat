@@ -9,7 +9,7 @@
 // with types. The keys a push is sealed or searched with are the stored non-extractable
 // CryptoKeys, so those functions take either; the wraps take raw bytes only, which is all
 // anything holds while wrapping. A change here that changes a byte is a change to the
-// specification: `npm run test:vectors` checks every function against vectors.json.
+// specification: `npm run test:keys` checks every function against vectors.json.
 //
 // Only erasable TypeScript (no enums, no parameter properties) and no imports, so that
 // Node runs this file as it is for the vector test.

@@ -30,21 +30,62 @@ interface StoredAccountKey {
    * rules refuse it instead. A key saved before phase 4 has none (see pushes.ts).
    */
   keyVersion?: number;
+  /**
+   * A recovery key made with this key and not yet confirmed with "I saved it". The user
+   * leaves the page to save it (a password manager, a note), which is when a tab gets
+   * reloaded or discarded; held only in React state it was gone, and the account kept a
+   * recovery wrap nobody had seen, with nothing to say so. Kept here it comes back on the
+   * next load. It is readable, unlike the key, and opens that key, so it stays only
+   * until it is confirmed.
+   */
+  recoveryKey?: string;
 }
 
-/** The stored key with the version it belongs to. */
-export interface AccountKey {
+export interface LoadedAccountKey {
   key: CryptoKey;
+  /** The version the key belongs to; absent on a key saved before phase 4. */
   keyVersion?: number;
+  recoveryKey?: string;
 }
 
 let opening: Promise<IDBDatabase> | undefined;
+
+// IndexedDB says nothing to other tabs when a record changes, so a tab that looked before
+// another tab's sign-in stored the key would keep asking for a password. Every write is
+// announced here instead. One channel for sending and listening, since a channel does not
+// hear its own messages; missing where the browser has no BroadcastChannel.
+const channel = typeof BroadcastChannel === 'undefined' ? undefined : new BroadcastChannel(DB_NAME);
+
+function announce() {
+  channel?.postMessage('changed');
+}
+
+/** Calls `listener` when another tab (or the extension's worker) changes the stored key. */
+export function onAccountKeyChanged(listener: () => void): () => void {
+  channel?.addEventListener('message', listener);
+  return () => channel?.removeEventListener('message', listener);
+}
 
 function database(): Promise<IDBDatabase> {
   opening ??= new Promise<IDBDatabase>((resolve, reject) => {
     const request = indexedDB.open(DB_NAME, 1);
     request.onupgradeneeded = () => request.result.createObjectStore(STORE);
-    request.onsuccess = () => resolve(request.result);
+    request.onsuccess = () => {
+      const db = request.result;
+      // The connection is kept for the page's life, so it has to let go when asked: a
+      // later build opening a new version in another tab waits until every open
+      // connection closes, and a tab left open for days would hold it up.
+      db.onversionchange = () => {
+        db.close();
+        opening = undefined;
+      };
+      // The browser can close it under us (site data cleared); the next call opens anew
+      // rather than failing on a dead connection until the page is reloaded.
+      db.onclose = () => {
+        opening = undefined;
+      };
+      resolve(db);
+    };
     request.onerror = () => reject(request.error);
   }).catch((error) => {
     // A failed open is not cached, so the next call tries again.
@@ -66,16 +107,33 @@ async function run<T>(mode: IDBTransactionMode, use: (store: IDBObjectStore) => 
   });
 }
 
-/** Keeps `accountKey` for `uid` as a key that cannot be exported. The caller drops the bytes. */
-export async function saveAccountKey(uid: string, accountKey: Uint8Array, keyVersion: number): Promise<void> {
-  const stored: StoredAccountKey = { uid, key: await accountBaseKey(accountKey), keyVersion };
+/**
+ * Keeps `accountKey` for `uid` as a key that cannot be exported, with the version it was
+ * opened at and the recovery key just made for it, if one was, until `confirmRecoveryKey`.
+ * The caller drops the bytes.
+ */
+export async function saveAccountKey(
+  uid: string,
+  accountKey: Uint8Array,
+  keyVersion: number,
+  recoveryKey?: string
+): Promise<void> {
+  const stored: StoredAccountKey = {
+    uid,
+    key: await accountBaseKey(accountKey),
+    keyVersion,
+    ...(recoveryKey && { recoveryKey }),
+  };
   await run('readwrite', (store) => store.put(stored, ACCOUNT));
+  announce();
 }
 
-/** The stored account key and its version, if there is one and it is `uid`'s. */
-export async function loadAccountKey(uid: string): Promise<AccountKey | undefined> {
+/** The stored account key, if there is one and it is `uid`'s, with its version and an unconfirmed recovery key. */
+export async function loadAccountKey(uid: string): Promise<LoadedAccountKey | undefined> {
   const stored = await run<StoredAccountKey | undefined>('readonly', (store) => store.get(ACCOUNT));
-  return stored?.uid === uid ? { key: stored.key, keyVersion: stored.keyVersion } : undefined;
+  return stored?.uid === uid
+    ? { key: stored.key, keyVersion: stored.keyVersion, recoveryKey: stored.recoveryKey }
+    : undefined;
 }
 
 /** Records the version of a key saved before versions were kept, once it has been read. */
@@ -85,9 +143,32 @@ export async function rememberKeyVersion(uid: string, keyVersion: number): Promi
   await run('readwrite', (store) => store.put({ ...stored, keyVersion }, ACCOUNT));
 }
 
+/** "I saved it": the recovery key is the user's now, and leaves the store. */
+export async function confirmRecoveryKey(uid: string): Promise<void> {
+  const db = await database();
+  await new Promise<void>((resolve, reject) => {
+    const transaction = db.transaction(STORE, 'readwrite');
+    const store = transaction.objectStore(STORE);
+    // Read and rewritten in one transaction, so a key saved meanwhile is not undone.
+    const request = store.get(ACCOUNT);
+    request.onsuccess = () => {
+      const stored = request.result as StoredAccountKey | undefined;
+      if (stored?.uid === uid && stored.recoveryKey) {
+        const { recoveryKey: _confirmed, ...kept } = stored;
+        store.put(kept, ACCOUNT);
+      }
+    };
+    transaction.oncomplete = () => resolve();
+    transaction.onerror = () => reject(transaction.error);
+    transaction.onabort = () => reject(transaction.error);
+  });
+  announce();
+}
+
 /** At sign-out. The device id stays: it belongs to the install, not the account. */
 export async function clearAccountKey(): Promise<void> {
   await run('readwrite', (store) => store.delete(ACCOUNT));
+  announce();
 }
 
 /** This install's device id, made on first use. */

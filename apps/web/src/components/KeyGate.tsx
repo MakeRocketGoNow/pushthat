@@ -6,7 +6,7 @@ import { RecoveryKey } from '@/components/RecoveryKey';
 import { useAuth } from '@/contexts/AuthContext';
 import { useKeys } from '@/contexts/KeysContext';
 
-import styles from './KeyGate.module.css';
+import styles from './KeyStep.module.css';
 
 /**
  * Stands in front of the signed-in pages until this device holds the account key
