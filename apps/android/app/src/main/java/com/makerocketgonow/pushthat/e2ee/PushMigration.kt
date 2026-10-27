@@ -32,15 +32,21 @@ object PushMigration {
     private val started = mutableSetOf<String>()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
-    /** Starts the pass for [keys]'s account unless this process already has. */
+    /**
+     * Starts the pass for [keys]'s account unless this process already has one running or
+     * finished. A pass that completed with pushes the rules refused stays started: it would
+     * meet the same refusals again, and the next launch tries. One that threw (offline at
+     * launch, most likely) is forgotten, so the next start in this process runs it, rather
+     * than nothing running until the process dies.
+     */
     fun startOnce(keys: PushKeys) {
         synchronized(started) { if (!started.add(keys.uid)) return }
         scope.launch {
             try {
                 migrate(keys)
             } catch (e: Exception) {
-                // Offline at start, most likely. The next start tries again.
                 Log.w(TAG, "The push migration stopped", e)
+                synchronized(started) { started.remove(keys.uid) }
             }
         }
     }
