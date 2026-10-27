@@ -1,5 +1,6 @@
 import Foundation
 import BackgroundTasks
+import FirebaseAuth
 import FirebaseFirestore
 import FirebaseStorage
 import SwiftData
@@ -84,6 +85,10 @@ class RetryManager {
                 for pending in pendingPushes {
                     do {
                         guard let push = try preparedPush(for: pending, in: context) else { continue }
+                        // Under another account, or none, the rules refuse both the write and
+                        // the read back, which reads as "never landed" and would drop the push
+                        // and its file: it waits for its own account, as on Android.
+                        guard push.userId == Auth.auth().currentUser?.uid else { continue }
                         do {
                             try await PushDocuments.create(push, firestore: db)
                         } catch where PushDocuments.isPermissionDenied(error) {
