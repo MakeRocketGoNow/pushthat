@@ -266,8 +266,8 @@ class ShareActivity : AppCompatActivity() {
 
     /**
      * A push the server did not take. Refused by the rules: final unless it had landed after
-     * all, the upload goes and the user is told why (the month's limit, or the generic
-     * failure when this install's key is one a reset replaced). Unreachable: queued,
+     * all, the upload goes and the user is told why (the month's limit, or that the keys
+     * changed when this install's key is one a reset replaced). Unreachable: queued,
      * ciphertext and id as they are, for `RetryPushWorker`. Anything else: final, as before.
      */
     private fun onPushFailed(e: Exception, keys: PushKeys, prepared: PreparedPush) {
@@ -290,8 +290,10 @@ class ShareActivity : AppCompatActivity() {
                 }
                 // At 3 files a month on Free this is the common path.
                 prepared.objectPath?.let { discardUpload(it) }
+                // A stale key is told apart from the limit and named: trying again cannot
+                // work, since only signing in again stores the new key. The web says the same.
                 val message = if (pushStore.keyIsStale(keys) == true) {
-                    R.string.push_failed_message_generic
+                    R.string.keys_changed_here
                 } else {
                     R.string.push_failed_message_limit
                 }
