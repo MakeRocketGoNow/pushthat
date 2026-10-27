@@ -74,11 +74,11 @@ type Step =
   | { name: 'keysNotUpdated' };
 
 /**
- * `/reset`, where the password reset email's action URL points (Authentication,
- * Templates, in the Firebase console; see docs/deploying.md). Firebase adds `mode` and
- * `oobCode` to the URL. The work is in services/passwordReset.ts; this page asks for the
- * new password, then for the recovery key, and says what is lost without it before
- * anything is.
+ * `/reset`, where the password reset email's link lands: every client asks for the email
+ * with `resetActionCodeSettings` (services/passwordReset.ts), since the template's action
+ * URL cannot be changed on this project. Firebase adds `mode` and `oobCode` to the URL.
+ * The work is in services/passwordReset.ts; this page asks for the new password, then for
+ * the recovery key, and says what is lost without it before anything is.
  */
 export function ResetPassword() {
   const [params] = useSearchParams();

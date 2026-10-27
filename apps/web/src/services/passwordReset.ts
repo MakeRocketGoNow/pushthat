@@ -37,8 +37,23 @@ import { type E2ee, deriveKeys } from './e2ee';
 export { KeysChangedError, WrongRecoveryKeyError } from './accountKeys';
 
 /**
- * The password reset (docs/e2ee.md, Password reset), which the reset email's action URL
- * brings to `/reset`. Firebase's own page would set the Firebase password to what the user
+ * Where every reset email's link lands. Each client asks for the email with these
+ * settings (`sendPasswordResetEmail` here, `ActionCodeSettings` on iOS and macOS) rather
+ * than through the template's action URL in the console, because Firebase refuses to
+ * change that setting on this project (`EMAIL_TEMPLATE_UPDATE_NOT_ALLOWED`, in the console
+ * and through the API alike; a verified sender domain does not lift it). With
+ * `handleCodeInApp`, Firebase's handler forwards the click to `url` with `mode` and
+ * `oobCode` on it instead of showing its own reset form. The domain must be on the
+ * Authentication allow-list, which pushthat.link is.
+ */
+export const resetActionCodeSettings = {
+  url: 'https://pushthat.link/reset',
+  handleCodeInApp: true,
+} as const;
+
+/**
+ * The password reset (docs/e2ee.md, Password reset), which the reset email's link brings
+ * to `/reset`. Firebase's own page would set the Firebase password to what the user
  * types, and a client that signs in with `authKey` could not sign in after it, so this
  * page takes the code and does the reset itself: it derives the new password's keys,
  * gives Firebase `authKey`, and then rewraps the account key under the new `masterKey`

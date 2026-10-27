@@ -484,7 +484,18 @@ class AuthViewModel: ObservableObject {
         isLoading = true
         Task {
             do {
-                try await auth.sendPasswordReset(withEmail: email)
+                // The link in the email lands on the web app's /reset page, which derives
+                // the new password's keys (docs/e2ee.md, Password reset). It is asked for
+                // per email rather than set as the template's action URL in the console,
+                // because Firebase refuses to change that setting on this project
+                // (EMAIL_TEMPLATE_UPDATE_NOT_ALLOWED). With handleCodeInApp, Firebase's
+                // handler forwards the click to the URL with the code instead of showing
+                // its own reset form. The web app keeps the same address in
+                // services/passwordReset.ts.
+                let settings = ActionCodeSettings()
+                settings.url = URL(string: "https://pushthat.link/reset")
+                settings.handleCodeInApp = true
+                try await auth.sendPasswordReset(withEmail: email, actionCodeSettings: settings)
                 showError("Password reset email sent")
             } catch {
                 showError(error.localizedDescription)
