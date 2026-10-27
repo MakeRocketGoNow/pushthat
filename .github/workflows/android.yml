@@ -85,13 +85,18 @@ jobs:
 
       # A pull request, another branch or a fork gets an unsigned bundle: that still proves
       # the release path compiles, which is what a change to the build file needs to know.
+      #
+      # Each secret is blanked unless this run publishes. Everything in a step's `env:`
+      # reaches Gradle, and on a pull request Gradle runs that branch's own build files, so
+      # an unconditional `env:` would hand the signing passwords to code nobody has reviewed
+      # yet, for a build that never uses them.
       - name: Build the release bundle
         env:
           READY: ${{ steps.publishable.outputs.ready }}
-          KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
-          PUSHTHAT_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          PUSHTHAT_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-          PUSHTHAT_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          KEYSTORE: ${{ steps.publishable.outputs.ready == 'true' && secrets.ANDROID_KEYSTORE_BASE64 || '' }}
+          PUSHTHAT_KEYSTORE_PASSWORD: ${{ steps.publishable.outputs.ready == 'true' && secrets.ANDROID_KEYSTORE_PASSWORD || '' }}
+          PUSHTHAT_KEY_ALIAS: ${{ steps.publishable.outputs.ready == 'true' && secrets.ANDROID_KEY_ALIAS || '' }}
+          PUSHTHAT_KEY_PASSWORD: ${{ steps.publishable.outputs.ready == 'true' && secrets.ANDROID_KEY_PASSWORD || '' }}
         run: |
           if [ "$READY" = true ]; then
             echo "$KEYSTORE" | base64 -d > "$RUNNER_TEMP/release.jks"
