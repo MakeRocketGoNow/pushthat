@@ -34,7 +34,8 @@ first if it is not running. `scripts/build-and-run.sh` assembles the APK first. 
 
 Release signing credentials live in `keystore.properties`, which is gitignored, as is any
 keystore. Without it the release build is left unsigned, which is what a fresh clone gets.
-With it, `./gradlew bundleRelease` produces a signed AAB ready to upload.
+With it, `./gradlew bundleRelease` produces a signed AAB, for trying a release build
+locally; bundles for Play come from CI (see [Shipping to Play](#shipping-to-play)).
 
 ```bash
 cp keystore.properties.example keystore.properties
