@@ -161,7 +161,9 @@ export default function Links() {
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [debouncedSearchTerm]); // eslint-disable-line react-hooks/exhaustive-deps
+    // `keys` too: they are read from IndexedDB after the first render, and a handler bound
+    // before then would hold a fetchPushes that has none and returns without reading.
+  }, [debouncedSearchTerm, user, keys]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Handle search input changes
   const handleSearch = (event: React.ChangeEvent<HTMLInputElement>) => {
