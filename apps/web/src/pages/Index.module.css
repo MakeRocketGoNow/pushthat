@@ -182,8 +182,10 @@
 
 /*
  * The pill leaves the share sheet, crosses to the browser's tab strip and fades as it
- * arrives, then the loop starts again from the sheet. The distance is in px against the
- * frames' fixed sizes, so it stays on course at every container width.
+ * arrives, then the loop starts again from the sheet. The distance is in px because the
+ * phone and the pill's start are. The browser frame is placed by percentage, so where the
+ * pill lands along its tab strip moves as the column widens; it stays over the frame from
+ * the narrow layout to the widest two-column one, so check that again if the frame moves.
  */
 @keyframes travel {
   0% {
