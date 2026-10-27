@@ -37,10 +37,11 @@ export function Security() {
         When you sign in, the app turns your password into two keys on the device: one signs you in, and the other
         unlocks the key your pushes are encrypted with. That second key never leaves the device, so we cannot read your
         pushes. It also means we cannot reset your password for you and keep your pushes: only the recovery key, below,
-        can do that. Your password reaches Google&rsquo;s sign-in service in two cases only: when you reset it, since
-        the reset is made on Google&rsquo;s own page, and when a sign-in with the first key is refused (a mistyped
-        password, say), since the app then tries the password itself in case the account was made before encryption.
-        After a reset, your next sign-in replaces the password Google holds with the first key.
+        can do that. Your password reaches Google&rsquo;s sign-in service in two cases: when you reset it, since the
+        reset is made on Google&rsquo;s own page, and when a sign-in with the first key is refused (a mistyped password,
+        say), since the app then tries the password itself in case the account was made before encryption. A version of
+        the app from before encryption also sends the password itself whenever it signs in. After a reset, your next
+        sign-in replaces the password Google holds with the first key.
       </p>
 
       <p>

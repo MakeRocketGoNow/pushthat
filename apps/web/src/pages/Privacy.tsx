@@ -30,7 +30,7 @@ export default function Privacy() {
         recovery key, can unlock. They can be decrypted only on the devices you sign in to. We, and Google, which runs
         the servers the App uses, hold Push Content only in that encrypted form and cannot read it, apart from pushes
         made before end-to-end encryption that are still stored as they were sent (see Data Retention below). Your
-        recovery key is never sent to us or to Google, and your password only in the two cases described below. The{' '}
+        recovery key is never sent to us or to Google, and your password only in the cases described below. The{' '}
         <Link to="/security">Security</Link> page explains how this works and what it does not cover.
       </p>
 
@@ -79,7 +79,8 @@ export default function Privacy() {
         slow. Your password itself reaches Google’s sign-in service, Firebase Authentication, in two cases: when you
         reset it, because the reset is made on Google’s page, and when a sign-in with the derived key is refused (for
         example, because the password was mistyped), because the App then tries the password itself in case your account
-        was made before end-to-end encryption. After a reset, the App replaces the stored password with the derived key
+        was made before end-to-end encryption. A version of the App from before end-to-end encryption also sends your
+        password itself whenever it signs in. After a reset, the App replaces the stored password with the derived key
         the next time you sign in.
       </p>
 
