@@ -39,7 +39,7 @@ export function Security() {
         pushes. It also means we cannot reset your password for you and keep your pushes: only the recovery key, below,
         can do that. Your password reaches Google&rsquo;s sign-in service in two cases only: when you reset it, since
         the reset is made on Google&rsquo;s own page, and when a sign-in with the first key is refused (a mistyped
-        password, say), since the app then tries the password as typed in case the account was made before encryption.
+        password, say), since the app then tries the password itself in case the account was made before encryption.
         After a reset, your next sign-in replaces it with the key.
       </p>
 

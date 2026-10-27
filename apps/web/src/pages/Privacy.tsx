@@ -78,9 +78,9 @@ export default function Privacy() {
         password itself. Your password can be worked out from that key only by guessing it, which is made deliberately
         slow. Your password itself reaches Google’s sign-in service, Firebase Authentication, in two cases: when you
         reset it, because the reset is made on Google’s page, and when a sign-in with the derived key is refused (for
-        example, because the password was mistyped), because the App then tries the password as typed in case your
-        account was made before end-to-end encryption. After a reset, the App replaces the stored password with the
-        derived key the next time you sign in.
+        example, because the password was mistyped), because the App then tries the password itself in case your account
+        was made before end-to-end encryption. After a reset, the App replaces the stored password with the derived key
+        the next time you sign in.
       </p>
 
       <p>
