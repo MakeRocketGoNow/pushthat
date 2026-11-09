@@ -164,6 +164,10 @@ async function handleEncryptedPush(data: { pushId?: string; deviceId?: string })
   // The push's id is all the address carries: the image is read and decrypted by the page.
   const image = push?.file && viewableType(push.file) ? `${page}?${new URLSearchParams({ view: push.id })}` : undefined;
   const open = push?.type === 'url' ? push.url : image;
+  // Whether a file push opens a tab, and nothing from the push: an image that does not open
+  // is otherwise silent, and this says whether it was read at all.
+  if (push?.type === 'file') debug('Received a file push', { read: !!push.file, opensInTab: !!image });
+  else if (!push) debug('Received a push this browser could not read');
   if (open) {
     try {
       await chrome.tabs.create({ url: open });
