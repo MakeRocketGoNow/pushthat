@@ -37,7 +37,7 @@ export const VIEW_PARAM = 'view';
 
 /**
  * The image page's address, relative to the app's root: `index.html` with the push's id in
- * `VIEW_PARAM`, read by the `/index.html` route in App.tsx. Built here for the list (as `/` plus
+ * `VIEW_PARAM`, read by `ImagePageOrHome` in App.tsx. Built here for the list (as `/` plus
  * this, on the site and in the extension) and the extension's worker (through
  * `chrome.runtime.getURL`), so the two cannot drift from each other or from the page.
  * Only the push's id is in it, never anything from the push.

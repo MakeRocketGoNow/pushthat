@@ -42,7 +42,7 @@ function IndexOrRedirect() {
  * because a reload asks the extension for that path as a file and only `index.html` is one;
  * staying here, a reload decrypts the image again.
  */
-function ExtensionPage() {
+function ImagePageOrHome() {
   const [params] = useSearchParams();
   const view = params.get(VIEW_PARAM);
   if (!view) return <Navigate to="/" replace />;
@@ -60,7 +60,7 @@ function App() {
         <ThemeProvider>
           <Routes>
             {/* Outside `Layout`: a pushed image opens on its own, with nothing of the site around it. */}
-            <Route path="/index.html" element={<ExtensionPage />} />
+            <Route path="/index.html" element={<ImagePageOrHome />} />
             <Route
               element={
                 <Layout>
