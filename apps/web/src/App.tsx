@@ -1,4 +1,4 @@
-import { Navigate, Route, Routes, useSearchParams } from 'react-router';
+import { Navigate, Outlet, Route, Routes, useSearchParams } from 'react-router';
 
 import Layout from './Layout';
 import ProtectedRoute from './components/ProtectedRoute';
@@ -61,28 +61,27 @@ function App() {
             {/* Outside `Layout`: a pushed image opens on its own, with nothing of the site around it. */}
             <Route path="/index.html" element={<ExtensionPage />} />
             <Route
-              path="*"
               element={
                 <Layout>
                   <ScrollToTop />
-                  <Routes>
-                    <Route path="/login" element={<Login />} />
-                    <Route path="/" element={<IndexOrRedirect />} />
-                    <Route path="/privacy" element={<Privacy />} />
-                    <Route path="/terms" element={<Terms />} />
-                    <Route path="/support" element={<Support />} />
-                    <Route path="/security" element={<Security />} />
-                    <Route path="/reset" element={<ResetPassword />} />
-                    <Route element={<ProtectedRoute />}>
-                      <Route path="/links" element={<Links />} />
-                      <Route path="/push" element={<Push />} />
-                      <Route path="/plan" element={<Plan />} />
-                    </Route>
-                    <Route path="*" element={<NotFound />} />
-                  </Routes>
+                  <Outlet />
                 </Layout>
               }
-            />
+            >
+              <Route path="/login" element={<Login />} />
+              <Route path="/" element={<IndexOrRedirect />} />
+              <Route path="/privacy" element={<Privacy />} />
+              <Route path="/terms" element={<Terms />} />
+              <Route path="/support" element={<Support />} />
+              <Route path="/security" element={<Security />} />
+              <Route path="/reset" element={<ResetPassword />} />
+              <Route element={<ProtectedRoute />}>
+                <Route path="/links" element={<Links />} />
+                <Route path="/push" element={<Push />} />
+                <Route path="/plan" element={<Plan />} />
+              </Route>
+              <Route path="*" element={<NotFound />} />
+            </Route>
           </Routes>
         </ThemeProvider>
       </KeysProvider>
