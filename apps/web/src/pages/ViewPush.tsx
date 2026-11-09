@@ -69,9 +69,15 @@ export function ViewPush({ pushId }: { pushId: string }) {
     };
   }, [pushId, keys]);
 
+  // Keys that did not load leave `view` loading for good (the effect above waits on them),
+  // so the failure is read from both, and the title and the bar say the same thing.
+  const failure = keysFailed ? KEYS_UNAVAILABLE : view.name === 'failed' ? view.message : undefined;
+
+  // Set directly rather than through react-helmet as the site's pages do: this page is
+  // outside `Layout`, whose `Helmet` gives the other pages their default title.
   useEffect(() => {
-    document.title = view.name === 'shown' ? view.title : view.name === 'loading' ? 'Decrypting…' : 'PushThat';
-  }, [view]);
+    document.title = view.name === 'shown' ? view.title : failure ? 'PushThat' : 'Decrypting…';
+  }, [view, failure]);
 
   // From the URL this page already holds, so the file is not read or decrypted again.
   const download = () => {
@@ -81,8 +87,6 @@ export function ViewPush({ pushId }: { pushId: string }) {
     link.download = view.title;
     link.click();
   };
-
-  const failure = keysFailed ? KEYS_UNAVAILABLE : view.name === 'failed' ? view.message : undefined;
 
   return (
     <div className={styles.page}>
