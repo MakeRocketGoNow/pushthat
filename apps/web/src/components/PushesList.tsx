@@ -101,14 +101,21 @@ const viewableType = (file: PushFile): string | undefined => {
 /**
  * Shows a decrypted image in a tab already opened for it. The Blob is retyped from the
  * type `viewableType` checked, not trusted as it came: a file stored before encryption
- * comes back with whatever Content-Type Storage holds for it. The URL is revoked after the same
- * wait as a save, long enough for the tab to load it; reloading that tab later finds it
- * gone, which is the price of not holding every opened image for the life of this tab.
+ * comes back with whatever Content-Type Storage holds for it.
+ *
+ * The image is put in the tab's own page, not navigated to: the tab keeps the file's name
+ * as its title rather than a `blob:` id, and an `<img>` runs no script whatever the bytes
+ * say. Its URL is made by the tab's own `URL`, so it lives exactly as long as that tab:
+ * "Save image as" works for as long as the image is on screen, and closing the tab frees it,
+ * where one made here would be held until this tab closed or cut off by a timer. Reloading
+ * the tab shows a blank page, since there is nothing to fetch it from again.
  */
-const view = (tab: Window, blob: Blob, mime: string) => {
-  const url = URL.createObjectURL(new Blob([blob], { type: mime }));
-  tab.location.href = url;
-  setTimeout(() => URL.revokeObjectURL(url), 40_000);
+const view = (tab: Window, blob: Blob, mime: string, name: string) => {
+  const img = tab.document.createElement('img');
+  img.alt = name;
+  // `Window` in the DOM types leaves out the globals a window carries, `URL` among them.
+  img.src = (tab as Window & typeof globalThis).URL.createObjectURL(new Blob([blob], { type: mime }));
+  tab.document.body.replaceChildren(img);
 };
 
 export default function PushesList({
@@ -147,7 +154,7 @@ export default function PushesList({
     }
     try {
       const blob = await downloadFile(getStorage(), file);
-      if (tab && type) view(tab, blob, type);
+      if (tab && type) view(tab, blob, type, file.envelope.name);
       else save(blob, file.envelope.name);
     } catch (error) {
       tab?.close();
