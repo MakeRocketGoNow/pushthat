@@ -154,8 +154,11 @@ export default function PushesList({
     }
     try {
       const blob = await downloadFile(getStorage(), file);
-      if (tab && type) view(tab, blob, type, file.envelope.name);
-      else save(blob, file.envelope.name);
+      if (tab && type) {
+        // A tab closed while the file decrypted is a change of mind, not a failure: its
+        // page is gone, and writing to it would throw into the notice below.
+        if (!tab.closed) view(tab, blob, type, file.envelope.name);
+      } else save(blob, file.envelope.name);
     } catch (error) {
       tab?.close();
       console.error('Error opening file:', error);
