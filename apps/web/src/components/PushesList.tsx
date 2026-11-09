@@ -4,7 +4,7 @@ import { getStorage } from 'firebase/storage';
 import { Dispatch, SetStateAction, useState } from 'react';
 
 import { CheckIcon } from '@/components/icons/CheckIcon';
-import { LOCKED_MESSAGE, type Push, type PushFile, downloadFile } from '@/services/pushes';
+import { LOCKED_MESSAGE, type Push, type PushFile, downloadFile, viewableType } from '@/services/pushes';
 
 import styles from './PushesList.module.css';
 
@@ -68,34 +68,6 @@ const save = (blob: Blob, name: string) => {
   link.download = name;
   link.click();
   setTimeout(() => URL.revokeObjectURL(url), 40_000);
-};
-
-/**
- * The file types opened in a tab of their own rather than saved. Raster images only: an
- * object URL takes this page's origin, so an SVG or HTML file opened from one would run
- * its scripts as the signed-in app. Those, and everything else, are saved instead.
- */
-const VIEWABLE_TYPES = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/avif']);
-
-/** The same types by extension, for a file whose envelope names no type. */
-const VIEWABLE_EXTENSIONS = new Map([
-  ['png', 'image/png'],
-  ['jpg', 'image/jpeg'],
-  ['jpeg', 'image/jpeg'],
-  ['gif', 'image/gif'],
-  ['webp', 'image/webp'],
-  ['avif', 'image/avif'],
-]);
-
-/**
- * The type to show a file as in a tab, or undefined to save it. A push migrated from before
- * encryption has an empty `mime` (`migrationOf` had only the name to go on), so for it the
- * extension decides, as the Android app does when the type is blank.
- */
-const viewableType = (file: PushFile): string | undefined => {
-  const mime = file.envelope.mime.toLowerCase();
-  if (mime) return VIEWABLE_TYPES.has(mime) ? mime : undefined;
-  return VIEWABLE_EXTENSIONS.get(file.envelope.ext.toLowerCase());
 };
 
 /**
