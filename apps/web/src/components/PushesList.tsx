@@ -77,12 +77,31 @@ const save = (blob: Blob, name: string) => {
  */
 const VIEWABLE_TYPES = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/avif']);
 
-const isViewable = (file: PushFile): boolean => VIEWABLE_TYPES.has(file.envelope.mime.toLowerCase());
+/** The same types by extension, for a file whose envelope names no type. */
+const VIEWABLE_EXTENSIONS = new Map([
+  ['png', 'image/png'],
+  ['jpg', 'image/jpeg'],
+  ['jpeg', 'image/jpeg'],
+  ['gif', 'image/gif'],
+  ['webp', 'image/webp'],
+  ['avif', 'image/avif'],
+]);
+
+/**
+ * The type to show a file as in a tab, or undefined to save it. A push migrated from before
+ * encryption has an empty `mime` (`migrationOf` had only the name to go on), so for it the
+ * extension decides, as the Android app does when the type is blank.
+ */
+const viewableType = (file: PushFile): string | undefined => {
+  const mime = file.envelope.mime.toLowerCase();
+  if (mime) return VIEWABLE_TYPES.has(mime) ? mime : undefined;
+  return VIEWABLE_EXTENSIONS.get(file.envelope.ext.toLowerCase());
+};
 
 /**
  * Shows a decrypted image in a tab already opened for it. The Blob is retyped from the
- * envelope's checked type, not trusted as it came: a file stored before encryption comes
- * back with whatever Content-Type Storage holds for it. The URL is revoked after the same
+ * type `viewableType` checked, not trusted as it came: a file stored before encryption
+ * comes back with whatever Content-Type Storage holds for it. The URL is revoked after the same
  * wait as a save, long enough for the tab to load it; reloading that tab later finds it
  * gone, which is the price of not holding every opened image for the life of this tab.
  */
@@ -116,11 +135,12 @@ export default function PushesList({
     // pop-up to the browser. Opened blank, so `noopener` cannot be asked for (it makes
     // `window.open` answer null), and the opener is cut by hand. A blocked tab (null) falls
     // back to saving the image.
-    const tab = isViewable(file) ? window.open('', '_blank') : null;
+    const type = viewableType(file);
+    const tab = type ? window.open('', '_blank') : null;
     if (tab) tab.opener = null;
     try {
       const blob = await downloadFile(getStorage(), file);
-      if (tab) view(tab, blob, file.envelope.mime.toLowerCase());
+      if (tab && type) view(tab, blob, type);
       else save(blob, file.envelope.name);
     } catch (error) {
       tab?.close();
