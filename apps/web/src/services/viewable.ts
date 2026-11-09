@@ -31,3 +31,15 @@ export const viewableType = (file: PushFile): string | undefined => {
   if (mime && mime !== 'application/octet-stream') return VIEWABLE_TYPES.has(mime) ? mime : undefined;
   return VIEWABLE_EXTENSIONS.get(file.envelope.ext.toLowerCase());
 };
+
+/** The query parameter that names the push the image page shows. */
+export const VIEW_PARAM = 'view';
+
+/**
+ * The image page's address, relative to the app's root: `index.html` with the push's id in
+ * `VIEW_PARAM`, read by the `/index.html` route in App.tsx. Built here for the list (as `/` plus
+ * this, on the site and in the extension) and the extension's worker (through
+ * `chrome.runtime.getURL`), so the two cannot drift from each other or from the page.
+ * Only the push's id is in it, never anything from the push.
+ */
+export const viewerPath = (pushId: string) => `index.html?${new URLSearchParams({ [VIEW_PARAM]: pushId })}`;

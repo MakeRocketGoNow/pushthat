@@ -19,6 +19,7 @@ import { Security } from './pages/Security';
 import Support from './pages/Support';
 import Terms from './pages/Terms';
 import { ViewPush } from './pages/ViewPush';
+import { VIEW_PARAM } from './services/viewable';
 
 function IndexOrRedirect() {
   const { isAuthenticated, loading } = useAuth();
@@ -43,7 +44,7 @@ function IndexOrRedirect() {
  */
 function ExtensionPage() {
   const [params] = useSearchParams();
-  const view = params.get('view');
+  const view = params.get(VIEW_PARAM);
   if (!view) return <Navigate to="/" replace />;
   return (
     <ProtectedRoute>

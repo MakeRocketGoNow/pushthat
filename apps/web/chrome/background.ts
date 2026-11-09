@@ -19,7 +19,7 @@ import { getMessaging } from 'firebase/messaging/sw';
 
 import { app, auth } from '../src/config/firebase';
 import { deviceId } from '../src/services/keyStore';
-import { type Push, loadPushKeys, readPush, viewableType } from '../src/services/pushes';
+import { type Push, loadPushKeys, readPush, viewableType, viewerPath } from '../src/services/pushes';
 
 declare const self: ServiceWorkerGlobalScope & typeof globalThis;
 
@@ -162,7 +162,7 @@ async function handleEncryptedPush(data: { pushId?: string; deviceId?: string })
 
   const page = chrome.runtime.getURL('index.html');
   // The push's id is all the address carries: the image is read and decrypted by the page.
-  const image = push?.file && viewableType(push.file) ? `${page}?${new URLSearchParams({ view: push.id })}` : undefined;
+  const image = push?.file && viewableType(push.file) ? chrome.runtime.getURL(viewerPath(push.id)) : undefined;
   const open = push?.type === 'url' ? push.url : image;
   // Whether a file push opens a tab, and nothing from the push: an image that does not open
   // is otherwise silent, and this says whether it was read at all.

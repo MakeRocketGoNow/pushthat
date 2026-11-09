@@ -4,7 +4,7 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
-import { viewableType } from '../src/services/viewable.ts';
+import { VIEW_PARAM, viewableType, viewerPath } from '../src/services/viewable.ts';
 
 const file = (mime, ext) => ({ objectPath: 'uploads/someone/x', envelope: { name: `x.${ext}`, mime, size: 0, ext } });
 
@@ -47,5 +47,13 @@ describe('viewableType', () => {
     assert.equal(viewableType(file('image/heic', 'heic')), undefined);
     assert.equal(viewableType(file('image/tiff', 'tiff')), undefined);
     assert.equal(viewableType(file('', '')), undefined);
+  });
+});
+
+describe('viewerPath', () => {
+  test('is index.html with the push id in the parameter the page reads, encoded', () => {
+    const path = viewerPath('abc/def?x=1');
+    assert.match(path, /^index\.html\?/);
+    assert.equal(new URL(path, 'https://example.com/').searchParams.get(VIEW_PARAM), 'abc/def?x=1');
   });
 });

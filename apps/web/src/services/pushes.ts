@@ -332,7 +332,7 @@ export async function createFilePush(
 }
 
 // Which pushed files are shown as images, kept apart from Firebase so plain Node can test it.
-export { viewableType } from './viewable';
+export { VIEW_PARAM, viewableType, viewerPath } from './viewable';
 
 /**
  * A file push's bytes, decrypted, with the name to save them under. The object is read

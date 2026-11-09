@@ -4,7 +4,7 @@ import { getStorage } from 'firebase/storage';
 import { Dispatch, SetStateAction, useState } from 'react';
 
 import { CheckIcon } from '@/components/icons/CheckIcon';
-import { LOCKED_MESSAGE, type Push, type PushFile, downloadFile, viewableType } from '@/services/pushes';
+import { LOCKED_MESSAGE, type Push, type PushFile, downloadFile, viewableType, viewerPath } from '@/services/pushes';
 
 import styles from './PushesList.module.css';
 
@@ -72,12 +72,12 @@ const save = (blob: Blob, name: string) => {
 
 /**
  * Where an image push is shown: the page the extension also opens one pushed to this
- * browser on (`ViewPush`, through `index.html?view=`), with its name, a download and a way
- * back, and a reload that decrypts it again. `index.html` is a file in both the site and the
- * extension, so the address works in either, and the list opens it as a link, in a tab of
- * its own, rather than decrypting here. Only the push's id is in the address.
+ * browser on (`ViewPush`, at `viewerPath`), with its name, a download and a way back, and a
+ * reload that decrypts it again. `index.html` is a file in both the site and the extension,
+ * so the address works in either, and the list opens it as a link, in a tab of its own,
+ * rather than decrypting here.
  */
-const viewerUrl = (pushId: string) => `/index.html?${new URLSearchParams({ view: pushId })}`;
+const viewerUrl = (pushId: string) => `/${viewerPath(pushId)}`;
 
 export default function PushesList({
   pushes,
