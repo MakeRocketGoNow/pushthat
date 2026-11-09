@@ -70,6 +70,54 @@ const save = (blob: Blob, name: string) => {
   setTimeout(() => URL.revokeObjectURL(url), 40_000);
 };
 
+/**
+ * The file types opened in a tab of their own rather than saved. Raster images only: an
+ * object URL takes this page's origin, so an SVG or HTML file opened from one would run
+ * its scripts as the signed-in app. Those, and everything else, are saved instead.
+ */
+const VIEWABLE_TYPES = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/avif']);
+
+/** The same types by extension, for a file whose envelope names no type. */
+const VIEWABLE_EXTENSIONS = new Map([
+  ['png', 'image/png'],
+  ['jpg', 'image/jpeg'],
+  ['jpeg', 'image/jpeg'],
+  ['gif', 'image/gif'],
+  ['webp', 'image/webp'],
+  ['avif', 'image/avif'],
+]);
+
+/**
+ * The type to show a file as in a tab, or undefined to save it. A push migrated from before
+ * encryption has an empty `mime` (`migrationOf` had only the name to go on), so for it the
+ * extension decides, as the Android app does when the type is blank.
+ */
+const viewableType = (file: PushFile): string | undefined => {
+  const mime = file.envelope.mime.toLowerCase();
+  if (mime) return VIEWABLE_TYPES.has(mime) ? mime : undefined;
+  return VIEWABLE_EXTENSIONS.get(file.envelope.ext.toLowerCase());
+};
+
+/**
+ * Shows a decrypted image in a tab already opened for it. The Blob is retyped from the
+ * type `viewableType` checked, not trusted as it came: a file stored before encryption
+ * comes back with whatever Content-Type Storage holds for it.
+ *
+ * The image is put in the tab's own page, not navigated to: the tab keeps the file's name
+ * as its title rather than a `blob:` id, and an `<img>` runs no script whatever the bytes
+ * say. Its URL is made by the tab's own `URL`, so it lives exactly as long as that tab:
+ * "Save image as" works for as long as the image is on screen, and closing the tab frees it,
+ * where one made here would be held until this tab closed or cut off by a timer. Reloading
+ * the tab shows a blank page, since there is nothing to fetch it from again.
+ */
+const view = (tab: Window, blob: Blob, mime: string, name: string) => {
+  const img = tab.document.createElement('img');
+  img.alt = name;
+  // `Window` in the DOM types leaves out the globals a window carries, `URL` among them.
+  img.src = (tab as Window & typeof globalThis).URL.createObjectURL(new Blob([blob], { type: mime }));
+  tab.document.body.replaceChildren(img);
+};
+
 export default function PushesList({
   pushes,
   error,
@@ -84,14 +132,35 @@ export default function PushesList({
   const [notice, setNotice] = useState<string | undefined>(undefined);
 
   // An encrypted file has no URL to follow: it is read through the SDK, decrypted in the
-  // tab (about twice its size in memory at the peak, docs/e2ee.md, Files) and saved. A
-  // failure says so and saves nothing, rather than a file cut short.
+  // tab (about twice its size in memory at the peak, docs/e2ee.md, Files) and saved, or for
+  // an image, shown in a new tab as it was before encryption. A failure says so and saves
+  // nothing, rather than a file cut short.
   const openFile = async (push: Push, file: PushFile) => {
     if (opening) return;
     setOpening(push.id);
+    // The tab is opened now, inside the click: a `window.open` after the `await` below is a
+    // pop-up to the browser. Opened blank, so `noopener` cannot be asked for (it makes
+    // `window.open` answer null), and the opener is cut by hand. A blocked tab (null) falls
+    // back to saving the image.
+    const type = viewableType(file);
+    const tab = type ? window.open('', '_blank') : null;
+    if (tab) {
+      tab.opener = null;
+      // The tab is in front from here on, so it says what it is waiting for rather than
+      // standing blank; the row's "Decrypting" is in the tab the user just left. The name is
+      // set as text, never as markup.
+      tab.document.title = file.envelope.name;
+      tab.document.body.textContent = 'Decrypting…';
+    }
     try {
-      save(await downloadFile(getStorage(), file), file.envelope.name);
+      const blob = await downloadFile(getStorage(), file);
+      if (tab && type) {
+        // A tab closed while the file decrypted is a change of mind, not a failure: its
+        // page is gone, and writing to it would throw into the notice below.
+        if (!tab.closed) view(tab, blob, type, file.envelope.name);
+      } else save(blob, file.envelope.name);
     } catch (error) {
+      tab?.close();
       console.error('Error opening file:', error);
       setNotice('This file could not be decrypted.');
     } finally {
