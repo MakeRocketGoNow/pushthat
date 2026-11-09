@@ -352,12 +352,14 @@ const VIEWABLE_EXTENSIONS = new Map([
  * The type to show a file as in a tab, or undefined to save it. The web list and the
  * extension's worker both ask, so a pushed image opens the same way from either. A push
  * migrated from before encryption has an empty `mime` (`migrationOf` had only the name to
- * go on), so for it the file extension decides, as the Android app does when the type is
- * blank.
+ * go on), and a phone that cannot tell a file's type writes `application/octet-stream` (the
+ * Android share sheet, iOS, and this app's own upload all fall back to it). Neither says
+ * what the file is, so for both the file extension decides, as the Android app's viewer
+ * does.
  */
 export const viewableType = (file: PushFile): string | undefined => {
   const mime = file.envelope.mime.toLowerCase();
-  if (mime) return VIEWABLE_TYPES.has(mime) ? mime : undefined;
+  if (mime && mime !== 'application/octet-stream') return VIEWABLE_TYPES.has(mime) ? mime : undefined;
   return VIEWABLE_EXTENSIONS.get(file.envelope.ext.toLowerCase());
 };
 
