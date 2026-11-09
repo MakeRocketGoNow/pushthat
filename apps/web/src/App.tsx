@@ -1,4 +1,4 @@
-import { Navigate, Route, Routes } from 'react-router';
+import { Navigate, Route, Routes, useSearchParams } from 'react-router';
 
 import Layout from './Layout';
 import ProtectedRoute from './components/ProtectedRoute';
@@ -18,6 +18,7 @@ import { ResetPassword } from './pages/ResetPassword';
 import { Security } from './pages/Security';
 import Support from './pages/Support';
 import Terms from './pages/Terms';
+import { ViewPush } from './pages/ViewPush';
 
 function IndexOrRedirect() {
   const { isAuthenticated, loading } = useAuth();
@@ -29,6 +30,17 @@ function IndexOrRedirect() {
   }
 
   return <IndexPage />;
+}
+
+/**
+ * The extension's page is `index.html`, which is sent home. The extension's worker opens it
+ * with `?view=<push id>` to show an image pushed to this browser (chrome/background.ts),
+ * since a path of the extension's other than a file it ships would not load.
+ */
+function ExtensionPage() {
+  const [params] = useSearchParams();
+  const view = params.get('view');
+  return <Navigate to={view ? `/view?${new URLSearchParams({ push: view })}` : '/'} replace />;
 }
 
 function App() {
@@ -50,8 +62,9 @@ function App() {
                 <Route path="/links" element={<Links />} />
                 <Route path="/push" element={<Push />} />
                 <Route path="/plan" element={<Plan />} />
+                <Route path="/view" element={<ViewPush />} />
               </Route>
-              <Route path="/index.html" element={<Navigate to="/" />} />
+              <Route path="/index.html" element={<ExtensionPage />} />
               <Route path="*" element={<NotFound />} />
             </Routes>
           </Layout>
