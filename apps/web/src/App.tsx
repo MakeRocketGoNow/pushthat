@@ -33,9 +33,10 @@ function IndexOrRedirect() {
 }
 
 /**
- * The extension's page is `index.html`, which is sent home. The extension's worker opens it
- * with `?view=<push id>` to show an image pushed to this browser (chrome/background.ts), and
- * then the image is all the tab holds, as a pushed image's Storage URL was before
+ * The extension's page is `index.html`, which is sent home. With `?view=<push id>` it is
+ * where an image push is shown: the extension's worker opens it for an image pushed to this
+ * browser (chrome/background.ts), and the list links to it, on the site as in the extension.
+ * Then the image is all the tab holds, as a pushed image's Storage URL was before
  * encryption. The address stays as it was opened, rather than moving to a route of its own,
  * because a reload asks the extension for that path as a file and only `index.html` is one;
  * staying here, a reload decrypts the image again.
