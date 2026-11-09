@@ -137,7 +137,14 @@ export default function PushesList({
     // back to saving the image.
     const type = viewableType(file);
     const tab = type ? window.open('', '_blank') : null;
-    if (tab) tab.opener = null;
+    if (tab) {
+      tab.opener = null;
+      // The tab is in front from here on, so it says what it is waiting for rather than
+      // standing blank; the row's "Decrypting" is in the tab the user just left. The name is
+      // set as text, never as markup.
+      tab.document.title = file.envelope.name;
+      tab.document.body.textContent = 'Decrypting…';
+    }
     try {
       const blob = await downloadFile(getStorage(), file);
       if (tab && type) view(tab, blob, type);
