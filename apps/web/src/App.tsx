@@ -34,13 +34,21 @@ function IndexOrRedirect() {
 
 /**
  * The extension's page is `index.html`, which is sent home. The extension's worker opens it
- * with `?view=<push id>` to show an image pushed to this browser (chrome/background.ts),
- * since a path of the extension's other than a file it ships would not load.
+ * with `?view=<push id>` to show an image pushed to this browser (chrome/background.ts), and
+ * then the image is all the tab holds, as a pushed image's Storage URL was before
+ * encryption. The address stays as it was opened, rather than moving to a route of its own,
+ * because a reload asks the extension for that path as a file and only `index.html` is one;
+ * staying here, a reload decrypts the image again.
  */
 function ExtensionPage() {
   const [params] = useSearchParams();
   const view = params.get('view');
-  return <Navigate to={view ? `/view?${new URLSearchParams({ push: view })}` : '/'} replace />;
+  if (!view) return <Navigate to="/" replace />;
+  return (
+    <ProtectedRoute>
+      <ViewPush pushId={view} />
+    </ProtectedRoute>
+  );
 }
 
 function App() {
@@ -48,26 +56,33 @@ function App() {
     <AuthProvider>
       <KeysProvider>
         <ThemeProvider>
-          <Layout>
-            <ScrollToTop />
-            <Routes>
-              <Route path="/login" element={<Login />} />
-              <Route path="/" element={<IndexOrRedirect />} />
-              <Route path="/privacy" element={<Privacy />} />
-              <Route path="/terms" element={<Terms />} />
-              <Route path="/support" element={<Support />} />
-              <Route path="/security" element={<Security />} />
-              <Route path="/reset" element={<ResetPassword />} />
-              <Route element={<ProtectedRoute />}>
-                <Route path="/links" element={<Links />} />
-                <Route path="/push" element={<Push />} />
-                <Route path="/plan" element={<Plan />} />
-                <Route path="/view" element={<ViewPush />} />
-              </Route>
-              <Route path="/index.html" element={<ExtensionPage />} />
-              <Route path="*" element={<NotFound />} />
-            </Routes>
-          </Layout>
+          <Routes>
+            {/* Outside `Layout`: a pushed image opens on its own, with nothing of the site around it. */}
+            <Route path="/index.html" element={<ExtensionPage />} />
+            <Route
+              path="*"
+              element={
+                <Layout>
+                  <ScrollToTop />
+                  <Routes>
+                    <Route path="/login" element={<Login />} />
+                    <Route path="/" element={<IndexOrRedirect />} />
+                    <Route path="/privacy" element={<Privacy />} />
+                    <Route path="/terms" element={<Terms />} />
+                    <Route path="/support" element={<Support />} />
+                    <Route path="/security" element={<Security />} />
+                    <Route path="/reset" element={<ResetPassword />} />
+                    <Route element={<ProtectedRoute />}>
+                      <Route path="/links" element={<Links />} />
+                      <Route path="/push" element={<Push />} />
+                      <Route path="/plan" element={<Plan />} />
+                    </Route>
+                    <Route path="*" element={<NotFound />} />
+                  </Routes>
+                </Layout>
+              }
+            />
+          </Routes>
         </ThemeProvider>
       </KeysProvider>
     </AuthProvider>

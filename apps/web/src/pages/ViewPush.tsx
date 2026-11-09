@@ -1,7 +1,7 @@
 import { doc, getDoc, getFirestore } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 import { useEffect, useState } from 'react';
-import { Link, useSearchParams } from 'react-router';
+import { Link } from 'react-router';
 
 import { KEYS_UNAVAILABLE, usePushKeys } from '@/hooks/usePushKeys';
 import { LOCKED_MESSAGE, downloadFile, readPush, viewableType } from '@/services/pushes';
@@ -14,19 +14,23 @@ type View =
   | { name: 'failed'; message: string; toList?: boolean };
 
 /**
- * One pushed image, decrypted and shown on its own page: where the extension opens an
- * image pushed to this browser (`?push=` names it), as it opened a pushed file's Storage URL
- * before encryption. Only the types `viewableType` allows are shown, in an `<img>`, so
- * nothing in the bytes can run as the app; anything else is opened from the list.
+ * One pushed image, decrypted and shown with nothing around it: where the extension opens
+ * an image pushed to this browser, as it opened a pushed file's Storage URL before
+ * encryption. The image is centered and fitted to the window on a dark ground, the way
+ * Chrome shows an image it opens, and the tab is titled with the file's name.
+ *
+ * It is an `<img>` in this page rather than the tab navigated to the image's object URL,
+ * which shows it in Chrome's own viewer: tried, and the tab was then titled with the
+ * `blob:` id, and a reload found the URL gone with the page that made it and showed
+ * Chrome's error page. Only the types `viewableType` allows are shown, and an `<img>` runs
+ * no script whatever the bytes say; anything else is opened from the list.
  */
-export function ViewPush() {
-  const [params] = useSearchParams();
-  const pushId = params.get('push');
+export function ViewPush({ pushId }: { pushId: string }) {
   const { keys, failed: keysFailed } = usePushKeys();
   const [view, setView] = useState<View>({ name: 'loading' });
 
   useEffect(() => {
-    if (!pushId || !keys) return;
+    if (!keys) return;
     let cancelled = false;
     let src: string | undefined;
     (async () => {
@@ -59,22 +63,22 @@ export function ViewPush() {
   }, [pushId, keys]);
 
   useEffect(() => {
-    if (view.name === 'shown') document.title = view.title;
+    document.title = view.name === 'shown' ? view.title : view.name === 'loading' ? 'Decrypting…' : 'PushThat';
   }, [view]);
 
-  if (!pushId) return <p className={styles.message}>No push was named to show.</p>;
-  if (keysFailed) return <p className={styles.message}>{KEYS_UNAVAILABLE}</p>;
-  if (view.name === 'loading') return <p className={styles.message}>Decrypting…</p>;
-  if (view.name === 'failed') {
-    return (
-      <p className={styles.message}>
-        {view.message} {view.toList && <Link to="/links">Your pushes</Link>}
-      </p>
-    );
-  }
   return (
     <div className={styles.viewer}>
-      <img src={view.src} alt={view.title} className={styles.image} />
+      {keysFailed ? (
+        <p className={styles.message}>{KEYS_UNAVAILABLE}</p>
+      ) : view.name === 'loading' ? (
+        <p className={styles.message}>Decrypting…</p>
+      ) : view.name === 'failed' ? (
+        <p className={styles.message}>
+          {view.message} {view.toList && <Link to="/links">Your pushes</Link>}
+        </p>
+      ) : (
+        <img src={view.src} alt={view.title} className={styles.image} />
+      )}
     </div>
   );
 }
