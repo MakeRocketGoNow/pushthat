@@ -92,7 +92,8 @@ export function ViewPush({ pushId }: { pushId: string }) {
     <div className={styles.page}>
       <header className={styles.bar}>
         <Link to="/links" className={styles.home} title="Your pushes">
-          <img src="/pushthat-mono.svg" alt="PushThat" className={styles.logo} />
+          {/* The image is the link's only content, so its alt is the link's name: where it goes. */}
+          <img src="/pushthat-mono.svg" alt="Your pushes" className={styles.logo} />
         </Link>
         <div className={styles.file}>
           {view.name === 'shown' ? (
