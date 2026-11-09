@@ -127,7 +127,9 @@ export function ViewPush({ pushId }: { pushId: string }) {
         ) : view.name === 'shown' ? (
           <img src={view.src} alt={view.title} className={styles.image} />
         ) : (
-          <div className={styles.spinner} role="status" aria-label="Decrypting" />
+          // Hidden from screen readers: the bar's heading already says "Decrypting…", and an
+          // empty status region would announce nothing.
+          <div className={styles.spinner} aria-hidden="true" />
         )}
       </main>
     </div>
