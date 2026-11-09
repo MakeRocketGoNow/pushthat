@@ -18,8 +18,14 @@ type View =
 /** `image/jpeg` as `JPEG`: what the bar says the file is. */
 const typeLabel = (type: string) => type.replace(/^image\//, '').toUpperCase();
 
-const sizeLabel = (bytes: number) =>
-  bytes < 1024 * 1024 ? `${Math.max(1, Math.round(bytes / 1024))} KB` : `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+/**
+ * Rounded to whole KB before the unit is picked: a file a few hundred bytes under 1 MB
+ * rounds to 1024 KB, which is shown as 1.0 MB instead.
+ */
+const sizeLabel = (bytes: number) => {
+  const kb = Math.max(1, Math.round(bytes / 1024));
+  return kb < 1024 ? `${kb} KB` : `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+};
 
 /**
  * One pushed image, decrypted and shown on a page of its own: where the extension opens an
