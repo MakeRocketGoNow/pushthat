@@ -54,9 +54,10 @@ Each value can also come from the environment, which is how CI signs:
 ## Shipping to Play
 
 A push to `main` that touches `apps/android/` builds a signed bundle and uploads it to the
-closed testing track as a **draft** (`.github/workflows/android.yml`): it appears in Play
-Console and passes Play's checks, but nobody receives it until a person promotes it. Making
-testers get it automatically is a one-word change (`status: completed`). Run the workflow
+closed testing track and rolls it out to that track's testers (`.github/workflows/android.yml`,
+`status: completed`): once Play's checks pass, testers get it without anyone opening Play
+Console. Production is not touched; promoting a build there stays a manual release in Play
+Console. Run the workflow
 from the Actions tab on `main` to cut a build without a push. Pull requests and other
 branches run only the `build` job: the tests and an unsigned bundle, which proves the
 release path compiles, with no secrets and nothing published.

@@ -120,7 +120,7 @@ functions' suites deliver signed events to the webhook over HTTP and point
 CI (`.github/workflows/ci.yml`) runs the functions' unit tests, the web app's lint, key
 vectors and builds, the Android unit tests and the encryption reference's tests on every
 pull request. `.github/workflows/android.yml` builds the Android release bundle, and on
-`main` uploads it to Play as a draft ([docs/android.md](docs/android.md#shipping-to-play)).
+`main` releases it to Play's closed testing track ([docs/android.md](docs/android.md#shipping-to-play)).
 The emulator suites run only in the deploy that follows a merge, and the Xcode builds not
 at all, so run them yourself when a change reaches the rules, the functions or the Apple
 apps: by the time CI runs them, the change is on `main`.

@@ -149,10 +149,12 @@ jobs:
           name=$(grep -m1 'versionName = ' app/build.gradle.kts | sed 's/.*versionName = "\(.*\)".*/\1/')
           echo "name=${PUSHTHAT_VERSION_CODE} (${name})" >> "$GITHUB_OUTPUT"
 
-      # `status: draft` stops short of releasing to testers: the bundle appears in the track
-      # and Play runs its checks, but a person still presses the button. That is the right
-      # default for something every push to `main` triggers. Change it to `completed` to
-      # have testers get the build without anyone asking.
+      # `status: completed` rolls the release out to the track's testers as soon as Play's
+      # checks pass, so a merge reaches their phones without anyone opening Play Console.
+      # It started as `draft`, which left every build waiting for a person to press the
+      # button, and closed testing is for getting each build onto testers' phones.
+      # Production is still promoted by hand in Play Console; nothing here can reach it,
+      # because the only track named is `alpha`.
       #
       # `alpha` is the API's name for the default closed testing track: "closed" is not a
       # track name, and a custom closed track is referenced by the name it was given in Play
@@ -166,7 +168,7 @@ jobs:
           packageName: com.makerocketgonow.pushthat
           releaseFiles: apps/android/app/build/outputs/bundle/release/*.aab
           tracks: alpha
-          status: draft
+          status: completed
           releaseName: ${{ steps.release_name.outputs.name }}
           # Written by hand in `apps/android/store/whatsnew/`, not generated from commit
           # subjects: those are addressed to whoever changes the code next, and a tester
