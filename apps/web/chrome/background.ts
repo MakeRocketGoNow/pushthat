@@ -19,7 +19,7 @@ import { getMessaging } from 'firebase/messaging/sw';
 
 import { app, auth } from '../src/config/firebase';
 import { deviceId } from '../src/services/keyStore';
-import { type Push, loadPushKeys, readPush } from '../src/services/pushes';
+import { type Push, loadPushKeys, readPush, viewableType, viewerPath } from '../src/services/pushes';
 
 declare const self: ServiceWorkerGlobalScope & typeof globalThis;
 
@@ -142,8 +142,11 @@ async function readReceivedPush(pushId: string): Promise<Push | undefined> {
 /**
  * An encrypted push: skipped when this browser sent it, which compares the install's
  * device id now that the push no longer says which browser it came from. A URL opens in a
- * tab, as it always has. A file has no URL to open, so its push opens the extension's own
- * page, where the list decrypts and saves it on a click.
+ * tab, as it always has. A file has no URL to open: an image opens in the extension's own
+ * page, which decrypts and shows it (`ViewPush`), as a pushed image's Storage URL opened
+ * before encryption. Any other file is saved from the list, on a click, so its notification
+ * opens the list. The worker only names the push; it cannot make an object URL to show the
+ * image itself, and a page that holds the decrypted image is one that can let it go.
  */
 async function handleEncryptedPush(data: { pushId?: string; deviceId?: string }) {
   if (data.deviceId && data.deviceId === (await deviceId())) {
@@ -157,19 +160,26 @@ async function handleEncryptedPush(data: { pushId?: string; deviceId?: string })
     logError('Could not read a received push:', { error: String(error) });
   }
 
-  if (push?.url && push.type === 'url') {
+  const page = chrome.runtime.getURL('index.html');
+  // The push's id is all the address carries: the image is read and decrypted by the page.
+  const image = push?.file && viewableType(push.file) ? chrome.runtime.getURL(viewerPath(push.id)) : undefined;
+  const open = push?.type === 'url' ? push.url : image;
+  // Whether a file push opens a tab, and nothing from the push: an image that does not open
+  // is otherwise silent, and this says whether it was read at all.
+  if (push?.type === 'file') debug('Received a file push', { read: !!push.file, opensInTab: !!image });
+  else if (!push) debug('Received a push this browser could not read');
+  if (open) {
     try {
-      await chrome.tabs.create({ url: push.url });
+      await chrome.tabs.create({ url: open });
     } catch (error) {
-      logError('Error opening push URL:', { error: String(error) });
+      logError('Error opening a push:', { error: String(error) });
     }
   }
-  const page = chrome.runtime.getURL('index.html');
   await self.registration.showNotification(push?.title || 'New push', {
     body: push?.type === 'url' ? push.url : push ? 'File' : '',
     icon: '/icons/icon128.png',
     silent: true,
-    data: { url: push?.type === 'url' ? push.url : page },
+    data: { url: open || page },
   });
 }
 

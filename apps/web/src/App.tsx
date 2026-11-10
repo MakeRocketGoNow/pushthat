@@ -1,4 +1,4 @@
-import { Navigate, Route, Routes } from 'react-router';
+import { Navigate, Outlet, Route, Routes, useSearchParams } from 'react-router';
 
 import Layout from './Layout';
 import ProtectedRoute from './components/ProtectedRoute';
@@ -18,6 +18,8 @@ import { ResetPassword } from './pages/ResetPassword';
 import { Security } from './pages/Security';
 import Support from './pages/Support';
 import Terms from './pages/Terms';
+import { ViewPush } from './pages/ViewPush';
+import { VIEW_PARAM } from './services/viewable';
 
 function IndexOrRedirect() {
   const { isAuthenticated, loading } = useAuth();
@@ -31,14 +33,42 @@ function IndexOrRedirect() {
   return <IndexPage />;
 }
 
+/**
+ * The extension's page is `index.html`, which is sent home. With `?view=<push id>` it is
+ * where an image push is shown: the extension's worker opens it for an image pushed to this
+ * browser (chrome/background.ts), and the list links to it, on the site as in the extension.
+ * Then the image is all the tab holds, as a pushed image's Storage URL was before
+ * encryption. The address stays as it was opened, rather than moving to a route of its own,
+ * because a reload asks the extension for that path as a file and only `index.html` is one;
+ * staying here, a reload decrypts the image again.
+ */
+function ImagePageOrHome() {
+  const [params] = useSearchParams();
+  const view = params.get(VIEW_PARAM);
+  if (!view) return <Navigate to="/" replace />;
+  return (
+    <ProtectedRoute>
+      <ViewPush pushId={view} />
+    </ProtectedRoute>
+  );
+}
+
 function App() {
   return (
     <AuthProvider>
       <KeysProvider>
         <ThemeProvider>
-          <Layout>
-            <ScrollToTop />
-            <Routes>
+          <Routes>
+            {/* Outside `Layout`: a pushed image opens on its own, with nothing of the site around it. */}
+            <Route path="/index.html" element={<ImagePageOrHome />} />
+            <Route
+              element={
+                <Layout>
+                  <ScrollToTop />
+                  <Outlet />
+                </Layout>
+              }
+            >
               <Route path="/login" element={<Login />} />
               <Route path="/" element={<IndexOrRedirect />} />
               <Route path="/privacy" element={<Privacy />} />
@@ -51,10 +81,9 @@ function App() {
                 <Route path="/push" element={<Push />} />
                 <Route path="/plan" element={<Plan />} />
               </Route>
-              <Route path="/index.html" element={<Navigate to="/" />} />
               <Route path="*" element={<NotFound />} />
-            </Routes>
-          </Layout>
+            </Route>
+          </Routes>
         </ThemeProvider>
       </KeysProvider>
     </AuthProvider>
