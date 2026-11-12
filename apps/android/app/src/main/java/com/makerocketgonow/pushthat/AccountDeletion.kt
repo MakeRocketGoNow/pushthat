@@ -14,6 +14,7 @@ import com.makerocketgonow.pushthat.data.AppDatabase
 import com.makerocketgonow.pushthat.e2ee.AccountKeys
 import com.makerocketgonow.pushthat.e2ee.signOut
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
@@ -99,6 +100,16 @@ object AccountDeletion {
             forget(app, uid)
             return
         }
+        // From here on, not cancelled with the screen. The call can take five minutes, and
+        // someone who swipes the app away meanwhile ends the view model's scope: the
+        // request still finished on its thread and the server still deleted the account,
+        // but the cancellation was rethrown on the way back and `forget` never ran, leaving
+        // an install signed in to nothing with the deleted account's queue and token.
+        withContext(NonCancellable) { deleteAndForget(app, user, token) }
+    }
+
+    private suspend fun deleteAndForget(app: Context, user: FirebaseUser, token: String) {
+        val uid = user.uid
         try {
             callDeleteAccount(token)
         } catch (e: IOException) {
