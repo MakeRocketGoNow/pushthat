@@ -105,3 +105,18 @@ account key and any unconfirmed recovery key, the decrypted file cache, and the 
 pushes waiting to be retried. On Android and iOS it also resets the installation's
 Analytics id. The device id stays, as it does at sign-out: it belongs to the install, not
 the account.
+
+## The public page
+
+`/delete-account` (`apps/web/src/pages/DeleteAccount.tsx`) names the app and the developer,
+gives the steps, lists what is deleted and what is kept, and has the form. It is served as
+static HTML as well ([the web app](web.md#pages-that-read-without-javascript)), so all of
+it but the form reads without JavaScript, and it is reachable signed out: the person may
+have uninstalled every app. The form signs in on a second Firebase app that lives only for
+the call (`services/account.ts` says why), so it works the same signed in or out. Someone
+who has forgotten their password resets it first; someone who cannot sign in at all writes
+to support.
+
+The website's and the extension's menu item leads to this page. The Android, iOS and macOS
+apps ask for the password in a dialog of their own and call the function directly.
+

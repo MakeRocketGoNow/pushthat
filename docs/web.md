@@ -39,6 +39,37 @@ The extension logs to its own console only (the service worker's, under "Inspect
 ids to a third party the privacy policy did not name, so that was removed rather than
 disclosed.
 
+## Pages that read without JavaScript
+
+The site is rendered in the browser, so every address answers with the same empty shell
+until the script runs. Three pages are also written out as static HTML at build time,
+because the reader that matters most for them may run no script: `/delete-account` (the
+account deletion page Google Play is given, see [account deletion](account-deletion.md)),
+`/terms` and `/privacy`.
+
+`npm run build` builds the site, then builds `src/prerender.tsx` for Node, and
+`scripts/prerender.mjs` renders each page into a copy of the built `index.html`
+(`dist/delete-account.html` and so on). The root `firebase.json` rewrites each address to
+its file, ahead of the rewrite that sends everything else to the app. Each copy still
+loads the app's script, which then draws over the markup as it would over an empty root,
+so with JavaScript nothing changes. The script fails the build if a copy is missing the
+text it exists to carry.
+
+Rewrites rather than `cleanUrls`, which would also redirect `/index.html` to `/`: the list
+links to `/index.html?view=...` to show an image push, in the site as in the extension.
+
+To add a page, add it to `PAGES` in `src/prerender.tsx` and a rewrite in `firebase.json`.
+It must render whole on the first pass, with nothing behind an effect.
+
+## Favicons
+
+The list shows each link's icon by asking the linked site itself for `/favicon.ico`. It
+used to ask Google's favicon service, which told Google the domain of every link pushed;
+a proxy of our own would have put the same list in our logs, for pushes that are otherwise
+end-to-end encrypted. A site with no icon there gets ours. The apps go one step further
+and read the page's `<link rel="icon">`, which a browser will not let a script do across
+origins.
+
 ## Rules, tests and deploying
 
 `npm run test:rules` runs the rules tests against the Firestore and Storage emulators (a
