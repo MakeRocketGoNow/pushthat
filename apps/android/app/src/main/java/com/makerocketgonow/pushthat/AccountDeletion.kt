@@ -6,6 +6,7 @@ import com.bumptech.glide.Glide
 import com.google.firebase.Firebase
 import com.google.firebase.FirebaseException
 import com.google.firebase.analytics.FirebaseAnalytics
+import com.google.firebase.auth.FirebaseAuthInvalidCredentialsException
 import com.google.firebase.auth.FirebaseAuthInvalidUserException
 import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.auth.auth
@@ -84,6 +85,14 @@ object AccountDeletion {
         val token = try {
             AccountKeys(app).freshTokenFor(password)
         } catch (e: FirebaseAuthInvalidUserException) {
+            forget(app, uid)
+            return
+        } catch (e: FirebaseAuthInvalidCredentialsException) {
+            // With email enumeration protection on, which this project's sign-in assumes
+            // (AccountKeys), Firebase says "wrong password" for an account that no longer
+            // exists, never "no such user". So a refused password is checked against the
+            // account itself, which `reload` answers truthfully whatever that setting is.
+            if (!isGone(user)) throw e
             forget(app, uid)
             return
         }

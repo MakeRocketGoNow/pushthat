@@ -499,7 +499,12 @@ class AuthViewModel: ObservableObject {
 
         do {
             try await reauthenticate(user: user, email: email, password: password)
-        } catch let error where Self.isUserGone(error) {
+        } catch {
+            // With email enumeration protection on, which `isWrongPassword` assumes,
+            // Firebase says "wrong password" for an account that no longer exists, never
+            // "no such user". So any refusal is checked against the account itself, which
+            // `reload` answers truthfully whatever that setting is.
+            guard await Self.isGone(user) else { throw error }
             forgetDeletedAccount(uid: uid)
             return
         }
