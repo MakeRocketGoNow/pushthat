@@ -40,7 +40,7 @@ const NOT_ASKED =
 
 /** For a call that ended with no answer (`OutcomeUnknownError`). The same words on every client. */
 const UNCONFIRMED =
-  'We could not confirm that your account was deleted. It may still be finishing. Try again in a few minutes: if your password is then refused, the account is gone.';
+  'We could not confirm that your account was deleted. It may still be finishing. Try again in a few minutes. If signing in with the right password no longer works, the account is gone.';
 
 export function DeleteAccountForm() {
   const { user } = useAuth();

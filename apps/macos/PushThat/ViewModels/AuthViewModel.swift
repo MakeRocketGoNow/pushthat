@@ -471,7 +471,7 @@ class AuthViewModel: ObservableObject {
 
     /// For a call that ended with no answer. The same words as the web page and the Android
     /// app, and never "nothing was deleted": by then something may have been.
-    static let deleteAccountUnconfirmed = "We could not confirm that your account was deleted. It may still be finishing. Try again in a few minutes: if your password is then refused, the account is gone."
+    static let deleteAccountUnconfirmed = "We could not confirm that your account was deleted. It may still be finishing. Try again in a few minutes. If signing in with the right password no longer works, the account is gone."
 
     /// The call ended with no answer from the function: a timeout, a dropped connection, or
     /// a failure that is not one of the function's own refusals. Nothing can be said about

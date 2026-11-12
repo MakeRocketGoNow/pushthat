@@ -106,8 +106,10 @@
     <string name="deleting_account">Deleting your account…</string>
     <string name="account_deleted">Your account is deleted.</string>
     <!-- The call ended without an answer: the same words as the web page and the Apple apps.
-         It must not say that nothing was deleted, because by then something may have been. -->
-    <string name="delete_account_unconfirmed">We could not confirm that your account was deleted. It may still be finishing. Try again in a few minutes: if your password is then refused, the account is gone.</string>
+         It must not say that nothing was deleted, because by then something may have been.
+         Nor that a refused password means the account is gone: it says "the right password",
+         because a mistyped one is refused too, and that is not a deletion. -->
+    <string name="delete_account_unconfirmed">We could not confirm that your account was deleted. It may still be finishing. Try again in a few minutes. If signing in with the right password no longer works, the account is gone.</string>
     <string name="delete_account_offline">Your account was not deleted: PushThat could not reach the server. Check your connection and try again.</string>
     <string name="wrong_password">That is not your password.</string>
     <string name="password_again_to_finish">Enter your password again to finish.</string>

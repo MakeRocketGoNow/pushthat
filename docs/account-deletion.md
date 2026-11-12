@@ -134,8 +134,8 @@ connection, a crash on the server), the client does not know how far the deletio
 must not say "nothing was deleted": past Stripe the marker is written and the sweep will
 finish the job regardless. It asks Firebase whether the account still exists. The Auth user
 is the last thing deleted, so gone means done, and the client clears its local data and
-signs out; otherwise it says the outcome could not be confirmed and that a refused password
-on the next try means the account is gone. A retry that finds the account already gone is treated as the deletion having succeeded, on
+signs out; otherwise it says the outcome could not be confirmed, and that the account is gone
+once signing in with the right password no longer works. A retry that finds the account already gone is treated as the deletion having succeeded, on
 the apps. With email enumeration protection on, Firebase refuses a deleted account's
 password exactly as it would a wrong one, so the apps ask about the session they already
 hold (`reload`) and count only "no such user". A revoked session does not count there: a
