@@ -6,7 +6,8 @@
   "scripts": {
     "deploy": "npm run test:rules && npm run build && firebase deploy --only hosting,firestore,storage",
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "tsc -b && vite build && npm run prerender",
+    "prerender": "vite build --ssr src/prerender.tsx --outDir node_modules/.prerender && node scripts/prerender.mjs",
     "build:chrome": "vite build -c vite.chrome.config.ts",
     "lint": "eslint .",
     "preview": "vite preview",

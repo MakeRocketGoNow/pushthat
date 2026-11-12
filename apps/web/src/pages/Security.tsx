@@ -2,8 +2,8 @@ import { Helmet } from 'react-helmet';
 import { Link } from 'react-router';
 
 import LegalContainer from '@/components/LegalContainer';
+import { MIN_PASSWORD_LENGTH } from '@/config/password';
 import { LIMITS, SUPPORT_EMAIL } from '@/config/plan';
-import { MIN_PASSWORD_LENGTH } from '@/services/signIn';
 
 /**
  * Security, `/security`: the gist of docs/e2ee.md for the people it protects. What is

@@ -7,10 +7,11 @@ import { Navigate, useNavigate } from 'react-router';
 import Button from '@/components/Button';
 import GlowButton from '@/components/GlowButton';
 import { auth } from '@/config/firebase';
+import { MIN_PASSWORD_LENGTH } from '@/config/password';
 import { useAuth } from '@/contexts/AuthContext';
 import { useKeys } from '@/contexts/KeysContext';
 import { resetActionCodeSettings } from '@/services/passwordReset';
-import { MIN_PASSWORD_LENGTH, WrongPasswordError } from '@/services/signIn';
+import { WrongPasswordError } from '@/services/signIn';
 
 import styles from './Login.module.css';
 
