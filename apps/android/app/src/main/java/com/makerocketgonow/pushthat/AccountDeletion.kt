@@ -16,6 +16,7 @@ import com.makerocketgonow.pushthat.e2ee.signOut
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -147,7 +148,12 @@ object AccountDeletion {
     private suspend fun forget(app: Context, uid: String) {
         withContext(Dispatchers.IO) {
             attempt("queued pushes") { AppDatabase.getDatabase(app).pendingPushDao().deleteAllFor(uid) }
-            attempt("notification token") { FirebaseMessaging.getInstance().deleteToken().await() }
+            // Bounded: this asks Firebase over the network, behind a dialog that cannot be
+            // dismissed, for an account that is already gone. The token is a courtesy to
+            // clear; the copy that addressed this device went with the user document.
+            attempt("notification token") {
+                withTimeoutOrNull(5_000) { FirebaseMessaging.getInstance().deleteToken().await() }
+            }
             attempt("icon cache") { Glide.get(app).clearDiskCache() }
         }
         attempt("analytics") { FirebaseAnalytics.getInstance(app).resetAnalyticsData() }
