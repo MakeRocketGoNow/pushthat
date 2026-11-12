@@ -222,6 +222,14 @@ struct DeleteAccountView: View {
                         }
                     }
                     .disabled(isWorking || password.isEmpty)
+                } footer: {
+                    // The call stays open until the server has deleted everything, which
+                    // for a large account is minutes. iOS suspends an app soon after it is
+                    // put away and the call is lost with it: the account is still deleted,
+                    // but this sheet can then only say it could not confirm that.
+                    if isWorking {
+                        Text("Keep PushThat open until this finishes. It can take a few minutes.")
+                    }
                 }
             }
             .navigationTitle("Delete account")
