@@ -51,8 +51,9 @@ account deletion page Google Play is given, see [account deletion](account-delet
 `scripts/prerender.mjs` renders each page into a copy of the built `index.html`
 (`dist/delete-account.html` and so on). The root `firebase.json` rewrites each address to
 its file, ahead of the rewrite that sends everything else to the app. Each copy still
-loads the app's script, which then draws over the markup as it would over an empty root,
-so with JavaScript nothing changes. The script fails the build if a copy is missing the
+loads the app's script, which draws over the markup once Firebase has read the session
+back (`main.tsx` waits for that on these pages, or the text would blank out and come back),
+so with JavaScript the page ends up as it would have from an empty root. The script fails the build if a copy is missing the
 text it exists to carry.
 
 Rewrites rather than `cleanUrls`, which would also redirect `/index.html` to `/`: the list
