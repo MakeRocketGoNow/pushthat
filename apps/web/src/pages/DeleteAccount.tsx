@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Helmet } from 'react-helmet';
 import { Link } from 'react-router';
 
@@ -33,6 +33,10 @@ import styles from './DeleteAccount.module.css';
  * signed-in frame for the signed-out one, and the page is mounted anew: state held in the
  * component was lost at exactly the moment it had something to say, and the person was
  * shown the empty form again with no word that anything had happened.
+ *
+ * It is for that one remount and no longer: the page that mounts next reads it and puts
+ * it back, so a later visit in the same tab (the next person at a shared computer, or the
+ * same one signed in to another account) gets the form and not someone else's result.
  */
 let deletedHere = false;
 
@@ -52,6 +56,11 @@ export function DeleteAccount() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [done, setDone] = useState(deletedHere);
+  // On mount only, so the page that started the deletion does not clear it before the one
+  // mounted in its place has read it.
+  useEffect(() => {
+    deletedHere = false;
+  }, []);
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -60,7 +69,9 @@ export function DeleteAccount() {
     setError('');
     try {
       await deleteAccount(sessionEmail || email.trim(), password, () => {
-        deletedHere = true;
+        // Only a signed-in browser is remounted; signed out, this page stays and shows
+        // the result itself, and a flag left set would greet the next visit with it.
+        deletedHere = !!sessionEmail;
       });
       setPassword('');
       setDone(true);
