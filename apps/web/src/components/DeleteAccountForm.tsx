@@ -83,7 +83,10 @@ export function DeleteAccountForm() {
         // password does not say "nothing was deleted": on a second try it may be the
         // first try having worked.
         err instanceof WrongPasswordError
-          ? 'The email or password is not right.'
+          ? // Signed in there is no email field, so only the password can be what was wrong.
+            sessionEmail
+            ? 'That is not your password.'
+            : 'The email or password is not right.'
           : err instanceof OutcomeUnknownError
             ? UNCONFIRMED
             : err instanceof FirebaseError && err.code === 'auth/too-many-requests'
