@@ -22,7 +22,9 @@ interface PushesListProps {
  * hosting logs (docs/e2ee.md, Icons). The PNGs in `public/files` stay, for app versions
  * from before this change, which still load them from there.
  */
-const FILE_ICONS: Record<string, string> = Object.fromEntries(
+// A Map, not an object: an extension comes from a file's name, and an object would answer
+// `constructor` or `__proto__` with what it inherits.
+const FILE_ICONS = new Map<string, string>(
   Object.entries(
     import.meta.glob<string>('../assets/file-icons/*.svg', { eager: true, query: '?inline', import: 'default' })
   ).map(([path, src]) => [path.slice(path.lastIndexOf('/') + 1, -'.svg'.length), src])
@@ -40,7 +42,7 @@ const PLACEHOLDER = '/pushthat-mono.svg';
 const iconSrc = (push: Push, broken: boolean): string => {
   if (push.locked) return PLACEHOLDER;
   if (push.icon && !broken) return `data:image/png;base64,${push.icon}`;
-  return (push.ext && FILE_ICONS[push.ext.toLowerCase()]) || PLACEHOLDER;
+  return (push.ext && FILE_ICONS.get(push.ext.toLowerCase())) || PLACEHOLDER;
 };
 
 /**
