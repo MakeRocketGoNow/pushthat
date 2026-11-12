@@ -79,6 +79,8 @@ export interface DeletionDeps {
   auth?: AuthAdmin;
   /** Billing, when it is on. */
   stripe?: StripeConfig;
+  /** Refuse, rather than skip Stripe, when billing is off and the account has a customer. */
+  billingRequired?: boolean;
   now?: Date;
 }
 
@@ -172,6 +174,17 @@ async function endBilling(stripe: StripeConfig, customerIds: string[], uid: stri
   }
 }
 
+/**
+ * The account has a Stripe customer and there is no Stripe configuration to end its
+ * subscription with. Thrown before anything is deleted.
+ */
+export class BillingOffError extends Error {
+  constructor() {
+    super('billing is off, and the account has a Stripe customer');
+    this.name = 'BillingOffError';
+  }
+}
+
 const isUserNotFound = (err: unknown) => (err as { code?: string } | null)?.code === 'auth/user-not-found';
 
 /** Runs `step`, taking "there is no such user" as done: a second call finds the user already gone. */
@@ -194,14 +207,19 @@ async function unlessGone(step: () => Promise<void>): Promise<void> {
  */
 export async function deleteAccountOf(
   uid: string,
-  { db = getFirestore(), auth = getAuth(), stripe, now = new Date() }: DeletionDeps = {}
+  { db = getFirestore(), auth = getAuth(), stripe, billingRequired = false, now = new Date() }: DeletionDeps = {}
 ): Promise<void> {
   const customerIds = await customersOf(db, uid);
   if (customerIds.length > 0) {
     if (stripe) {
       await endBilling(stripe, customerIds, uid);
+    } else if (billingRequired) {
+      // The purge deletes `billing.customerId` and the `stripeCustomers` row, the only
+      // things that say which Stripe customer was this account's. Going on without
+      // Stripe would leave a subscription renewing with nothing left that points at it.
+      throw new BillingOffError();
     } else {
-      // Billing off is the emulator's case (stripe-functions.ts); a deployed instance has it on.
+      // The emulator's case (stripe-functions.ts), where no customer is a real one.
       logger.warn(`[account] user=${uid}: billing is off, so nothing was asked of Stripe`);
     }
   }
@@ -264,9 +282,16 @@ export const deleteAccount = onCall({ cors: true, secrets, timeoutSeconds: 300 }
     throw new HttpsError('failed-precondition', 'Enter your password again to delete the account.');
   }
   try {
-    await deleteAccountOf(uid, { stripe: stripeConfig(), now });
+    // A deployed instance always has billing on (a deploy refuses a function whose
+    // secret does not exist), but a secret set to an empty value reads as off. Only the
+    // emulator may skip Stripe.
+    await deleteAccountOf(uid, {
+      stripe: stripeConfig(),
+      billingRequired: process.env.FUNCTIONS_EMULATOR !== 'true',
+      now,
+    });
   } catch (err) {
-    if (!(err instanceof StripeError)) throw err;
+    if (!(err instanceof StripeError) && !(err instanceof BillingOffError)) throw err;
     logger.error(`[account] user=${uid}: ending the subscription was refused, nothing deleted: ${err.message}`);
     throw new HttpsError(
       'unavailable',

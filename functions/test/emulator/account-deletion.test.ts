@@ -395,13 +395,44 @@ describe('deleteAccount', () => {
     expect(await tracesOf(UID)).toEqual(before);
   });
 
-  test('with billing off it deletes the account and asks nothing of Stripe', async () => {
-    billingOff();
-    await seedAccount(UID, CUSTOMER);
+  describe('with billing off', () => {
+    const emulator = process.env.FUNCTIONS_EMULATOR;
+    afterEach(() => {
+      if (emulator === undefined) delete process.env.FUNCTIONS_EMULATOR;
+      else process.env.FUNCTIONS_EMULATOR = emulator;
+    });
 
-    expect(await call(deleteAccount, UID, {}, { auth_time: nowSeconds() })).toEqual({ deleted: true });
+    test('on the emulator it deletes the account and asks nothing of Stripe', async () => {
+      billingOff();
+      process.env.FUNCTIONS_EMULATOR = 'true';
+      await seedAccount(UID, CUSTOMER);
 
-    expect(stripe.requests).toHaveLength(0);
-    expect(await tracesOf(UID)).toEqual([`accountDeletions/${UID}`]);
+      expect(await call(deleteAccount, UID, {}, { auth_time: nowSeconds() })).toEqual({ deleted: true });
+
+      expect(stripe.requests).toHaveLength(0);
+      expect(await tracesOf(UID)).toEqual([`accountDeletions/${UID}`]);
+    });
+
+    test('deployed, it refuses an account with a customer, and deletes nothing', async () => {
+      billingOff();
+      delete process.env.FUNCTIONS_EMULATOR;
+      await seedAccount(UID, CUSTOMER);
+      const before = await tracesOf(UID);
+
+      expect(await refusal(call(deleteAccount, UID, {}, { auth_time: nowSeconds() }))).toMatch(
+        /^unavailable: Your subscription could not be cancelled/
+      );
+
+      expect(await tracesOf(UID)).toEqual(before);
+    });
+
+    test('deployed, an account that never subscribed is still deleted', async () => {
+      billingOff();
+      delete process.env.FUNCTIONS_EMULATOR;
+      await getAuth().createUser({ uid: UID, email: `${UID}@example.com` });
+      await db().collection('users').doc(UID).set({ email: `${UID}@example.com` });
+
+      expect(await call(deleteAccount, UID, {}, { auth_time: nowSeconds() })).toEqual({ deleted: true });
+    });
   });
 });
