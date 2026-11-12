@@ -77,6 +77,8 @@ export default function PushesList({
   onSelectedPushesChange,
 }: PushesListProps) {
   // Page icons that would not decode, which then draw the type's icon or the placeholder.
+  // By the icon, not the push, as the phones' caches are: a push whose icon changes while
+  // the list is open is drawn with its new one.
   const [brokenIcons, setBrokenIcons] = useState<Set<string>>(new Set());
   const [opening, setOpening] = useState<string | undefined>(undefined);
   // What opening a row has to say (a locked push, a file that did not decrypt), shown above
@@ -153,10 +155,13 @@ export default function PushesList({
                   <CheckIcon />
                 ) : (
                   <img
-                    src={iconSrc(push, brokenIcons.has(push.id))}
+                    src={iconSrc(push, !!push.icon && brokenIcons.has(push.icon))}
                     alt=""
                     className={styles.favicon}
-                    onError={() => setBrokenIcons((prev) => new Set(prev).add(push.id))}
+                    onError={() => {
+                      const { icon } = push;
+                      if (icon) setBrokenIcons((prev) => new Set(prev).add(icon));
+                    }}
                   />
                 )}
               </div>
