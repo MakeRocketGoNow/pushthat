@@ -538,9 +538,10 @@ enum PushTitle {
     /// reference this does not know, or a numeric one that names no character (zero, a
     /// surrogate, past U+10FFFF, or no digits at all), is left as it was written.
     ///
-    /// Jsoup parts from this on those numbers: it makes U+FFFD of one past U+10FFFF and a
-    /// lone surrogate of one in that range (which a Swift `String` cannot hold). No page
-    /// means either, so the text as written was kept over copying Jsoup's answer.
+    /// Jsoup parts from this on those numbers: it drops `&#0;`, makes U+FFFD of one past
+    /// U+10FFFF and a lone surrogate of one in that range (which a Swift `String` cannot
+    /// hold). No page means any of them, so the text as written was kept over copying
+    /// Jsoup's answers.
     ///
     /// A name needs its `;`, except the 106 in `legacy`, which HTML reads without one, as
     /// Jsoup and browsers do: hand-written titles hold `&copy 2024` and `Fish &amp Chips`.
