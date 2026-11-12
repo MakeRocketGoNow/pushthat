@@ -135,13 +135,16 @@ must not say "nothing was deleted": past Stripe the marker is written and the sw
 finish the job regardless. It asks Firebase whether the account still exists. The Auth user
 is the last thing deleted, so gone means done, and the client clears its local data and
 signs out; otherwise it says the outcome could not be confirmed and that a refused password
-on the next try means the account is gone. A retry that finds the account already gone is
-treated as the deletion having succeeded. It finds that by asking about the session it
-already has (`reload`), not from the sign-in: with email enumeration protection on,
-Firebase refuses a deleted account's password exactly as it would a wrong one. The web
-page can only ask when the browser is signed in to that account; signed out, a retry reads
-"The email or password is not right", which is what the unconfirmed message tells the
-person to expect. Only the function's own refusals (an old
+on the next try means the account is gone. A retry that finds the account already gone is treated as the deletion having succeeded, on
+the apps. With email enumeration protection on, Firebase refuses a deleted account's
+password exactly as it would a wrong one, so the apps ask about the session they already
+hold (`reload`) and count only "no such user". A revoked session does not count there: a
+password change or reset on another device revokes every session too, and reading that as
+"deleted" told someone who had mistyped that their account was gone when the server had not
+been asked. It counts only straight after the deletion's own sign-in, when nothing but the
+function can have revoked it. The web cannot tell the two apart (Firebase answers both with
+"token expired" there), so a retry on the web reads "The email or password is not right",
+and the unconfirmed message says what that means. Only the function's own refusals (an old
 sign-in, a subscription that would not cancel), which are made before anything is deleted,
 are shown as refusals.
 

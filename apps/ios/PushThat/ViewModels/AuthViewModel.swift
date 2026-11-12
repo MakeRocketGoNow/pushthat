@@ -502,7 +502,8 @@ class AuthViewModel: ObservableObject {
             // Firebase says "wrong password" for an account that no longer exists, never
             // "no such user". So any refusal is checked against the account itself, which
             // `reload` answers truthfully whatever that setting is.
-            guard await Self.isGone(user) else { throw error }
+            // Only "no such user" counts here, not a revoked session: see `isUserGone`.
+            guard await Self.isGone(user, revokedMeansGone: false) else { throw error }
             forgetDeletedAccount(uid: uid)
             return
         }
@@ -513,8 +514,10 @@ class AuthViewModel: ObservableObject {
         do {
             try await Self.callDeleteAccount(idToken: token)
         } catch is OutcomeUnknown {
-            // The Auth user is the last thing the function deletes, so gone means done.
-            guard await Self.isGone(user) else { throw Problem(Self.deleteAccountUnconfirmed) }
+            // The Auth user is the last thing the function deletes, so gone means done. The
+            // session was re-authenticated a moment ago, so only the function can have
+            // revoked it since, after leaving the marker that gets the deletion finished.
+            guard await Self.isGone(user, revokedMeansGone: true) else { throw Problem(Self.deleteAccountUnconfirmed) }
         }
         forgetDeletedAccount(uid: uid)
     }
@@ -534,21 +537,26 @@ class AuthViewModel: ObservableObject {
         signOut()
     }
 
-    /// Firebase saying the signed-in account no longer exists.
-    nonisolated static func isUserGone(_ error: Error) -> Bool {
+    /// Firebase saying the signed-in account no longer exists. `revokedMeansGone` says
+    /// whether a revoked session counts: it does straight after this deletion's own
+    /// sign-in, and it must not for a session of unknown age, which a password change or
+    /// reset on another device also revokes. Read as "gone" there, a mistyped password
+    /// signed the app out and said the account was deleted when the server had not been asked.
+    nonisolated static func isUserGone(_ error: Error, revokedMeansGone: Bool) -> Bool {
         let error = error as NSError
-        return error.domain == AuthErrorDomain
-            && (error.code == AuthErrorCode.userNotFound.rawValue || error.code == AuthErrorCode.userTokenExpired.rawValue)
+        guard error.domain == AuthErrorDomain else { return false }
+        return error.code == AuthErrorCode.userNotFound.rawValue
+            || (revokedMeansGone && error.code == AuthErrorCode.userTokenExpired.rawValue)
     }
 
     /// Whether the account no longer exists, asked of Firebase. A failure to ask (no
     /// network) is not an answer, and reads as "still there".
-    private static func isGone(_ user: User) async -> Bool {
+    private static func isGone(_ user: User, revokedMeansGone: Bool) async -> Bool {
         do {
             try await user.reload()
             return false
         } catch {
-            return isUserGone(error)
+            return isUserGone(error, revokedMeansGone: revokedMeansGone)
         }
     }
 

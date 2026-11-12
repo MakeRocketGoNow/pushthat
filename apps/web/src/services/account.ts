@@ -6,7 +6,7 @@ import { app, auth } from '@/config/firebase';
 
 import { clearAccountKey } from './keyStore';
 import { errorText } from './plan';
-import { WrongPasswordError, proveByPassword } from './signIn';
+import { proveByPassword } from './signIn';
 
 /**
  * How long the call may take: a little more than the function's own five minutes
@@ -28,6 +28,11 @@ export class OutcomeUnknownError extends Error {}
 /**
  * Whether the account `user` signed in to no longer exists, asked of Firebase. The Auth
  * user is the last thing the function deletes, so gone means the deletion finished.
+ *
+ * Only for the user this deletion signed in moments ago. "Token expired" counts as gone
+ * here because nothing but the function can have revoked a session that new, and the
+ * function revokes after it has left the marker that gets the deletion finished. Asked of
+ * an older session it would also be true after a password change, which deletes nothing.
  */
 async function isGone(user: User): Promise<boolean> {
   try {
@@ -84,28 +89,13 @@ async function endSession(): Promise<void> {
 export async function deleteAccount(email: string, password: string, onDeleted: () => void): Promise<void> {
   const scratch = initializeApp(app.options, `delete-account-${Date.now()}`);
   try {
-    let user: User;
-    try {
-      user = await proveByPassword(initializeAuth(scratch, { persistence: inMemoryPersistence }), email, password);
-    } catch (error) {
-      // An earlier try whose answer was lost may have finished since. Firebase then
-      // refuses the password of an account that no longer exists as it would a wrong one
-      // (email enumeration protection, see signIn.ts), so a refusal is checked against
-      // this browser's own session, when it has one for that address: `reload` says
-      // truthfully whether its account is still there.
-      const session = auth.currentUser;
-      const sameAccount = session?.email?.toLowerCase() === email.trim().toLowerCase();
-      if (!(error instanceof WrongPasswordError) || !session || !sameAccount || !(await isGone(session))) throw error;
-      // On this path the session is already over when `onDeleted` runs, not after as the
-      // comment on this function says: `reload` on a deleted account signs the site's own
-      // auth out by itself before `isGone` returns. The page still sees `onDeleted` first,
-      // because the auth listener's state update renders on a later task than the
-      // microtasks that get here. If that ever stops holding, the page remounts with no
-      // word that the account is deleted, and this is where to look.
-      onDeleted();
-      await endSession();
-      return;
-    }
+    // A refused password is only ever reported as that. This once asked the browser's own
+    // session whether its account was gone, to catch a retry after a lost answer. But
+    // Firebase gives the web one answer, "token expired", both for an account that was
+    // deleted and for a session revoked by a password change or reset, and the page tells
+    // people who forgot their password to reset it first: someone who then mistyped was
+    // told "Your account is deleted" when nothing had been asked of the server.
+    const user = await proveByPassword(initializeAuth(scratch, { persistence: inMemoryPersistence }), email, password);
     try {
       await httpsCallable(getFunctions(scratch), 'deleteAccount', { timeout: CALL_TIMEOUT_MS })();
     } catch (error) {

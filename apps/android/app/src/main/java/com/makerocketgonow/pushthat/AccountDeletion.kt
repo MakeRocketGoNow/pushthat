@@ -84,6 +84,10 @@ object AccountDeletion {
         val token = try {
             AccountKeys(app).freshTokenFor(password)
         } catch (e: FirebaseAuthInvalidUserException) {
+            // Only "no such user" is an account already deleted. The same exception is
+            // thrown for a session revoked by a password change and for a disabled
+            // account, and neither of those has deleted anything.
+            if (e.errorCode != USER_NOT_FOUND) throw e
             forget(app, uid)
             return
         } catch (e: FirebaseAuthInvalidCredentialsException) {
@@ -91,28 +95,42 @@ object AccountDeletion {
             // (AccountKeys), Firebase says "wrong password" for an account that no longer
             // exists, never "no such user". So a refused password is checked against the
             // account itself, which `reload` answers truthfully whatever that setting is.
-            if (!isGone(user)) throw e
+            if (!isGone(user, revokedMeansGone = false)) throw e
             forget(app, uid)
             return
         }
         try {
             callDeleteAccount(token)
         } catch (e: IOException) {
-            // The Auth user is the last thing the function deletes, so gone means done.
-            if (!isGone(user)) throw OutcomeUnknownException(e)
+            // The Auth user is the last thing the function deletes, so gone means done. The
+            // session was re-authenticated a moment ago, so only the function can have
+            // revoked it since, and it does that after leaving the marker that gets the
+            // deletion finished.
+            if (!isGone(user, revokedMeansGone = true)) throw OutcomeUnknownException(e)
         }
         forget(app, uid)
     }
 
-    private suspend fun isGone(user: FirebaseUser): Boolean = try {
+    /**
+     * Whether the account no longer exists, asked of Firebase. [revokedMeansGone] says
+     * whether a revoked session counts: it does straight after this deletion's own sign-in,
+     * and it must not for a session of unknown age, which a password change or reset on
+     * another device also revokes. Read as "gone" there, a mistyped password signed the
+     * app out and said the account was deleted when the server had not been asked.
+     */
+    private suspend fun isGone(user: FirebaseUser, revokedMeansGone: Boolean): Boolean = try {
         user.reload().await()
         false
     } catch (e: FirebaseAuthInvalidUserException) {
-        true
+        e.errorCode == USER_NOT_FOUND || (revokedMeansGone && e.errorCode == USER_TOKEN_EXPIRED)
     } catch (e: FirebaseException) {
         // Could not ask (no network): not known to be gone.
         false
     }
+
+    // Firebase Auth's own codes for `FirebaseAuthInvalidUserException`.
+    private const val USER_NOT_FOUND = "ERROR_USER_NOT_FOUND"
+    private const val USER_TOKEN_EXPIRED = "ERROR_USER_TOKEN_EXPIRED"
 
     private suspend fun callDeleteAccount(token: String) = withContext(Dispatchers.IO) {
         val request = Request.Builder()
