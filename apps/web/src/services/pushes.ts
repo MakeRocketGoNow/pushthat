@@ -125,6 +125,8 @@ export interface Push {
   /** A URL push's URL, or a plaintext file push's download URL. */
   url?: string;
   ext?: string;
+  /** A URL push's page icon, base64 PNG checked by `iconOf`; absent when it has none. */
+  icon?: string;
   /** Set on a file push stored since encryption, which is opened through `downloadFile`. */
   file?: PushFile;
   /**
@@ -146,6 +148,20 @@ const isEnc = (value: unknown): value is Enc =>
   typeof (value as Enc).ct === 'string';
 
 const stringOr = (value: unknown, fallback = ''): string => (typeof value === 'string' ? value : fallback);
+
+// 4096 bytes of PNG in padded base64 (docs/e2ee.md, Icons).
+const MAX_ICON_LENGTH = 5464;
+const BASE64 = /^[A-Za-z0-9+/]+={0,2}$/;
+
+/**
+ * The envelope's icon, if it is one the list can show. It ends up in a `data:` URL, so it
+ * must be base64 and nothing else: a string that is not cannot smuggle anything into the
+ * `src`, and a PNG that will not decode is the `img`'s `onError`, not this check's.
+ */
+const iconOf = (value: unknown): string | undefined =>
+  typeof value === 'string' && value.length <= MAX_ICON_LENGTH && value.length % 4 === 0 && BASE64.test(value)
+    ? value
+    : undefined;
 
 export async function readPush(snapshot: DocumentSnapshot<DocumentData>, keys: PushKeys | undefined): Promise<Push> {
   const data = snapshot.data() ?? {};
@@ -189,7 +205,13 @@ export async function readPush(snapshot: DocumentSnapshot<DocumentData>, keys: P
     };
   }
   const url = stringOr(opened.url);
-  return { ...base, url, title: stringOr(opened.title) || url, ext: stringOr(opened.ext) || undefined };
+  return {
+    ...base,
+    url,
+    title: stringOr(opened.title) || url,
+    ext: stringOr(opened.ext) || undefined,
+    icon: iconOf(opened.icon),
+  };
 }
 
 /**
