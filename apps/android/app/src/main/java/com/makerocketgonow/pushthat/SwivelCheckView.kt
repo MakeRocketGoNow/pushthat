@@ -142,7 +142,10 @@ class SwivelCheckView @JvmOverloads constructor(
         val requests = Glide.with(context)
         var chain: RequestBuilder<Drawable>? = null
         for (candidate in candidates.asReversed()) {
-            val request = requests.load(candidate).fitCenter().override(Target.SIZE_ORIGINAL)
+            // Sized to this view by Glide, not `SIZE_ORIGINAL` as the file icons above are:
+            // the largest icon a site declares is tried first, and a 512 pixel one held
+            // whole is a megabyte of bitmap for a 36 dp square.
+            val request = requests.load(candidate).fitCenter()
             chain = if (chain == null) request.error(R.drawable.default_favicon) else request.error(chain)
         }
         chain?.into(frontImageView) ?: frontImageView.setImageResource(R.drawable.default_favicon)
