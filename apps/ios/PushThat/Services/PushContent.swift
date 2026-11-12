@@ -113,14 +113,32 @@ enum PushContent: Equatable {
         return (enc, tokens)
     }
 
-    /// A URL push sealed with its icon, or without it when the envelope with it would be
-    /// over the rules' bound (docs/e2ee.md, "Icons"): a long URL keeps its title rather than
-    /// losing both. Still too large without it, it throws `tooLarge` as before.
-    static func sealURL(url: String, title: String, ext: String, icon: String?, keys: PushKeys, pushId: String) throws -> (enc: E2eeCrypto.Envelope, searchTokens: [String]) {
+    /// The rewrite of a URL push after its page was scraped (docs/e2ee.md, "Titles" and
+    /// "Icons"), or nil when there is nothing to write: the rules Android's
+    /// `PushDocument.retitle` follows. It is rewritten when the title changed or an icon was
+    /// found for a push that had none, and a push keeps the icon it has. When the envelope
+    /// with an icon would be over the rules' bound the title is written alone, since the
+    /// title is what the row is read by. With no new title that leaves nothing to write:
+    /// sealing the same title again cost every listening device a write, and for a page with
+    /// no title, one on every launch. Still too large without the icon, it throws `tooLarge`
+    /// as before icons.
+    static func rescraped(_ current: PushContent, title: String?, icon: String?, keys: PushKeys, pushId: String) throws -> (enc: E2eeCrypto.Envelope, searchTokens: [String])? {
+        guard case let .url(url, oldTitle, ext, oldIcon) = current else { return nil }
+        // Cut as the envelope cuts it, so a long title read again is not taken for a change.
+        let newTitle = title
+            .map { String($0.prefix(maxTitleLength)) }
+            .flatMap { $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || $0 == oldTitle ? nil : $0 }
+        let hadIcon = !(oldIcon ?? "").isEmpty
+        let newIcon = icon.flatMap { $0.isEmpty || hadIcon ? nil : $0 }
+        guard newTitle != nil || newIcon != nil else { return nil }
+        let keptIcon = newIcon ?? oldIcon
         do {
-            return try PushContent.url(url: url, title: title, ext: ext, icon: icon).seal(keys: keys, pushId: pushId)
-        } catch ContentError.tooLarge where icon != nil {
-            return try PushContent.url(url: url, title: title, ext: ext).seal(keys: keys, pushId: pushId)
+            return try PushContent.url(url: url, title: newTitle ?? oldTitle, ext: ext, icon: keptIcon).seal(keys: keys, pushId: pushId)
+        } catch ContentError.tooLarge where !(keptIcon ?? "").isEmpty {
+            // The icon goes even when it was the push's own: the URL and new title did not
+            // fit beside it, and the title is worth more than the picture.
+            guard let newTitle else { return nil }
+            return try PushContent.url(url: url, title: newTitle, ext: ext).seal(keys: keys, pushId: pushId)
         }
     }
 

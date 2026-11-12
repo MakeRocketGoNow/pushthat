@@ -139,28 +139,35 @@ enum PushDocuments {
 
     /// The scraped title and icon written back to an encrypted URL push: exactly `enc` and
     /// `searchTokens` (`isEncryptedRetitle` in the rules), the URL and ext as they were, the
-    /// title and icon under a fresh nonce. Only under the push's own key version, and only
-    /// when that is the one this device holds: a push made under another key is not ours to
-    /// rewrite. Last write wins.
-    /// With the icon the envelope can be over the rules' bound on `enc.ct`, and then the
-    /// title is written alone (`PushContent.sealURL`).
-    static func retitle(
-        firestore: Firestore,
-        keys: PushKeys,
-        pushId: String,
-        userId: String,
-        keyVersion: Int?,
-        url: String,
-        ext: String,
-        title: String,
-        icon: String? = nil
-    ) async throws {
-        guard keyVersion == keys.keyVersion, userId == keys.uid else { return }
-        let sealed = try PushContent.sealURL(url: url, title: title, ext: ext, icon: icon, keys: keys, pushId: pushId)
-        try await firestore.collection("pushes").document(pushId).updateData([
-            "enc": sealed.enc.firestoreData,
-            "searchTokens": sealed.searchTokens,
-        ])
+    /// title and icon under a fresh nonce, by `PushContent.rescraped`'s rules. Only a push
+    /// this device can open: one under another key version is not ours to rewrite.
+    ///
+    /// Written over the push as it is at the write, in a transaction, not as the list read
+    /// it before the scrape. The scrape takes seconds, and another device scraping the same
+    /// push may write meanwhile. With titles alone that did no harm, since both wrote the
+    /// same title; with icons the writes differ (one device's decoder can open an icon
+    /// another's refuses), and a title-only write landing after a title-and-icon one dropped
+    /// the icon for good, since a titled push is not scraped again.
+    static func retitle(firestore: Firestore, keys: PushKeys, pushId: String, title: String?, icon: String?) async throws {
+        let ref = firestore.collection("pushes").document(pushId)
+        _ = try await firestore.runTransaction { transaction, errorPointer in
+            do {
+                let data = try transaction.getDocument(ref).data() ?? [:]
+                guard let userId = data["userId"] as? String,
+                      let type = data["type"] as? String,
+                      let enc = E2eeCrypto.Envelope(firestore: data["enc"]),
+                      let current = PushContent.open(
+                          keys: keys, userId: userId, pushId: pushId, type: type,
+                          keyVersion: (data["keyVersion"] as? NSNumber)?.intValue, enc: enc
+                      ),
+                      let sealed = try PushContent.rescraped(current, title: title, icon: icon, keys: keys, pushId: pushId)
+                else { return nil }
+                transaction.updateData(["enc": sealed.enc.firestoreData, "searchTokens": sealed.searchTokens], forDocument: ref)
+            } catch {
+                errorPointer?.pointee = error as NSError
+            }
+            return nil
+        }
     }
 
     // MARK: - Errors

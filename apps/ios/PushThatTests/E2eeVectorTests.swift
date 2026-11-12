@@ -277,21 +277,45 @@ final class E2eeVectorTests: XCTestCase {
         XCTAssertEqual(PushContent.url(url: "https://example.com", title: "T", ext: "", icon: "AAAA").searchText, "T https://example.com")
     }
 
-    /// A retitle whose envelope would be over the bound with the icon writes the title alone.
-    func testRetitleDropsAnIconThatDoesNotFit() throws {
+    /// What a scrape writes back (`PushContent.rescraped`), opened again to compare.
+    private func rescrape(_ current: PushContent, title: String?, icon: String?) throws -> PushContent?? {
         let keys = try vectorKeys()
-        let icon = String(repeating: "A", count: 5464)
-        let url = "https://example.com/" + String(repeating: "a", count: 9000)
-        let sealed = try PushContent.sealURL(url: url, title: "T", ext: "", icon: icon, keys: keys, pushId: "p")
-        XCTAssertEqual(PushContent.open(keys: keys, userId: keys.uid, pushId: "p", type: "url", keyVersion: 1, enc: sealed.enc),
-                       .url(url: url, title: "T", ext: "", icon: nil))
+        guard let sealed = try PushContent.rescraped(current, title: title, icon: icon, keys: keys, pushId: "p") else { return .some(nil) }
+        return PushContent.open(keys: keys, userId: keys.uid, pushId: "p", type: "url", keyVersion: 1, enc: sealed.enc)
+    }
 
-        let fits = try PushContent.sealURL(url: "https://example.com", title: "T", ext: "", icon: icon, keys: keys, pushId: "p")
-        XCTAssertEqual(PushContent.open(keys: keys, userId: keys.uid, pushId: "p", type: "url", keyVersion: 1, enc: fits.enc),
+    /// A rewrite happens for a new title or a first icon, keeps the icon a push has, and
+    /// does not happen when the scrape found nothing new.
+    func testARescrapeWritesOnlyANewTitleOrAFirstIcon() throws {
+        let url = "https://example.com"
+        let untitled = PushContent.url(url: url, title: "", ext: "", icon: nil)
+        let titled = PushContent.url(url: url, title: "T", ext: "", icon: "AAAA")
+
+        XCTAssertEqual(try rescrape(untitled, title: "T", icon: "AAAA"), .url(url: url, title: "T", ext: "", icon: "AAAA"))
+        XCTAssertEqual(try rescrape(untitled, title: nil, icon: "AAAA"), .url(url: url, title: "", ext: "", icon: "AAAA"))
+        XCTAssertEqual(try rescrape(untitled, title: "T", icon: nil), .url(url: url, title: "T", ext: "", icon: nil))
+        // An icon the push has is kept, and not replaced by another.
+        XCTAssertEqual(try rescrape(titled, title: "U", icon: "BBBB"), .url(url: url, title: "U", ext: "", icon: "AAAA"))
+        // Nothing new: the same title, a blank one, or an icon where there is one already.
+        XCTAssertEqual(try rescrape(titled, title: "T", icon: "BBBB"), .some(nil))
+        XCTAssertEqual(try rescrape(untitled, title: "  ", icon: nil), .some(nil))
+        XCTAssertEqual(try rescrape(untitled, title: nil, icon: ""), .some(nil))
+    }
+
+    /// When the envelope with the icon would be over the bound, a new title is written alone,
+    /// and an icon that was the only new thing is no reason to write.
+    func testARescrapeDropsAnIconThatDoesNotFit() throws {
+        let icon = String(repeating: "A", count: 5464)
+        let long = "https://example.com/" + String(repeating: "a", count: 9000)
+        let untitled = PushContent.url(url: long, title: "", ext: "", icon: nil)
+
+        XCTAssertEqual(try rescrape(untitled, title: "T", icon: icon), .url(url: long, title: "T", ext: "", icon: nil))
+        XCTAssertEqual(try rescrape(untitled, title: nil, icon: icon), .some(nil))
+        XCTAssertEqual(try rescrape(.url(url: "https://example.com", title: "", ext: "", icon: nil), title: "T", icon: icon),
                        .url(url: "https://example.com", title: "T", ext: "", icon: icon))
 
-        let absurd = "https://example.com/" + String(repeating: "a", count: 13_000)
-        XCTAssertThrowsError(try PushContent.sealURL(url: absurd, title: "", ext: "", icon: icon, keys: keys, pushId: "p")) { error in
+        let absurd = PushContent.url(url: "https://example.com/" + String(repeating: "a", count: 13_000), title: "", ext: "", icon: nil)
+        XCTAssertThrowsError(try rescrape(absurd, title: "T", icon: icon)) { error in
             XCTAssertEqual(error as? PushContent.ContentError, .tooLarge)
         }
     }

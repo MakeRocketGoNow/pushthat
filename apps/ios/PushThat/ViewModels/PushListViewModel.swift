@@ -274,14 +274,11 @@ class PushListViewModel: ObservableObject {
         for item in items where item.type == .url && item.title.isEmpty {
             guard case .encrypted = item.source, let id = item.id else { continue }
             let url = item.url
-            let title = item.title
-            let ext = item.ext ?? ""
-            let icon = item.icon
-            let userId = item.userId
+            let hasIcon = !(item.icon ?? "").isEmpty
             let keyVersion = item.keyVersion
             Task.detached(priority: .utility) {
                 await TitleScraperService.shared.scrapeAndUpdate(
-                    pushId: id, userId: userId, keyVersion: keyVersion, url: url, title: title, ext: ext, icon: icon, keys: keys
+                    pushId: id, keyVersion: keyVersion, url: url, hasIcon: hasIcon, keys: keys
                 )
             }
         }

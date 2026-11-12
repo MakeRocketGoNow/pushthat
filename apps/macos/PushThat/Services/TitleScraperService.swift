@@ -21,24 +21,15 @@ actor TitleScraperService {
 
     private init() {}
 
-    /// Scrapes the page and rewrites the push's envelope with what it found: exactly `enc`
-    /// and `searchTokens`, only under the push's own key version (`PushDocuments.retitle`).
-    /// It is rewritten when the title changed or an icon was found for a push that had
-    /// none, and a push keeps its own icon when the scrape finds none. A push that already
-    /// has an icon does not fetch another, since the one it has would be kept either way.
-    /// A failure is logged; the push keeps showing what it showed.
-    func scrapeAndUpdate(pushId: String, userId: String, keyVersion: Int?, url: String, title: String, ext: String, icon: String?, keys: PushKeys) async {
+    /// Scrapes the page and rewrites the push's envelope with what it found
+    /// (`PushDocuments.retitle`), only under the push's own key version. A push that already
+    /// has an icon does not fetch another, since it keeps the one it has either way. A
+    /// failure is logged; the push keeps showing what it showed.
+    func scrapeAndUpdate(pushId: String, keyVersion: Int?, url: String, hasIcon: Bool, keys: PushKeys) async {
         guard keyVersion == keys.keyVersion, attempted.insert(pushId).inserted else { return }
-        guard let page = await scrape(from: url, withIcon: icon == nil) else { return }
-        // Cut as the envelope cuts it, so a long title read again is not taken for a change.
-        let scraped = page.title.map { String($0.prefix(PushContent.maxTitleLength)) } ?? ""
-        let newTitle = scraped.isEmpty ? title : scraped
-        guard newTitle != title || page.icon != nil else { return }
+        guard let page = await scrape(from: url, withIcon: !hasIcon), page.title != nil || page.icon != nil else { return }
         do {
-            try await PushDocuments.retitle(
-                firestore: db, keys: keys, pushId: pushId, userId: userId,
-                keyVersion: keyVersion, url: url, ext: ext, title: newTitle, icon: icon ?? page.icon
-            )
+            try await PushDocuments.retitle(firestore: db, keys: keys, pushId: pushId, title: page.title, icon: page.icon)
         } catch {
             print("Failed to update title: \(type(of: error))")
         }
