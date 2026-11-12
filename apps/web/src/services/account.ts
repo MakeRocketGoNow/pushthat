@@ -96,6 +96,12 @@ export async function deleteAccount(email: string, password: string, onDeleted: 
       const session = auth.currentUser;
       const sameAccount = session?.email?.toLowerCase() === email.trim().toLowerCase();
       if (!(error instanceof WrongPasswordError) || !session || !sameAccount || !(await isGone(session))) throw error;
+      // On this path the session is already over when `onDeleted` runs, not after as the
+      // comment on this function says: `reload` on a deleted account signs the site's own
+      // auth out by itself before `isGone` returns. The page still sees `onDeleted` first,
+      // because the auth listener's state update renders on a later task than the
+      // microtasks that get here. If that ever stops holding, the page remounts with no
+      // word that the account is deleted, and this is where to look.
       onDeleted();
       await endSession();
       return;
