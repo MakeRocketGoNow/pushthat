@@ -6,7 +6,7 @@ import { createRoot } from 'react-dom/client';
 import { BrowserRouter } from 'react-router';
 
 import App from './App.tsx';
-import { auth } from './config/firebase';
+import { authKnownReady } from './contexts/AuthProvider';
 
 const root = document.getElementById('root')!;
 
@@ -29,7 +29,7 @@ function mount() {
 // Not `hydrateRoot`: it reuses the markup only while the first render matches it exactly,
 // and that first render is the provider's empty one.
 if (root.hasChildNodes()) {
-  auth.authStateReady().then(mount, mount);
+  authKnownReady.then(mount, mount);
 } else {
   mount();
 }

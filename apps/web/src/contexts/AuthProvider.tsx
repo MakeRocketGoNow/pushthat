@@ -13,7 +13,13 @@ import { sendToExtension } from '@/services/extension';
  * this is still false, and the provider waits for the listener as it always has.
  */
 let authKnown = false;
-auth.authStateReady().then(() => {
+
+/**
+ * Settles once `authKnown` is set. main.tsx mounts a prerendered page after this rather than
+ * after its own `authStateReady()`, so the flag is set by then whatever order the modules
+ * load in; two callbacks on the same promise would only be ordered by which module ran first.
+ */
+export const authKnownReady: Promise<void> = auth.authStateReady().then(() => {
   authKnown = true;
 });
 
