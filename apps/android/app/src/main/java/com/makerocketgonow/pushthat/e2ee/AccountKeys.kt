@@ -115,8 +115,7 @@ class AccountKeys(
             auth.signInWithEmailAndPassword(email, firebasePassword).await()
             return false
         } catch (first: FirebaseAuthInvalidCredentialsException) {
-            for (legacyPassword in listOf(password, password.trim()).distinct()) {
-                if (legacyPassword.isEmpty()) continue
+            for (legacyPassword in legacyPasswords(password)) {
                 try {
                     auth.signInWithEmailAndPassword(email, legacyPassword).await()
                     return true
@@ -244,12 +243,20 @@ class AccountKeys(
     }
 
     /**
+     * What Firebase may hold for an account that has not moved to `authKey`, in the order
+     * to try them (the reasons are on [signInToFirebase]). One list, so that the sign-in and
+     * the re-authentication before a deletion cannot come to disagree about it.
+     */
+    private fun legacyPasswords(password: String): List<String> =
+        listOf(password, password.trim()).distinct().filter { it.isNotEmpty() }
+
+    /**
      * Proves [password] with a fresh sign-in and returns the ID token it gives, for the one
      * call that needs a recent sign-in: deleting the account (`AccountDeletion`), which the
      * function refuses from a session older than five minutes. Reads and writes no keys.
      *
-     * The same passwords in the same order as [signInToFirebase], so an account that still
-     * has its raw password in Firebase (made before encryption, or straight after a reset)
+     * `authKey` and then [legacyPasswords], as [signInToFirebase] tries them, so an account
+     * that still has its raw password in Firebase (made before encryption, or straight after a reset)
      * can be deleted without first being moved to `authKey`. Throws
      * [FirebaseAuthInvalidCredentialsException] when none of them is the password.
      */
@@ -258,8 +265,7 @@ class AccountKeys(
         val email = user.email ?: throw IllegalStateException("the account has no email")
         val keys = derive(email, password)
         var refusal: FirebaseAuthInvalidCredentialsException? = null
-        for (candidate in listOf(keys.firebasePassword, password, password.trim()).distinct()) {
-            if (candidate.isEmpty()) continue
+        for (candidate in (listOf(keys.firebasePassword) + legacyPasswords(password)).distinct()) {
             try {
                 user.reauthenticate(EmailAuthProvider.getCredential(email, candidate)).await()
                 refusal = null
