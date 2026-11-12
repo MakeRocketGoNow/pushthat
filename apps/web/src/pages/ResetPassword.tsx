@@ -6,6 +6,7 @@ import Button from '@/components/Button';
 import GlowButton from '@/components/GlowButton';
 import styles from '@/components/KeyStep.module.css';
 import { RecoveryKey } from '@/components/RecoveryKey';
+import { MIN_PASSWORD_LENGTH } from '@/config/password';
 import {
   KeysChangedError,
   PasswordChangedError,
@@ -19,7 +20,6 @@ import {
   setNewPassword,
   startNewKeys,
 } from '@/services/passwordReset';
-import { MIN_PASSWORD_LENGTH } from '@/services/signIn';
 
 /*
  * A new recovery key is stored on the server before it is shown, and the reset link is
