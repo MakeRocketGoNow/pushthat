@@ -86,7 +86,10 @@ class SwivelCheckView @JvmOverloads constructor(
      * a locked push's URL is not known at all.
      */
     fun loadFavicon(url: String?, fileExt: String? = null) {
-        // Whatever this view was waiting on belongs to the row it showed before.
+        // Whatever this view was waiting on belongs to the row it showed before. Cancelled
+        // here and not when the view leaves the window: RecyclerView puts a row back from
+        // its cache without binding it again, and one whose lookup had been cancelled on
+        // the way out came back showing the placeholder for good.
         iconLookup?.cancel()
         iconLookup = null
         iconOrigin = null
@@ -149,12 +152,6 @@ class SwivelCheckView @JvmOverloads constructor(
             chain = if (chain == null) request.error(R.drawable.default_favicon) else request.error(chain)
         }
         chain?.into(frontImageView) ?: frontImageView.setImageResource(R.drawable.default_favicon)
-    }
-
-    override fun onDetachedFromWindow() {
-        super.onDetachedFromWindow()
-        // A lookup for a row that has left the screen has nowhere to draw.
-        iconLookup?.cancel()
     }
 
     fun setOnCheckedChangeListener(listener: (SwivelCheckView, Boolean) -> Unit) {
