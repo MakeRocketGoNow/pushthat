@@ -2,4 +2,4 @@ Your pushes are now end-to-end encrypted: only devices you sign in on can read t
 
 New in the menu: Delete account, beside Change password and Show a new recovery key.
 
-A link's icon now comes from its page and travels with the push, so your list never asks Google. Older links show a plain icon. Notifications and search work on encrypted pushes.
+A link's icon now comes from its page, so your list never asks Google. Older links show a plain icon. Notifications and search work on encrypted pushes, and an unconfirmed share is retried, not dropped.
