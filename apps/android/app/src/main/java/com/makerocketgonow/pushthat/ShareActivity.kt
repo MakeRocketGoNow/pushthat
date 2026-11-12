@@ -13,6 +13,7 @@ import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.auth
+import com.google.firebase.firestore.DocumentReference
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.Source
 import com.google.firebase.firestore.firestore
@@ -562,9 +563,8 @@ class TitleScrapingWorker(
                 is PushDocument.Read.Opened -> {
                     val content = push.content as? PushContent.Url ?: return Result.success()
                     val page = scrape(content.url, withIcon = content.icon.isEmpty()) ?: return Result.success()
-                    val prepared = PushDocument.retitle(keys, documentId, content, page.title, page.icon)
-                        ?: return Result.success()
-                    mapOf("enc" to prepared.enc.toMap(), "searchTokens" to prepared.searchTokens)
+                    writeScraped(ref, keys, documentId, page)
+                    return Result.success()
                 }
                 is PushDocument.Read.Plain -> {
                     if (push.type != PushContent.TYPE_URL) return Result.success()
@@ -582,12 +582,6 @@ class TitleScrapingWorker(
             Log.e(TAG, "Error saving scraped title", e)
             // A refusal is final: the push is gone or is no longer this account's to change.
             if (e.code == FirebaseFirestoreException.Code.PERMISSION_DENIED) Result.failure() else Result.retry()
-        } catch (e: PushTooLargeException) {
-            // The URL with the scraped title does not fit `enc.ct`'s bound, and the page will
-            // give the same title next time: the push keeps the title it has. Retried, as the
-            // catch below would, it ran for as long as WorkManager kept the job.
-            Log.w(TAG, "The scraped title does not fit the push")
-            Result.success()
         } catch (e: Exception) {
             Log.e(TAG, "Error saving scraped title", e)
             Result.retry()
@@ -596,6 +590,35 @@ class TitleScrapingWorker(
 
     /** What a scrape found: either may be null. */
     private class Scraped(val title: String?, val icon: String?)
+
+    /**
+     * Writes what [page] found over the push as it is now, not as it was read before the
+     * scrape. The scrape takes seconds, and another device scraping the same push may write
+     * meanwhile. With titles alone that did no harm, since both wrote the same title; with
+     * icons the writes differ (one device's decoder can open an icon another's refuses), and
+     * a title-only write landing after a title-and-icon one dropped the icon for good, since
+     * a titled push is not scraped again. Re-read in a transaction, `retitle` keeps an icon
+     * the push gained meanwhile and writes nothing when nothing is new.
+     */
+    private suspend fun writeScraped(ref: DocumentReference, keys: PushKeys, id: String, page: Scraped) {
+        db.runTransaction { tx ->
+            val data = tx.get(ref).data ?: return@runTransaction null
+            val fresh = (PushDocument.read(keys, id, data) as? PushDocument.Read.Opened)?.content as? PushContent.Url
+                ?: return@runTransaction null
+            val prepared = try {
+                PushDocument.retitle(keys, id, fresh, page.title, page.icon)
+            } catch (e: PushTooLargeException) {
+                // The URL with the scraped title does not fit `enc.ct`'s bound, and the page
+                // will give the same title next time: the push keeps the title it has. Left
+                // to `doWork`'s catch-all it was retried for as long as WorkManager kept the
+                // job, and thrown out of a transaction it would reach it as Firestore's.
+                Log.w(TAG, "The scraped title does not fit the push")
+                null
+            } ?: return@runTransaction null
+            tx.update(ref, mapOf("enc" to prepared.enc.toMap(), "searchTokens" to prepared.searchTokens))
+            null
+        }.await()
+    }
 
     /**
      * [url]'s title and, when [withIcon], its icon as the envelope's `icon`. Null when there
