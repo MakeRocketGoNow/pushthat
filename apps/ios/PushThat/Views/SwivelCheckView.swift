@@ -3,8 +3,16 @@ import SwiftUI
 /// Custom 3D flip checkbox that shows a favicon on the front and a checkmark on the back
 /// Matches the Android SwivelCheckView behavior
 struct SwivelCheckView: View {
+    /// What the front shows.
+    enum IconSource: Equatable {
+        /// An image of ours, loaded as it is (the file-type icons on pushthat.link).
+        case firstParty(URL)
+        /// A pushed link: its site's own icon, found on the device (`FaviconResolver`).
+        case site(URL)
+    }
+
     let isChecked: Bool
-    let imageURL: URL?
+    let icon: IconSource?
     var fallbackIcon: String = "link.circle.fill"
 
     @State private var rotation: Double = 0
@@ -40,7 +48,10 @@ struct SwivelCheckView: View {
 
     private var frontSide: some View {
         Group {
-            if let url = imageURL {
+            switch icon {
+            case .site(let site):
+                SiteIconView(site: site) { fallbackIconView }
+            case .firstParty(let url):
                 AsyncImage(url: url) { phase in
                     switch phase {
                     case .empty:
@@ -57,7 +68,7 @@ struct SwivelCheckView: View {
                         fallbackIconView
                     }
                 }
-            } else {
+            case nil:
                 fallbackIconView
             }
         }
@@ -86,21 +97,21 @@ struct SwivelCheckView: View {
         // Unchecked state
         SwivelCheckView(
             isChecked: false,
-            imageURL: URL(string: "https://www.google.com/s2/favicons?domain=github.com&sz=256")
+            icon: .site(URL(string: "https://example.com")!)
         )
         .frame(width: 40, height: 40)
 
         // Checked state
         SwivelCheckView(
             isChecked: true,
-            imageURL: URL(string: "https://www.google.com/s2/favicons?domain=github.com&sz=256")
+            icon: .site(URL(string: "https://example.com")!)
         )
         .frame(width: 40, height: 40)
 
         // With file icon
         SwivelCheckView(
             isChecked: false,
-            imageURL: URL(string: "https://pushthat.link/files/pdf.png"),
+            icon: .firstParty(URL(string: "https://pushthat.link/files/pdf.png")!),
             fallbackIcon: "doc.fill"
         )
         .frame(width: 40, height: 40)
@@ -118,7 +129,7 @@ struct SwivelCheckViewDemo: View {
         VStack {
             SwivelCheckView(
                 isChecked: isChecked,
-                imageURL: URL(string: "https://www.google.com/s2/favicons?domain=apple.com&sz=256")
+                icon: .site(URL(string: "https://example.org")!)
             )
             .frame(width: 64, height: 64)
             .onTapGesture {

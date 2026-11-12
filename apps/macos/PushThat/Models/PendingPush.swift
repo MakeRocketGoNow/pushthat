@@ -59,6 +59,24 @@ final class PendingPush {
         prepared.flatMap { try? JSONDecoder().decode(PreparedPush.self, from: $0) }
     }
 
+    /// On account deletion: the account's queued pushes, which would otherwise wait for an
+    /// account that no longer exists. Opened the way `RetryManager` opens the store (the
+    /// default store `PushThatApp` also uses), and filtered here rather than in a
+    /// `#Predicate`, since `userId` is optional and the queue is a handful of rows at most.
+    /// A failure is logged and not thrown: the account is gone by the time this runs, and
+    /// the rows cannot be written anywhere without it.
+    static func deleteAll(for uid: String) {
+        do {
+            let context = ModelContext(try ModelContainer(for: PendingPush.self))
+            for pending in try context.fetch(FetchDescriptor<PendingPush>()) where pending.userId == uid {
+                context.delete(pending)
+            }
+            try context.save()
+        } catch {
+            print("Queued pushes were not removed after the account was deleted: \(Swift.type(of: error))")
+        }
+    }
+
     /// A push queued before the encryption update, sealed under a new id with `keys`.
     ///
     /// A file push of that time names its plaintext upload by its title

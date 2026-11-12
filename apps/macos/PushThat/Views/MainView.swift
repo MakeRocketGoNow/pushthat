@@ -10,6 +10,7 @@ struct MainView: View {
     @State private var showPlan = false
     @State private var showChangePassword = false
     @State private var confirmNewRecoveryKey = false
+    @State private var showDeleteAccount = false
 
     var body: some View {
         NavigationStack {
@@ -44,7 +45,8 @@ struct MainView: View {
             .accountSettings(
                 authViewModel: authViewModel,
                 showChangePassword: $showChangePassword,
-                confirmNewRecoveryKey: $confirmNewRecoveryKey
+                confirmNewRecoveryKey: $confirmNewRecoveryKey,
+                showDeleteAccount: $showDeleteAccount
             )
             .alert("Error", isPresented: $viewModel.showError) {
                 Button("OK") {}
@@ -207,6 +209,10 @@ struct MainView: View {
 
                 Button(action: { confirmNewRecoveryKey = true }) {
                     Label("Show a new recovery key", systemImage: "lock.rotation")
+                }
+
+                Button(role: .destructive, action: { showDeleteAccount = true }) {
+                    Label("Delete account", systemImage: "person.crop.circle.badge.xmark")
                 }
 
                 Button(action: { authViewModel.signOut() }) {

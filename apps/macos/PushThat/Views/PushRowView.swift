@@ -16,7 +16,7 @@ struct PushRowView: View {
             // Swivel checkbox / favicon
             SwivelCheckView(
                 isChecked: isSelected,
-                imageURL: faviconURL,
+                icon: iconSource,
                 fallbackIcon: item.type == .file ? "doc.fill" : "link.circle.fill"
             )
             .frame(width: 40, height: 40)
@@ -123,18 +123,21 @@ struct PushRowView: View {
         return date.relativeFormatted()
     }
 
-    private var faviconURL: URL? {
+    private var iconSource: SwivelCheckView.IconSource? {
         // A locked push shows the placeholder: there is no URL or name to show one for.
         if item.isLocked { return nil }
 
-        // Check for file extension icon first
-        if let ext = item.ext, FileTypeIcons.supported.contains(ext.lowercased()) {
-            return URL(string: "https://pushthat.link/files/\(ext.lowercased()).png")
+        // A file type we draw an icon for: ours, from pushthat.link.
+        if let ext = item.ext, FileTypeIcons.supported.contains(ext.lowercased()),
+           let url = URL(string: "https://pushthat.link/files/\(ext.lowercased()).png") {
+            return .firstParty(url)
         }
 
-        // Fall back to Google favicon service
-        guard let urlHost = URL(string: item.url)?.host else { return nil }
-        return URL(string: "https://www.google.com/s2/favicons?domain=\(urlHost)&sz=256")
+        // Otherwise the linked site's own icon, fetched by this device from that site.
+        // Never a favicon service: Google's, used before, learned the domain of every
+        // link pushed (see `FaviconResolver`).
+        guard let url = URL(string: item.url), FaviconResolver.origin(of: url) != nil else { return nil }
+        return .site(url)
     }
 }
 

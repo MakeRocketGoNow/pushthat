@@ -1,14 +1,15 @@
 import SwiftUI
 
-/// "Change password" and "Show a new recovery key", from the main screen's menu beside
-/// Plan (docs/e2ee.md, "The recovery key"; the web app has no settings page, so these are
-/// on the apps only). This file is the same in `apps/ios` and `apps/macos`.
+/// "Change password", "Show a new recovery key" and "Delete account", from the main
+/// screen's menu beside Plan (docs/e2ee.md, "The recovery key"). This file is the same in
+/// `apps/ios` and `apps/macos`.
 extension View {
-    func accountSettings(authViewModel: AuthViewModel, showChangePassword: Binding<Bool>, confirmNewRecoveryKey: Binding<Bool>) -> some View {
+    func accountSettings(authViewModel: AuthViewModel, showChangePassword: Binding<Bool>, confirmNewRecoveryKey: Binding<Bool>, showDeleteAccount: Binding<Bool>) -> some View {
         modifier(AccountSettingsModifier(
             authViewModel: authViewModel,
             showChangePassword: showChangePassword,
-            confirmNewRecoveryKey: confirmNewRecoveryKey
+            confirmNewRecoveryKey: confirmNewRecoveryKey,
+            showDeleteAccount: showDeleteAccount
         ))
     }
 }
@@ -23,6 +24,7 @@ private struct AccountSettingsModifier: ViewModifier {
     @ObservedObject var authViewModel: AuthViewModel
     @Binding var showChangePassword: Bool
     @Binding var confirmNewRecoveryKey: Bool
+    @Binding var showDeleteAccount: Bool
     @State private var shownRecoveryKey: ShownRecoveryKey?
     @State private var problem: String?
     /// While a new recovery key is being made. Each run replaces every recovery wrap, so a
@@ -46,6 +48,13 @@ private struct AccountSettingsModifier: ViewModifier {
                     .environmentObject(authViewModel)
                     #if os(macOS)
                     .frame(minWidth: 380, minHeight: 380)
+                    #endif
+            }
+            .sheet(isPresented: $showDeleteAccount) {
+                DeleteAccountView()
+                    .environmentObject(authViewModel)
+                    #if os(macOS)
+                    .frame(minWidth: 420, minHeight: 460)
                     #endif
             }
             .sheet(item: $shownRecoveryKey) { shown in
@@ -160,6 +169,85 @@ struct ChangePasswordView: View {
             do {
                 try await authViewModel.changePassword(current: current, new: new, again: again)
                 changed = true
+            } catch {
+                problem = AuthViewModel.message(for: error)
+            }
+            isWorking = false
+        }
+    }
+}
+
+/// What deleting the account takes with it, then the password. A sheet rather than an
+/// alert: the consequences need more than an alert's line, the password needs a field, and
+/// a wrong password or a refusal from the server has to be shown where it can be retried.
+///
+/// On success the session ends (`AuthViewModel.deleteAccount`), which replaces the main
+/// screen, and this sheet with it, by the sign-in screen.
+struct DeleteAccountView: View {
+    @EnvironmentObject var authViewModel: AuthViewModel
+    @Environment(\.dismiss) private var dismiss
+    @State private var password = ""
+    @State private var isWorking = false
+    @State private var problem: String?
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    Text("This permanently deletes your PushThat account and its email address, every push and file, and your encryption keys and recovery key. Every device is signed out.")
+                    Text("Your pushes are encrypted, so once they are deleted nobody can recover them, including us.")
+                    Text("A Pro subscription is cancelled.")
+                }
+                Section {
+                    SecureField("Password", text: $password)
+                        .textContentType(.password)
+                        .disabled(isWorking)
+                } footer: {
+                    Text("Enter your password to confirm.")
+                }
+                if let problem {
+                    Section {
+                        Text(problem)
+                            .foregroundColor(.red)
+                    }
+                }
+                Section {
+                    Button(role: .destructive) { delete() } label: {
+                        HStack {
+                            Text(isWorking ? "Deleting account…" : "Delete account")
+                            if isWorking {
+                                Spacer()
+                                ProgressView()
+                            }
+                        }
+                    }
+                    .disabled(isWorking || password.isEmpty)
+                }
+            }
+            .navigationTitle("Delete account")
+            #if os(iOS)
+            .navigationBarTitleDisplayMode(.inline)
+            #endif
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                        .disabled(isWorking)
+                }
+            }
+            // Not while it runs: the deletion carries on on the server either way, and a
+            // closed sheet would hide whether it finished.
+            .interactiveDismissDisabled(isWorking)
+        }
+    }
+
+    private func delete() {
+        // A second tap while the first runs would re-authenticate and call the server again.
+        guard !isWorking else { return }
+        isWorking = true
+        problem = nil
+        Task {
+            do {
+                try await authViewModel.deleteAccount(password: password)
             } catch {
                 problem = AuthViewModel.message(for: error)
             }

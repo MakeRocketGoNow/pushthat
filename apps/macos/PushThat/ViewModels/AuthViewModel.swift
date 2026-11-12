@@ -56,6 +56,7 @@ class AuthViewModel: ObservableObject {
             // Signed out while the app was not running (see `sessionChanged`).
             AccountKeyStore.clearAccountKey()
             PushFileOpener.clear()
+            FaviconResolver.shared.clear()
         }
 
         // Listen for auth state changes
@@ -80,6 +81,7 @@ class AuthViewModel: ObservableObject {
             if auth.currentUser == nil {
                 AccountKeyStore.clearAccountKey()
                 PushFileOpener.clear()
+                FaviconResolver.shared.clear()
             }
             isAuthenticated = false
             keyGate = .ready
@@ -463,13 +465,110 @@ class AuthViewModel: ObservableObject {
         }
     }
 
+    // MARK: - Delete account
+
+    /// The `deleteAccount` callable (functions/), called over plain HTTPS the way `getPlan`
+    /// is (`PlanService`), so no FirebaseFunctions SDK is needed.
+    private static let deleteAccountURL = URL(string: "https://us-central1-push-that.cloudfunctions.net/deleteAccount")!
+
+    static let deleteAccountFailed = "Could not delete the account. Try again."
+
+    /// Deletes the account on the server, then everything this device keeps for it, and
+    /// signs out. Throws with a sentence to show, and leaves the session as it was, when the
+    /// password is wrong or the server refuses.
+    ///
+    /// The server deletes the Firebase user itself, so `user.delete()` is never called: by
+    /// the time the callable answers there is no user left to delete.
+    func deleteAccount(password: String) async throws {
+        guard let user = auth.currentUser, let email = user.email else { throw FileUploadError.notAuthenticated }
+        guard !password.isEmpty else { throw Problem("Enter your password.") }
+
+        try await reauthenticate(user: user, email: email, password: password)
+        // The server refuses a sign-in older than five minutes. Re-authenticating does not
+        // by itself replace the ID token the SDK holds, so one is minted now that carries
+        // this sign-in's time.
+        let token = try await user.getIDTokenResult(forcingRefresh: true).token
+        try await Self.callDeleteAccount(idToken: token)
+
+        let uid = user.uid
+        // Sign-out does not empty the retry queue, since a queued push waits for its own
+        // account to sign in again. This account will not, and its rows would wait forever.
+        PendingPush.deleteAll(for: uid)
+        // No `Analytics.resetAnalyticsData()` here, unlike iOS: FirebaseAnalytics is not
+        // linked into the macOS app, so there is no analytics id to reset.
+        signOut()
+    }
+
+    /// Re-authenticates as "Change password" does, with the Firebase password derived from
+    /// the password (the same `derive` every sign-in uses), and then, only on a wrong
+    /// password, with the raw password for an account that has not moved yet, as
+    /// `signInWithKeys` does. Change password never meets such an account (it needs the
+    /// key, which the move writes first), but deleting one should not be refused.
+    private func reauthenticate(user: User, email: String, password: String) async throws {
+        let keys = try await Self.derive(email: email, password: password)
+        do {
+            _ = try await user.reauthenticate(with: EmailAuthProvider.credential(withEmail: email, password: keys.firebasePassword))
+        } catch let first where Self.isWrongPassword(first) {
+            do {
+                _ = try await user.reauthenticate(with: EmailAuthProvider.credential(withEmail: email, password: password))
+            } catch let second where Self.isWrongPassword(second) {
+                throw Problem("That is not your password.")
+            } catch {
+                // Any other failure says nothing about the raw password: the first is the
+                // one that describes what went wrong.
+                throw first
+            }
+        }
+    }
+
+    /// POSTs the callable's empty request. Success is a 200 with `{"result":{"deleted":true}}`;
+    /// a failure carries `{"error":{"status","message"}}`, whose message the server writes
+    /// for people, so it is shown as it is.
+    private static func callDeleteAccount(idToken: String) async throws {
+        var request = URLRequest(url: deleteAccountURL)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("Bearer \(idToken)", forHTTPHeaderField: "Authorization")
+        request.httpBody = Data("{\"data\":{}}".utf8)
+        // Longer than the default: the server deletes every push and file before it answers.
+        request.timeoutInterval = 120
+
+        let data: Data
+        let response: URLResponse
+        do {
+            (data, response) = try await URLSession.shared.data(for: request)
+        } catch {
+            throw Problem(deleteAccountFailed)
+        }
+        let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+
+        struct Success: Decodable {
+            struct Result: Decodable { let deleted: Bool }
+            let result: Result
+        }
+        struct Failure: Decodable {
+            struct Body: Decodable { let message: String? }
+            let error: Body
+        }
+        if status == 200, (try? JSONDecoder().decode(Success.self, from: data))?.result.deleted == true {
+            return
+        }
+        if let message = (try? JSONDecoder().decode(Failure.self, from: data))?.error.message,
+           !message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            throw Problem(message)
+        }
+        throw Problem(deleteAccountFailed)
+    }
+
     // MARK: - Sign out
 
     /// Clears the account key and the last decrypted file first, so that a sign-out that
     /// fails partway never leaves either behind for whoever signs in next. The device id stays: it is the install's.
+    /// The in-memory favicon cache goes too, since it is a list of the hosts this account pushed.
     func signOut() {
         AccountKeyStore.clearAccountKey()
         PushFileOpener.clear()
+        FaviconResolver.shared.clear()
         pendingRecovery = nil
         do {
             try auth.signOut()
