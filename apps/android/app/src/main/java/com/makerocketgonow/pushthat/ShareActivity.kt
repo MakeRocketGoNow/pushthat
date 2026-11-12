@@ -5,6 +5,7 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.SystemClock
 import android.util.Log
 import android.view.animation.Animation
 import android.view.animation.RotateAnimation
@@ -13,6 +14,7 @@ import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.auth
+import com.google.firebase.firestore.DocumentReference
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.Source
 import com.google.firebase.firestore.firestore
@@ -31,11 +33,14 @@ import com.makerocketgonow.pushthat.e2ee.PushKeys
 import com.makerocketgonow.pushthat.e2ee.PushStore
 import com.makerocketgonow.pushthat.e2ee.PushTooLargeException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.tasks.await
 import androidx.lifecycle.lifecycleScope
 import androidx.work.*
+import okhttp3.HttpUrl
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.jsoup.Jsoup
@@ -533,6 +538,10 @@ class ShareActivity : AppCompatActivity() {
  * this install holds; another device scraping the same push writes the same title, and
  * the last write wins. A plaintext push (a job queued before this version) gets its title
  * alone, as before; the migration encrypts it.
+ *
+ * An encrypted push that has no icon also gets the page's (docs/e2ee.md, Icons), looked for
+ * in the page this pass already read, so the list never has to ask anyone for it. A push
+ * that has one keeps it and is not looked up again.
  */
 class TitleScrapingWorker(
     context: Context,
@@ -556,14 +565,15 @@ class TitleScrapingWorker(
             val updates: Map<String, Any> = when (val push = PushDocument.read(keys, documentId, data)) {
                 is PushDocument.Read.Opened -> {
                     val content = push.content as? PushContent.Url ?: return Result.success()
-                    val title = scrapeTitle(content.url)
-                    if (title.isNullOrBlank() || title == content.title) return Result.success()
-                    val prepared = PreparedPush.prepare(keys, documentId, content.copy(title = title))
-                    mapOf("enc" to prepared.enc.toMap(), "searchTokens" to prepared.searchTokens)
+                    val page = scrape(content.url, withIcon = content.icon.isEmpty()) ?: return Result.success()
+                    writeScraped(ref, keys, documentId, page)
+                    return Result.success()
                 }
                 is PushDocument.Read.Plain -> {
                     if (push.type != PushContent.TYPE_URL) return Result.success()
-                    val title = scrapeTitle(push.url)
+                    // No icon: a plaintext push has no envelope to carry one, and the
+                    // migration that gives it one does not scrape.
+                    val title = scrape(push.url, withIcon = false)?.title
                     if (title.isNullOrBlank() || title == push.title) return Result.success()
                     mapOf("title" to PreparedPush.cutTitle(title))
                 }
@@ -575,28 +585,61 @@ class TitleScrapingWorker(
             Log.e(TAG, "Error saving scraped title", e)
             // A refusal is final: the push is gone or is no longer this account's to change.
             if (e.code == FirebaseFirestoreException.Code.PERMISSION_DENIED) Result.failure() else Result.retry()
-        } catch (e: PushTooLargeException) {
-            // The URL with the scraped title does not fit `enc.ct`'s bound, and the page will
-            // give the same title next time: the push keeps the title it has. Retried, as the
-            // catch below would, it ran for as long as WorkManager kept the job.
-            Log.w(TAG, "The scraped title does not fit the push")
-            Result.success()
         } catch (e: Exception) {
             Log.e(TAG, "Error saving scraped title", e)
             Result.retry()
         }
     }
 
-    private suspend fun scrapeTitle(url: String): String? {
+    /** What a scrape found: either may be null. */
+    private class Scraped(val title: String?, val icon: String?)
+
+    /**
+     * Writes what [page] found over the push as it is now, not as it was read before the
+     * scrape. The scrape takes seconds, and another device scraping the same push may write
+     * meanwhile. With titles alone that did no harm, since both wrote the same title; with
+     * icons the writes differ (one device's decoder can open an icon another's refuses), and
+     * a title-only write landing after a title-and-icon one dropped the icon for good, since
+     * a titled push is not scraped again. Re-read in a transaction, `retitle` keeps an icon
+     * the push gained meanwhile and writes nothing when nothing is new.
+     */
+    private suspend fun writeScraped(ref: DocumentReference, keys: PushKeys, id: String, page: Scraped) {
+        db.runTransaction { tx ->
+            val data = tx.get(ref).data ?: return@runTransaction null
+            val fresh = (PushDocument.read(keys, id, data) as? PushDocument.Read.Opened)?.content as? PushContent.Url
+                ?: return@runTransaction null
+            val prepared = try {
+                PushDocument.retitle(keys, id, fresh, page.title, page.icon)
+            } catch (e: PushTooLargeException) {
+                // The URL with the scraped title does not fit `enc.ct`'s bound, and the page
+                // will give the same title next time: the push keeps the title it has. Left
+                // to `doWork`'s catch-all it was retried for as long as WorkManager kept the
+                // job, and thrown out of a transaction it would reach it as Firestore's.
+                Log.w(TAG, "The scraped title does not fit the push")
+                null
+            } ?: return@runTransaction null
+            tx.update(ref, mapOf("enc" to prepared.enc.toMap(), "searchTokens" to prepared.searchTokens))
+            null
+        }.await()
+    }
+
+    /**
+     * [url]'s title and, when [withIcon], its icon as the envelope's `icon`. Null when there
+     * is no HTML page to read (an error, a file, a URL OkHttp refuses).
+     */
+    private suspend fun scrape(url: String, withIcon: Boolean): Scraped? {
         return withContext(Dispatchers.IO) {
+            // `callTimeout` bounds a whole request, where the default timeouts bound only a
+            // gap between bytes: a server sending one byte every few seconds held a request
+            // open indefinitely, and the icon adds up to nine requests to the page's.
+            val client = OkHttpClient.Builder().callTimeout(CALL_TIMEOUT_SECONDS, TimeUnit.SECONDS).build()
             try {
-                val client = OkHttpClient()
                 val request = Request.Builder()
                     .url(url)
-                    .header("User-Agent", "Mozilla/5.0")
+                    .header("User-Agent", USER_AGENT)
                     .build()
 
-                client.newCall(request).execute().use { response ->
+                val (doc, finalUrl) = client.newCall(request).execute().use { response ->
                     if (!response.isSuccessful) {
                         Log.e(TAG, "HTTP request failed: ${response.code}")
                         return@withContext null
@@ -606,7 +649,8 @@ class TitleScrapingWorker(
                     // archives), which have no title to find, and the worker runs for received
                     // ones too. Only an HTML page is read, and only its first 256 KiB, where
                     // the <title> is: `string()` pulled a whole file into memory. iOS and
-                    // macOS read the same.
+                    // macOS read the same. No page means no icon either: a link to a file
+                    // has no <link rel=icon> to look in, and its row shows the file's type.
                     val body = response.body
                     val type = body.contentType()
                     if (type == null || !type.subtype.lowercase().contains("html")) return@withContext null
@@ -615,10 +659,13 @@ class TitleScrapingWorker(
                     val bytes = source.buffer.readByteArray(minOf(source.buffer.size, MAX_PAGE_BYTES))
                     // The header's charset, or, when it names none, whatever the page's
                     // <meta> says. The cap can cut the last character in two, well past the
-                    // <title>, so that costs nothing.
-                    val doc = Jsoup.parse(ByteArrayInputStream(bytes), type.charset()?.name(), url)
-                    doc.title().takeIf { it.isNotBlank() }
+                    // <title>, so that costs nothing. The base is the final URL, after
+                    // redirects, which is what the icon's links are relative to.
+                    val finalUrl = response.request.url
+                    Jsoup.parse(ByteArrayInputStream(bytes), type.charset()?.name(), finalUrl.toString()) to finalUrl
                 }
+                val icon = if (withIcon) fetchIcon(client, PageIcons.candidates(doc, finalUrl)) else null
+                Scraped(doc.title().takeIf { it.isNotBlank() }, icon)
             } catch (e: IOException) {
                 // The exception's type only: its message can name the page's host.
                 Log.e(TAG, "Error scraping title: ${e.javaClass.simpleName}")
@@ -630,11 +677,56 @@ class TitleScrapingWorker(
         }
     }
 
+    /**
+     * The first of [candidates] that `BitmapFactory` opens, as the envelope's `icon`, or
+     * null. A candidate that fails in any way is passed over: an icon is a nicety, and
+     * nothing about it may cost the push its title. Logged by the exception's type only,
+     * since its message can name the host.
+     */
+    private suspend fun fetchIcon(client: OkHttpClient, candidates: List<HttpUrl>): String? {
+        // Stopped between candidates when WorkManager stops the worker (the network went, or
+        // its time ran out), and after a budget for the lot: the requests block, so without
+        // these checks the loop ran on through every candidate on an IO thread regardless.
+        val deadline = SystemClock.elapsedRealtime() + ICON_BUDGET_MS
+        for (candidate in candidates) {
+            currentCoroutineContext().ensureActive()
+            if (SystemClock.elapsedRealtime() > deadline) return null
+            try {
+                val request = Request.Builder().url(candidate).header("User-Agent", USER_AGENT).build()
+                val bytes = client.newCall(request).execute().use { response ->
+                    if (!response.isSuccessful) return@use null
+                    val source = response.body.source()
+                    // One byte past the cap tells a file that fits from one that does not.
+                    // A cut image would decode partly or not at all, so it is skipped.
+                    source.request(PageIcons.MAX_FETCH_BYTES + 1)
+                    if (source.buffer.size > PageIcons.MAX_FETCH_BYTES) null else source.buffer.readByteArray()
+                } ?: continue
+                val bitmap = PageIcons.decode(bytes) ?: continue
+                try {
+                    return PageIcons.encode(bitmap)
+                } finally {
+                    bitmap.recycle()
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Could not fetch an icon: ${e.javaClass.simpleName}")
+            }
+        }
+        return null
+    }
+
     companion object {
         private const val KEY_DOCUMENT_ID = "documentId"
 
         /** How much of a page the title is looked for in. */
         private const val MAX_PAGE_BYTES = 256L * 1024
+
+        private const val USER_AGENT = "Mozilla/5.0"
+
+        /** The longest any one request of a scrape may take, start to finish. */
+        private const val CALL_TIMEOUT_SECONDS = 15L
+
+        /** How long the icon candidates are tried for, after the page. */
+        private const val ICON_BUDGET_MS = 30_000L
 
         fun enqueue(context: Context, documentId: String) {
             val constraints = Constraints.Builder()

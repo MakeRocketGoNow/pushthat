@@ -1,10 +1,10 @@
 package com.makerocketgonow.pushthat
 
 import android.content.Context
+import android.graphics.Bitmap
 import android.graphics.Camera
-import android.graphics.drawable.Drawable
 import android.util.AttributeSet
-import android.util.Log
+import android.util.LruCache
 import android.view.View
 import android.view.animation.Animation
 import android.view.animation.Transformation
@@ -12,12 +12,7 @@ import android.widget.Checkable
 import android.widget.ImageView
 import android.widget.ViewFlipper
 import androidx.interpolator.view.animation.FastOutSlowInInterpolator
-import com.bumptech.glide.Glide
-import com.bumptech.glide.RequestBuilder
-import com.bumptech.glide.request.target.Target
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.MainScope
-import kotlinx.coroutines.launch
+import com.makerocketgonow.pushthat.e2ee.E2ee
 
 class SwivelCheckView @JvmOverloads constructor(
     context: Context,
@@ -35,15 +30,12 @@ class SwivelCheckView @JvmOverloads constructor(
 
     private var onCheckedChangeListener: ((SwivelCheckView, Boolean) -> Unit)? = null
 
-    // The lookup of the linked site's icon this view is waiting on, and the site it is for.
-    // Views are recycled, so both are reset on every bind (loadFavicon).
-    private var iconLookup: Job? = null
-    private var iconOrigin: String? = null
-
     init {
         View.inflate(context, R.layout.merge_swivel_check, this)
         frontImageView = getChildAt(0) as ImageView
         backImageView = getChildAt(1) as ImageView
+        backImageView.setImageResource(R.drawable.ic_check_circle)
+        backImageView.setColorFilter(context.getColor(R.color.checkmark_color))
     }
 
     fun setChecked(targetState: Boolean, shouldAnimate: Boolean = true) {
@@ -80,108 +72,22 @@ class SwivelCheckView @JvmOverloads constructor(
     override fun toggle() = setChecked(!isChecked)
 
     /**
-     * The icon for [fileExt] when there is one, else the icon of the site [url] is on, asked
-     * of that site and nobody else (see [Favicons]). A push with neither (an encrypted file
-     * of an unknown type, a locked push) gets the placeholder: there is no site to ask, and
-     * a locked push's URL is not known at all.
+     * The row's icon, from what the push carries and nothing else: nothing is fetched to
+     * draw a row (docs/e2ee.md, Icons). [pageIcon] is a URL push's `icon`, drawn when it
+     * decodes; else the app's own icon for [fileExt], when it has one (a file push, or a
+     * link to a file, which has no page to take an icon from); else the placeholder, which
+     * is also what a locked push draws.
+     *
+     * The page's icon wins over the type: a link whose path ends in `.html` is a page, and
+     * its own icon says more than the type's.
      */
-    fun loadFavicon(url: String?, fileExt: String? = null) {
-        // Whatever this view was waiting on belongs to the row it showed before.
-        iconLookup?.cancel()
-        iconLookup = null
-        iconOrigin = null
-        // Check if there's a file extension and it matches our supported icons
-        if (!fileExt.isNullOrBlank()) {
-            Log.d("SwivelCheckView", "File extension is not null or blank")
-            val iconName = SUPPORTED_FILE_ICONS.find { it == "${fileExt.lowercase()}.png" }
-            if (iconName != null) {
-                // Load file type icon from PushThat CDN
-                Glide.with(context)
-                    .load("https://pushthat.link/files/${iconName}")
-                    .fitCenter()
-                    .override(Target.SIZE_ORIGINAL)
-                    .error(R.drawable.default_favicon)
-                    .into(frontImageView)
-
-                // Load checkmark for back side
-                backImageView.setImageResource(R.drawable.ic_check_circle)
-                backImageView.setColorFilter(context.getColor(R.color.checkmark_color))
-                return
-            }
+    fun showIcon(pageIcon: String?, fileExt: String? = null) {
+        val bitmap = pageIcon?.takeIf { it.isNotEmpty() }?.let { decodedIcon(it) }
+        if (bitmap != null) {
+            frontImageView.setImageBitmap(bitmap)
+        } else {
+            frontImageView.setImageResource(FileIcons.forExt(fileExt) ?: R.drawable.default_favicon)
         }
-
-        // No icon for the file type: the linked site's own icon (Favicons), or the
-        // placeholder when there is no site to ask.
-        backImageView.setImageResource(R.drawable.ic_check_circle)
-        backImageView.setColorFilter(context.getColor(R.color.checkmark_color))
-        val origin = Favicons.originOf(url)
-        if (origin == null) {
-            Glide.with(context).clear(frontImageView)
-            frontImageView.setImageResource(R.drawable.default_favicon)
-            return
-        }
-        // Looked up before: drawn at once, so a row scrolled back into view does not blink
-        // through the placeholder.
-        Favicons.known(origin)?.let { return showSiteIcon(it) }
-        Glide.with(context).clear(frontImageView)
-        frontImageView.setImageResource(R.drawable.default_favicon)
-        iconOrigin = origin
-        startLookup(origin)
-    }
-
-    private fun startLookup(origin: String) {
-        iconLookup = iconScope.launch {
-            val candidates = Favicons.candidates(origin)
-            // Still this row's site (a recycled view's lookup was cancelled in loadFavicon,
-            // and this guards the moment between the answer and the cancel), and on screen.
-            // RecyclerView binds the rows ahead of a scroll without attaching them, so such
-            // a row never gets onDetachedFromWindow to cancel this, and drawing for it
-            // after its activity was destroyed throws in `Glide.with`. It draws when it is
-            // attached instead (onAttachedToWindow).
-            if (iconOrigin == origin && isAttachedToWindow) showSiteIcon(candidates)
-        }
-    }
-
-    /**
-     * A lookup must not outlive the window. It can take seconds, and one that came back
-     * after its activity was destroyed (a rotation while icons load) drew into it:
-     * `Glide.with` throws for a destroyed activity, and nothing in `iconScope` catches.
-     */
-    override fun onDetachedFromWindow() {
-        super.onDetachedFromWindow()
-        iconLookup?.cancel()
-    }
-
-    /**
-     * The other half, for the two rows that arrive here with an icon owed: one RecyclerView
-     * puts back from its cache without binding it again, whose lookup was cancelled on the
-     * way out, and one it bound ahead of a scroll, whose lookup finished while it was not
-     * attached and so drew nothing. Either would otherwise show the placeholder for good.
-     * A row whose icon is already drawn asks Glide for it once more, which Glide answers
-     * from memory.
-     */
-    override fun onAttachedToWindow() {
-        super.onAttachedToWindow()
-        val origin = iconOrigin ?: return
-        if (iconLookup?.isActive == true) return
-        Favicons.known(origin)?.let { showSiteIcon(it) } ?: startLookup(origin)
-    }
-
-    /**
-     * Draws the first of [candidates] that loads, and the placeholder when none does: each
-     * is the `error` request of the one before, which is how Glide chains fallbacks.
-     */
-    private fun showSiteIcon(candidates: List<String>) {
-        val requests = Glide.with(context)
-        var chain: RequestBuilder<Drawable>? = null
-        for (candidate in candidates.asReversed()) {
-            // Sized to this view by Glide, not `SIZE_ORIGINAL` as the file icons above are:
-            // the largest icon a site declares is tried first, and a 512 pixel one held
-            // whole is a megabyte of bitmap for a 36 dp square.
-            val request = requests.load(candidate).fitCenter()
-            chain = if (chain == null) request.error(R.drawable.default_favicon) else request.error(chain)
-        }
-        chain?.into(frontImageView) ?: frontImageView.setImageResource(R.drawable.default_favicon)
     }
 
     fun setOnCheckedChangeListener(listener: (SwivelCheckView, Boolean) -> Unit) {
@@ -189,17 +95,30 @@ class SwivelCheckView @JvmOverloads constructor(
     }
 
     companion object {
-        // One scope for every row's lookup: each view cancels its own job, and the work
-        // itself runs in Favicons' scope, so nothing here outlives a row by more than a hop.
-        private val iconScope = MainScope()
+        /**
+         * Page icons already decoded, by their base64. Decoding one is cheap (a PNG of at
+         * most 64 by 64 and 4 KB), but a bind happens on every scroll, so each is decoded once
+         * on the main thread rather than per bind or through a loader thread. Keyed by the
+         * string rather than the push, so a push whose icon changes is never drawn with the
+         * old one. 256 icons of at most 16 KB each is about 4 MB.
+         */
+        private val decodedIcons = LruCache<String, Bitmap>(256)
 
-        private val SUPPORTED_FILE_ICONS = listOf(
-            "pproj.png", "zip.png", "indd.png", "csv.png", "css.png", "pdf.png",
-            "aac.png", "png.png", "xls.png", "avi.png", "txt.png", "mp3.png",
-            "tiff.png", "psd.png", "jpg.png", "jpeg.png", "mov.png", "html.png",
-            "ai.png", "js.png", "flac.png", "mp4.png", "gif.png", "doc.png",
-            "xml.png", "apk.png"
-        )
+        /** Icons that would not draw, remembered so a bind does not decode them again. */
+        private val refusedIcons = LruCache<String, Unit>(64)
+
+        private fun decodedIcon(icon: String): Bitmap? {
+            decodedIcons.get(icon)?.let { return it }
+            if (refusedIcons.get(icon) != null) return null
+            val bytes = try {
+                E2ee.fromBase64(icon)
+            } catch (e: IllegalArgumentException) {
+                null
+            }
+            val bitmap = bytes?.let { PageIcons.decodeForDisplay(it) }
+            if (bitmap == null) refusedIcons.put(icon, Unit) else decodedIcons.put(icon, bitmap)
+            return bitmap
+        }
 
         private fun toChecked(calculateCenterX: () -> Float, updateDisplayedSide: (DisplaySide) -> Unit) =
             createAnimation(0f..180f, calculateCenterX, updateDisplayedSide)

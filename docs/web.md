@@ -39,38 +39,6 @@ The extension logs to its own console only (the service worker's, under "Inspect
 ids to a third party the privacy policy did not name, so that was removed rather than
 disclosed.
 
-## Pages that read without JavaScript
-
-The site is rendered in the browser, so every address answers with the same empty shell
-until the script runs. Three pages are also written out as static HTML at build time,
-because the reader that matters most for them may run no script: `/delete-account` (the
-account deletion page Google Play is given, see [account deletion](account-deletion.md)),
-`/terms` and `/privacy`.
-
-`npm run build` builds the site, then builds `src/prerender.tsx` for Node, and
-`scripts/prerender.mjs` renders each page into a copy of the built `index.html`
-(`dist/delete-account.html` and so on). The root `firebase.json` rewrites each address to
-its file, ahead of the rewrite that sends everything else to the app. Each copy still
-loads the app's script, which draws over the markup once Firebase has read the session
-back (`main.tsx` waits for that on these pages, or the text would blank out and come back),
-so with JavaScript the page ends up as it would have from an empty root. The script fails the build if a copy is missing the
-text it exists to carry.
-
-Rewrites rather than `cleanUrls`, which would also redirect `/index.html` to `/`: the list
-links to `/index.html?view=...` to show an image push, in the site as in the extension.
-
-To add a page, add it to `PAGES` in `src/prerender.tsx` and a rewrite in `firebase.json`.
-It must render whole on the first pass, with nothing behind an effect.
-
-## Favicons
-
-The list shows each link's icon by asking the linked site itself for `/favicon.ico`. It
-used to ask Google's favicon service, which told Google the domain of every link pushed;
-a proxy of our own would have put the same list in our logs, for pushes that are otherwise
-end-to-end encrypted. A site with no icon there gets ours. The apps go one step further
-and read the page's `<link rel="icon">`, which a browser will not let a script do across
-origins.
-
 ## Rules, tests and deploying
 
 `npm run test:rules` runs the rules tests against the Firestore and Storage emulators (a
@@ -83,3 +51,39 @@ change on different schedules and a site deploy should never ship a function by 
 
 A push to `main` runs this deploy from CI when it changes `apps/web/`; see
 [deploying](deploying.md). Running it by hand still works, for a deploy from a branch.
+
+## Pages that read without JavaScript
+
+Privacy, Terms, Support, Security and the account deletion page are prerendered. `npm run build` ends with
+`npm run prerender`, which builds `src/prerender.tsx` for Node (`vite build --ssr`, into
+`node_modules/.prerender`) and runs `scripts/prerender.mjs`. That writes `dist/<page>.html`
+for each entry in `src/staticPages.tsx`: the built `index.html` with the page rendered into
+`#root`, the page's own title (as `<title>` and `og:title`) and its own `og:url`. So the
+pages read with JavaScript off, and crawlers and link previews see each page's title rather
+than the front page's. The descriptions stay the product's, since they say what the page
+belongs to.
+
+Hosting reaches each file through a rewrite of its own in the root `firebase.json`, ahead of
+the `**` catch-all, and the script fails the build when one is missing. `cleanUrls` would do
+the same without the list, but it also redirects `/index.html` to `/`, and the site's image
+page is `/index.html?view=…`.
+
+A page belongs on the list only if it renders the same signed in or out, holds no state and
+imports nothing from Firebase. Firebase Auth started in Node keeps the script from exiting,
+so the script refuses a bundle that imports Firebase rather than hang the build. That is why
+`useAuth` lives apart from its provider (`src/contexts/AuthContext.tsx`,
+`AuthProvider.tsx`) and the password rule is in `src/config/password.ts`. A page that needs
+either for part of itself keeps that part in a component it imports from an effect, as the
+deletion page does its form (`src/components/DeleteAccountForm.tsx`): effects do not run in
+the build's render, so the chunk is never loaded there. Not `lazy`, which starts its import
+wherever it is rendered, the build included. The front page is
+not on the list: every unknown path is answered with `index.html`, so filling that file
+would show the front page on `/links` and the rest until the bundle loaded.
+
+With JavaScript on, `src/main.tsx` waits for Firebase to say who is signed in, then mounts
+with `createRoot`, which replaces the prerendered markup with the same page (and the nav,
+for someone signed in) without blanking it.
+
+To preview a build with the rewrites, run the Hosting emulator. It answers 404 for every path
+when `dist/` is under a folder whose name starts with a dot, such as a worktree in
+`.claude/worktrees/`; serve a copy of `dist/` from somewhere else.

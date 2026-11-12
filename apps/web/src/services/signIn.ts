@@ -35,9 +35,6 @@ import { deviceId, saveAccountKey } from './keyStore';
  * `recover` or `startOver`).
  */
 
-/** What docs/e2ee.md asks of a new password, since the password is the key. */
-export const MIN_PASSWORD_LENGTH = 10;
-
 /** Neither the password's `authKey` nor the password itself signs in. */
 export class WrongPasswordError extends Error {}
 

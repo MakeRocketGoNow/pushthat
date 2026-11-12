@@ -1,16 +1,39 @@
-import { FirebaseError } from 'firebase/app';
-import { useEffect, useState } from 'react';
+import { ComponentType, useEffect, useState } from 'react';
 import { Helmet } from 'react-helmet';
 import { Link } from 'react-router';
 
 import LegalContainer from '@/components/LegalContainer';
 import { LIMITS, REFUND_DAYS, SUPPORT_EMAIL } from '@/config/plan';
-import { useAuth } from '@/contexts/AuthContext';
-import { OutcomeUnknownError, deleteAccount } from '@/services/account';
-import { errorText } from '@/services/plan';
-import { WrongPasswordError } from '@/services/signIn';
 
 import styles from './DeleteAccount.module.css';
+
+/**
+ * The form, fetched once the page is on screen. It signs in and calls the function, so it
+ * imports Firebase, and a static page may not (src/staticPages.tsx): the build renders this
+ * page in Node, where Firebase Auth keeps the process from exiting.
+ *
+ * Fetched in an effect, and not with `lazy`: rendering a `lazy` component starts its import
+ * wherever the render happens, the build included, which loaded Firebase there and hung it.
+ * An effect never runs in the build's render, so the static copy holds the line below and
+ * the form arrives in the browser. That makes this the one piece of state on a static page;
+ * its first render is still the same for everyone, which is what the rule is for.
+ */
+function FormWhenLoaded() {
+  const [Form, setForm] = useState<ComponentType | null>(null);
+  useEffect(() => {
+    let wanted = true;
+    import('@/components/DeleteAccountForm').then(
+      (module) => wanted && setForm(() => module.DeleteAccountForm),
+      // The chunk did not load (offline since the page did, or a deploy replaced it):
+      // the line below stays, and a reload fetches the page and the form afresh.
+      (error) => console.error('The delete account form did not load:', error)
+    );
+    return () => {
+      wanted = false;
+    };
+  }, []);
+  return Form ? <Form /> : <p>Loading the form… If it does not appear, reload the page.</p>;
+}
 
 /**
  * Delete account, `/delete-account`: what deleting removes, what is kept and for how long,
@@ -18,89 +41,12 @@ import styles from './DeleteAccount.module.css';
  * deletion page, so it is public and it names the app and the developer: the person
  * reading it may have uninstalled the app, and Play's reviewer has no account at all.
  *
- * It is also served as static HTML (scripts/prerender.mjs), so everything except the form
- * reads without JavaScript. Keep the facts in the text itself for that reason, not behind
- * state or an effect. What is kept and for how long is recorded, with the reasons, in
+ * It is one of the static pages (src/staticPages.tsx), so everything except the form reads
+ * without JavaScript. Keep the facts in the text itself for that reason, not behind state
+ * or an effect. What is kept and for how long is recorded, with the reasons, in
  * docs/account-deletion.md at the repository root; the two change together.
- *
- * The form asks for the password even from a signed-in browser. The function refuses a
- * sign-in older than five minutes, so that an open session on a shared computer cannot
- * delete the account, and the password is the proof.
  */
-
-/**
- * Whether an account was deleted from this page since it loaded. Outside the component
- * because deleting from a signed-in browser ends its session, `Layout` then swaps its
- * signed-in frame for the signed-out one, and the page is mounted anew: state held in the
- * component was lost at exactly the moment it had something to say, and the person was
- * shown the empty form again with no word that anything had happened.
- *
- * It is for that one remount and no longer: the page that mounts next reads it and puts
- * it back, so a later visit in the same tab (the next person at a shared computer, or the
- * same one signed in to another account) gets the form and not someone else's result.
- */
-let deletedHere = false;
-
-/** Firebase has throttled sign-ins for this account: not a connection problem, and said as what it is. */
-const TOO_MANY_TRIES = 'Too many tries. Nothing was deleted. Wait a few minutes and try again.';
-
-/** For a failure before the function was called. The same words as the Android app. */
-const NOT_ASKED =
-  'Your account was not deleted: PushThat could not reach the server. Check your connection and try again.';
-
-/** For a call that ended with no answer (`OutcomeUnknownError`). The same words on every client. */
-const UNCONFIRMED =
-  'We could not confirm that your account was deleted. It may still be finishing. Try again in a few minutes: if your password is then refused, the account is gone.';
-
 export function DeleteAccount() {
-  const { user } = useAuth();
-  const sessionEmail = user?.email ?? '';
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [understood, setUnderstood] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
-  const [done, setDone] = useState(deletedHere);
-  // On mount only, so the page that started the deletion does not clear it before the one
-  // mounted in its place has read it.
-  useEffect(() => {
-    deletedHere = false;
-  }, []);
-
-  const handleSubmit = async (event: React.FormEvent) => {
-    event.preventDefault();
-    if (busy || !understood) return;
-    setBusy(true);
-    setError('');
-    try {
-      await deleteAccount(sessionEmail || email.trim(), password, () => {
-        // Only a signed-in browser is remounted; signed out, this page stays and shows
-        // the result itself, and a flag left set would greet the next visit with it.
-        deletedHere = !!sessionEmail;
-      });
-      setPassword('');
-      setDone(true);
-    } catch (err) {
-      setError(
-        // "Could not confirm" is for a call that was made and not answered. A failure
-        // before that (no network for the sign-in, too many attempts) asked nothing of
-        // the server, and saying the account "may still be finishing" would be untrue the
-        // other way. The function's own refusals come with their own sentence. A wrong
-        // password does not say "nothing was deleted": on a second try it may be the
-        // first try having worked.
-        err instanceof WrongPasswordError
-          ? 'The email or password is not right.'
-          : err instanceof OutcomeUnknownError
-            ? UNCONFIRMED
-            : err instanceof FirebaseError && err.code === 'auth/too-many-requests'
-              ? TOO_MANY_TRIES
-              : errorText(err, NOT_ASKED)
-      );
-    } finally {
-      setBusy(false);
-    }
-  };
-
   return (
     <LegalContainer className={styles.root}>
       <Helmet>
@@ -108,16 +54,6 @@ export function DeleteAccount() {
       </Helmet>
 
       <h1>Delete your PushThat account</h1>
-
-      {/* At the top: the page has just been mounted anew, scrolled to its start (see `deletedHere`). */}
-      {done && (
-        <div className={styles.done} role="status">
-          <p>
-            <strong>Your account is deleted.</strong> Everything listed below under “What is deleted” is gone, and this
-            browser is signed out. Your other devices sign out within the hour. You can uninstall the app.
-          </p>
-        </div>
-      )}
 
       <p>
         PushThat is an app by MakeRocketGoNow LLC for sending links and files between your phone and your other devices.
@@ -229,61 +165,13 @@ export function DeleteAccount() {
 
       <h5 id="delete">DELETE YOUR ACCOUNT NOW</h5>
 
-      {done ? (
-        <p>Done: the account is deleted. There is nothing more to do here.</p>
-      ) : (
-        <form className={styles.form} onSubmit={handleSubmit}>
-          <noscript>
-            <p className={styles.error}>
-              This form needs JavaScript. Without it, write to {SUPPORT_EMAIL} from the email address on the account and
-              we will delete it for you.
-            </p>
-          </noscript>
-          {sessionEmail ? (
-            <p>
-              Signed in as <strong>{sessionEmail}</strong>. This deletes that account.
-            </p>
-          ) : (
-            <label className={styles.label}>
-              Email address
-              <input
-                type="email"
-                required
-                autoComplete="username"
-                className={styles.input}
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-              />
-            </label>
-          )}
-          <label className={styles.label}>
-            Password
-            <input
-              type="password"
-              required
-              autoComplete="current-password"
-              className={styles.input}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-            />
-          </label>
-          <label className={styles.confirm}>
-            <input type="checkbox" required checked={understood} onChange={(e) => setUnderstood(e.target.checked)} />
-            <span>
-              I understand that this is permanent: my account and everything in it is deleted, and my encrypted pushes
-              cannot be recovered afterwards.
-            </span>
-          </label>
-          {error && (
-            <p className={styles.error} role="alert">
-              {error}
-            </p>
-          )}
-          <button type="submit" className={styles.deleteButton} disabled={busy || !understood}>
-            {busy ? 'Deleting your account…' : 'Delete my account'}
-          </button>
-        </form>
-      )}
+      <noscript>
+        <p className={styles.noscript}>
+          The form needs JavaScript. Without it, write to {SUPPORT_EMAIL} from the email address on the account and we
+          will delete it for you.
+        </p>
+      </noscript>
+      <FormWhenLoaded />
     </LegalContainer>
   );
 }

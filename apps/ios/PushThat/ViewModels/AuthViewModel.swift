@@ -58,7 +58,6 @@ class AuthViewModel: ObservableObject {
             // Signed out while the app was not running (see `sessionChanged`).
             AccountKeyStore.clearAccountKey()
             PushFileOpener.clear()
-            FaviconResolver.shared.clear()
         }
 
         // Listen for auth state changes
@@ -83,7 +82,6 @@ class AuthViewModel: ObservableObject {
             if auth.currentUser == nil {
                 AccountKeyStore.clearAccountKey()
                 PushFileOpener.clear()
-                FaviconResolver.shared.clear()
             }
             isAuthenticated = false
             keyGate = .ready
@@ -630,11 +628,9 @@ class AuthViewModel: ObservableObject {
 
     /// Clears the account key and the last decrypted file first, so that a sign-out that
     /// fails partway never leaves either behind for whoever signs in next. The device id stays: it is the install's.
-    /// The in-memory favicon cache goes too, since it is a list of the hosts this account pushed.
     func signOut() {
         AccountKeyStore.clearAccountKey()
         PushFileOpener.clear()
-        FaviconResolver.shared.clear()
         pendingRecovery = nil
         do {
             try auth.signOut()

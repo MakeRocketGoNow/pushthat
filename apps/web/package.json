@@ -6,13 +6,14 @@
   "scripts": {
     "deploy": "npm run test:rules && npm run build && firebase deploy --only hosting,firestore,storage",
     "dev": "vite",
-    "build": "tsc -b && vite build && vite build --ssr src/prerender.tsx --outDir dist-ssr && node scripts/prerender.mjs",
+    "build": "tsc -b && vite build && npm run prerender",
+    "prerender": "vite build --ssr src/prerender.tsx --outDir node_modules/.prerender && node scripts/prerender.mjs",
     "build:chrome": "vite build -c vite.chrome.config.ts",
     "lint": "eslint .",
     "preview": "vite preview",
     "preview:firebase": "firebase emulators:start",
     "test:rules": "firebase emulators:exec --project demo-pushthat --only firestore,storage \"node --test --test-concurrency=1 tests/*.test.mjs\"",
-    "test:keys": "node --test tests/e2ee.vectors.mjs tests/keyDecisions.mjs tests/pushRefusal.mjs tests/viewable.mjs",
+    "test:keys": "node --test tests/e2ee.vectors.mjs tests/keyDecisions.mjs tests/pushRefusal.mjs tests/viewable.mjs tests/pageIcon.mjs",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "spellcheck": "cspell -c ../../cspell.json --gitignore \"**/*.{js,json,jsx,md,ts,tsx}\""

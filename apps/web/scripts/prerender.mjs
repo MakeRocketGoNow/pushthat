@@ -1,55 +1,76 @@
-// Writes the static copies of the pages that must read without JavaScript (src/prerender.tsx
-// says which, and why): `dist/delete-account.html`, `dist/terms.html`, `dist/privacy.html`.
-// Run by `npm run build`, after the site's build and the server build of src/prerender.tsx.
-// The root firebase.json serves each at its own address (`/delete-account`), ahead of the
-// rewrite that sends every other address to the app.
+// Writes the static pages (src/staticPages.tsx) into the built site as HTML, so they read
+// with JavaScript off. Runs after `vite build` (the site) and `vite build --ssr` (the
+// renderer, into node_modules/.prerender), from `npm run prerender`.
 //
-// Each copy is the built index.html with the page's markup inside the root element, so it
-// carries the same stylesheet and the same script: with JavaScript the app starts over
-// that markup and takes the page over, and without it the markup is the page.
-import { readFile, rm, writeFile } from 'node:fs/promises';
+// Each page is the built `index.html` with its body filled in and its title, og:title and
+// og:url set, so it loads the same bundle and stylesheet as every other page, and a shared
+// link's card names the page. The descriptions stay the product's: they say what the page
+// belongs to, which is what a card for the terms needs. The bundle then renders
+// over it with `createRoot` (src/main.tsx), and a signed-in visitor's nav appears as it
+// does today.
+import { readFile, writeFile } from 'node:fs/promises';
+import { fileURLToPath } from 'node:url';
 
-const dist = new URL('../dist/', import.meta.url);
-const ssr = new URL('../dist-ssr/', import.meta.url);
-const { paths, render } = await import(new URL('prerender.js', ssr).href);
+const web = (p) => fileURLToPath(new URL(`../${p}`, import.meta.url));
 
-const shell = await readFile(new URL('index.html', dist), 'utf8');
-const ROOT = '<div id="root"></div>';
-if (!shell.includes(ROOT)) throw new Error(`dist/index.html has no ${ROOT} to fill`);
+const bundle = new URL('../node_modules/.prerender/prerender.js', import.meta.url);
 
-const escape = (text) => text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
-
-// What each copy must say, so that a page which stopped rendering its text (moved behind
-// an effect, or emptied by a provider that waits for the browser) fails the build rather
-// than shipping blank to the one reader it is for.
-const MUST_SAY = {
-  '/delete-account': ['PushThat', 'MakeRocketGoNow LLC', 'WHAT IS DELETED', 'WHAT IS KEPT', 'Delete my account'],
-  '/terms': ['TERMS OF SERVICE AGREEMENT', 'MakeRocketGoNow LLC'],
-  '/privacy': ['PushThat Privacy Policy'],
-};
-
-for (const path of paths) {
-  const { html, title, description } = render(path);
-  for (const text of MUST_SAY[path] ?? []) {
-    if (!html.includes(text)) throw new Error(`the static copy of ${path} does not say "${text}"`);
-  }
-  const url = `https://pushthat.link${path}`;
-  const page = shell
-    .replace(ROOT, `<div id="root">${html}</div>`)
-    .replace(/<title>[^<]*<\/title>/, `<title>${escape(title || 'PushThat')}</title>`)
-    // The front page's description and card would otherwise describe this page.
-    .replace(/(<meta\s+name="description"\s+content=")[^"]*(")/, `$1${escape(description)}$2`)
-    .replace(/(<meta\s+property="og:description"\s+content=")[^"]*(")/, `$1${escape(description)}$2`)
-    .replace(/(<meta\s+property="og:title"\s+content=")[^"]*(")/, `$1${escape(title || 'PushThat')}$2`)
-    .replace(/(<meta\s+property="og:url"\s+content=")[^"]*(")/, `$1${url}$2`)
-    .replace('</head>', `  <link rel="canonical" href="${url}" />\n  </head>`);
-  await writeFile(new URL(`${path.slice(1)}.html`, dist), page);
-  console.log(`prerendered ${path} (${html.length} bytes of markup)`);
+// Firebase Auth, once started in Node, holds the process open: the script writes every page
+// and then never exits, and the build waits with it. The static pages import none of
+// Firebase (src/contexts/AuthContext.tsx, src/config/password.ts); this keeps it that way
+// with a message instead of a hang.
+const firebaseImport = (await readFile(bundle, 'utf8')).match(/from "firebase\/[^"]*"|import "firebase\/[^"]*"/);
+if (firebaseImport) {
+  throw new Error(`prerender: a static page imports Firebase (${firebaseImport[0]}); see src/staticPages.tsx`);
 }
 
-// Only this script reads the server build.
-await rm(ssr, { recursive: true, force: true });
+const { render, STATIC_PAGES } = await import(bundle);
+const template = await readFile(web('dist/index.html'), 'utf8');
+const firebase = JSON.parse(await readFile(web('../../firebase.json'), 'utf8'));
 
-// Said outright: importing the pages starts Firebase (config/firebase.ts), whose Auth keeps
-// a timer alive, and Node would otherwise sit here until the build was killed.
-process.exit(0);
+/**
+ * `html` with `from` (a string or a pattern) replaced once, failing the build when `from` is
+ * not there: a change to index.html that moved it would otherwise ship pages with nothing
+ * filled in. A function replacement, so a `$` in the page's text is not read as a pattern.
+ */
+function fill(html, from, to) {
+  if (!(typeof from === 'string' ? html.includes(from) : from.test(html))) {
+    throw new Error(`prerender: ${from} is not in dist/index.html`);
+  }
+  return html.replace(from, () => to);
+}
+
+const rewrites = firebase.hosting.rewrites;
+for (const { path } of STATIC_PAGES) {
+  const file = `${path.slice(1)}.html`;
+
+  // Hosting answers a path with the file of that exact name, and otherwise with the first
+  // rewrite that matches, which ends in `**` → index.html. So `/terms` reaches terms.html
+  // only through a rewrite of its own, ahead of `**`. Not `cleanUrls`, which would do it for
+  // every file: it also redirects `/index.html` to `/`, and the site's image page is
+  // `/index.html?view=…` (src/services/viewable.ts).
+  const own = rewrites.findIndex((r) => r.source === path && r.destination === `/${file}`);
+  const catchAll = rewrites.findIndex((r) => r.source === '**');
+  if (own === -1 || own > catchAll) {
+    throw new Error(`prerender: firebase.json needs { "source": "${path}", "destination": "/${file}" } before "**"`);
+  }
+
+  const { html, title } = render(path);
+  let page = template;
+  page = fill(page, '<title>PushThat</title>', title);
+  // Helmet's tag holds the text already escaped for HTML, so it goes into the attribute as is.
+  const titleText = title.replace(/^<title[^>]*>|<\/title>$/g, '');
+  page = fill(
+    page,
+    /<meta property="og:title" content="[^"]*" \/>/,
+    `<meta property="og:title" content="${titleText}" />`
+  );
+  page = fill(
+    page,
+    '<meta property="og:url" content="https://pushthat.link/" />',
+    `<meta property="og:url" content="https://pushthat.link${path}" />`
+  );
+  page = fill(page, '<div id="root"></div>', `<div id="root">${html}</div>`);
+  await writeFile(web(`dist/${file}`), page);
+  console.log(`prerender: ${path} → dist/${file}`);
+}

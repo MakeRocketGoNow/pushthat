@@ -1,4 +1,3 @@
-// cspell:ignore pproj indd flac
 import clsx from 'clsx';
 import { getStorage } from 'firebase/storage';
 import { Dispatch, SetStateAction, useState } from 'react';
@@ -16,54 +15,34 @@ interface PushesListProps {
   onSelectedPushesChange: Dispatch<SetStateAction<Set<string>>>;
 }
 
-const ICONS = [
-  'pproj.svg',
-  'zip.svg',
-  'indd.svg',
-  'csv.svg',
-  'css.svg',
-  'pdf.svg',
-  'aac.svg',
-  'png.svg',
-  'xls.svg',
-  'avi.svg',
-  'txt.svg',
-  'mp3.svg',
-  'tiff.svg',
-  'psd.svg',
-  'jpg.svg',
-  'jpeg.svg',
-  'mov.svg',
-  'html.svg',
-  'ai.svg',
-  'js.svg',
-  'flac.svg',
-  'mp4.svg',
-  'gif.svg',
-  'doc.svg',
-  'xml.svg',
-  'apk.svg',
-];
+/**
+ * A file push's icon by its extension. Bundled, and small enough that Vite inlines each one
+ * as a data URL (`?inline` makes sure), so drawing the list asks no server anything: served
+ * from pushthat.link/files they put the type of every encrypted file a list showed in the
+ * hosting logs (docs/e2ee.md, Icons). The PNGs in `public/files` stay, for app versions
+ * from before this change, which still load them from there.
+ */
+// A Map, not an object: an extension comes from a file's name, and an object would answer
+// `constructor` or `__proto__` with what it inherits.
+const FILE_ICONS = new Map<string, string>(
+  Object.entries(
+    import.meta.glob<string>('../assets/file-icons/*.svg', { eager: true, query: '?inline', import: 'default' })
+  ).map(([path, src]) => [path.slice(path.lastIndexOf('/') + 1, -'.svg'.length), src])
+);
+
+/** The placeholder for a push with no icon of its own, and for a locked one. */
+const PLACEHOLDER = '/pushthat-mono.svg';
 
 /**
- * The linked site's own icon, asked of the site itself: `/favicon.ico` at the link's origin.
- * It used to come from Google's favicon service, which meant telling Google the domain of
- * every link in the list, for pushes whose whole point is that nobody but their owner can
- * read them. A proxy of our own would move the same list to our logs. So the only party
- * asked is the site the link already points at, and when it has no icon there the row
- * falls back to ours.
- *
- * `/favicon.ico` and not the page's `<link rel="icon">`, which the apps read: a browser
- * will draw another origin's image but will not let a script read its HTML. Undefined for
- * anything that is not a web address.
+ * What a row's icon shows: a URL push's page icon, else the icon for its type (a link to a
+ * PDF has no page to take an icon from), else the placeholder. Never the network: the page
+ * icon came with the push. Google's favicon service drew these until it was seen to learn
+ * every pushed host from every list (docs/e2ee.md, Icons).
  */
-const faviconOf = (url: string | undefined): string | undefined => {
-  try {
-    const { protocol, origin } = new URL(url ?? '');
-    return protocol === 'https:' || protocol === 'http:' ? `${origin}/favicon.ico` : undefined;
-  } catch {
-    return undefined;
-  }
+const iconSrc = (push: Push, broken: boolean): string => {
+  if (push.locked) return PLACEHOLDER;
+  if (push.icon && !broken) return `data:image/png;base64,${push.icon}`;
+  return (push.ext && FILE_ICONS.get(push.ext.toLowerCase())) || PLACEHOLDER;
 };
 
 /**
@@ -97,8 +76,10 @@ export default function PushesList({
   selectedPushes,
   onSelectedPushesChange,
 }: PushesListProps) {
-  // The pushes whose site gave no icon (none at `/favicon.ico`, or not an image).
-  const [failedIcons, setFailedIcons] = useState<Set<string>>(new Set());
+  // Page icons that would not decode, which then draw the type's icon or the placeholder.
+  // By the icon, not the push, as the phones' caches are: a push whose icon changes while
+  // the list is open is drawn with its new one.
+  const [brokenIcons, setBrokenIcons] = useState<Set<string>>(new Set());
   const [opening, setOpening] = useState<string | undefined>(undefined);
   // What opening a row has to say (a locked push, a file that did not decrypt), shown above
   // the list as the app shows its other errors, not in a browser dialog.
@@ -142,8 +123,6 @@ export default function PushesList({
     });
   };
 
-  const handleIconError = (pushId: string) => setFailedIcons((prev) => new Set(prev).add(pushId));
-
   if (loading) {
     return <div className={styles.textContainer}>Loading...</div>;
   }
@@ -165,13 +144,7 @@ export default function PushesList({
       )}
       <ul className={styles.pushesList}>
         {pushes.map((push) => {
-          const icon = ICONS.find((icon) => push.ext === icon.split('.')[0]);
           const isSelected = selectedPushes.has(push.id);
-          // A locked push, or a file with no icon of its own, has no site to ask for one, and
-          // neither does a link whose site had none: those get ours.
-          const favicon = icon ? undefined : faviconOf(push.url);
-          const fallbackSrc =
-            push.locked || (!icon && !favicon) || failedIcons.has(push.id) ? '/pushthat-mono.svg' : null;
           const content = (
             <>
               <div
@@ -180,18 +153,15 @@ export default function PushesList({
               >
                 {isSelected ? (
                   <CheckIcon />
-                ) : fallbackSrc ? (
-                  <img src={fallbackSrc} alt="" className={styles.favicon} />
-                ) : icon ? (
-                  <img src={`/files/${icon}`} alt="" className={styles.favicon} />
                 ) : (
-                  // No referrer: the site learns that its icon was asked for, not by which page.
                   <img
-                    src={favicon}
+                    src={iconSrc(push, !!push.icon && brokenIcons.has(push.icon))}
                     alt=""
-                    referrerPolicy="no-referrer"
                     className={styles.favicon}
-                    onError={() => handleIconError(push.id)}
+                    onError={() => {
+                      const { icon } = push;
+                      if (icon) setBrokenIcons((prev) => new Set(prev).add(icon));
+                    }}
                   />
                 )}
               </div>

@@ -46,6 +46,7 @@ import {
   searchWord,
 } from './e2ee';
 import { deviceId, loadAccountKey, rememberKeyVersion } from './keyStore';
+import { iconOf } from './pageIcon';
 
 /**
  * Pushes as docs/e2ee.md has them since phase 4 of that plan: written with their content in
@@ -125,6 +126,8 @@ export interface Push {
   /** A URL push's URL, or a plaintext file push's download URL. */
   url?: string;
   ext?: string;
+  /** A URL push's page icon, base64 PNG checked by `iconOf`; absent when it has none. */
+  icon?: string;
   /** Set on a file push stored since encryption, which is opened through `downloadFile`. */
   file?: PushFile;
   /**
@@ -189,7 +192,13 @@ export async function readPush(snapshot: DocumentSnapshot<DocumentData>, keys: P
     };
   }
   const url = stringOr(opened.url);
-  return { ...base, url, title: stringOr(opened.title) || url, ext: stringOr(opened.ext) || undefined };
+  return {
+    ...base,
+    url,
+    title: stringOr(opened.title) || url,
+    ext: stringOr(opened.ext) || undefined,
+    icon: iconOf(opened.icon),
+  };
 }
 
 /**

@@ -322,11 +322,16 @@ export interface Enc {
   ct: string;
 }
 
-/** A URL push's plaintext (docs/e2ee.md, The push envelope). `title` is "" until known. */
+/**
+ * A URL push's plaintext (docs/e2ee.md, The push envelope). `title` is "" until known.
+ * `icon` is the page's icon as base64 PNG, added by the native device that scrapes the
+ * title (docs/e2ee.md, Icons); the web app reads it and never writes it.
+ */
 export interface UrlEnvelope {
   url: string;
   title: string;
   ext: string;
+  icon?: string;
 }
 
 /**

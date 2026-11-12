@@ -384,12 +384,12 @@ class MainActivity : AppCompatActivity() {
         return when (val read = PushDocument.read(keys, doc.id, data)) {
             null -> null
             is PushDocument.Read.Plain ->
-                PushItem(doc.id, read.title.ifBlank { read.url }, createdAt, read.url, read.ext, PushTarget.Link(read.url))
+                PushItem(doc.id, read.title.ifBlank { read.url }, createdAt, null, read.ext, PushTarget.Link(read.url))
             PushDocument.Read.Locked ->
                 PushItem(doc.id, getString(R.string.locked_push), createdAt, null, null, PushTarget.Locked)
             is PushDocument.Read.Opened -> when (val content = read.content) {
                 is PushContent.Url ->
-                    PushItem(doc.id, content.title.ifBlank { content.url }, createdAt, content.url, content.ext, PushTarget.Link(content.url))
+                    PushItem(doc.id, content.title.ifBlank { content.url }, createdAt, content.icon, content.ext, PushTarget.Link(content.url))
                 is PushContent.File -> {
                     val target = doc.getString("objectPath")?.let { PushTarget.File(it, content) } ?: PushTarget.Locked
                     PushItem(doc.id, content.name, createdAt, null, content.ext, target)
@@ -898,8 +898,11 @@ data class PushItem(
     val id: String,
     val title: String,
     val createdAt: Date?,
-    /** The URL the favicon comes from; none for an encrypted file or a locked push. */
-    val iconUrl: String?,
+    /**
+     * The page's icon as the envelope carries it (base64 PNG), or null or empty for none: a
+     * file push, a locked push, a plaintext push and a link whose page gave none.
+     */
+    val icon: String?,
     val ext: String?,
     val target: PushTarget,
 )
@@ -954,8 +957,8 @@ class PushAdapter(
         private val dateFormat = SimpleDateFormat("h:mm a", Locale.getDefault())
 
         fun bind(push: PushItem) {
-            // Load favicon or file icon
-            avatarImage.loadFavicon(push.iconUrl, push.ext)
+            // From the push itself: drawing a row fetches nothing.
+            avatarImage.showIcon(push.icon, push.ext)
 
             // Set title
             titleText.text = push.title

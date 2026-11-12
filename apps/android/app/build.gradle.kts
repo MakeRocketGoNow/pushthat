@@ -112,7 +112,6 @@ dependencies {
     implementation("com.google.firebase:firebase-firestore")
     implementation("com.google.firebase:firebase-storage")
     implementation("com.google.firebase:firebase-messaging")
-    implementation("com.github.bumptech.glide:glide:5.0.7")
     implementation("androidx.swiperefreshlayout:swiperefreshlayout:1.2.0")
 
     // Used directly by our own code and layouts. These arrive transitively via

@@ -259,18 +259,19 @@ class PushListViewModel: ObservableObject {
         showError = true
     }
 
-    /// Untitled URL pushes get their page's title, whichever device made them
+    /// Untitled URL pushes get their page's title and icon, whichever device made them
     /// (`TitleScraperService`). In the background: the list does not wait for any page.
+    /// A titled push is not read again for an icon (docs/e2ee.md, "Icons"), so a push
+    /// from before icons keeps the placeholder rather than every list asking every site.
     private func scrapeUntitled(_ items: [PushItem], keys: PushKeys) {
         for item in items where item.type == .url && item.title.isEmpty {
             guard case .encrypted = item.source, let id = item.id else { continue }
             let url = item.url
-            let ext = item.ext ?? ""
-            let userId = item.userId
+            let hasIcon = !(item.icon ?? "").isEmpty
             let keyVersion = item.keyVersion
             Task.detached(priority: .utility) {
                 await TitleScraperService.shared.scrapeAndUpdate(
-                    pushId: id, userId: userId, keyVersion: keyVersion, url: url, ext: ext, keys: keys
+                    pushId: id, keyVersion: keyVersion, url: url, hasIcon: hasIcon, keys: keys
                 )
             }
         }

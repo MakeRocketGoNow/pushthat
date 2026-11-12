@@ -2,7 +2,6 @@ package com.makerocketgonow.pushthat
 
 import android.content.Context
 import android.util.Log
-import com.bumptech.glide.Glide
 import com.google.firebase.Firebase
 import com.google.firebase.FirebaseException
 import com.google.firebase.analytics.FirebaseAnalytics
@@ -148,7 +147,6 @@ object AccountDeletion {
      *   device. The copy in the user document went with the document.
      * - The Analytics data and the installation's Analytics id, so what this install
      *   reports from here on is not joined to what it reported for the deleted account.
-     * - The icons cached for the account's links, which name the sites it pushed.
      *
      * Then the sign-out every button uses, which drops the account key, the last decrypted
      * file and the session. The server has deleted the user, so there is nothing to ask of
@@ -163,10 +161,8 @@ object AccountDeletion {
             attempt("notification token") {
                 withTimeoutOrNull(5_000) { FirebaseMessaging.getInstance().deleteToken().await() }
             }
-            attempt("icon cache") { Glide.get(app).clearDiskCache() }
         }
         attempt("analytics") { FirebaseAnalytics.getInstance(app).resetAnalyticsData() }
-        attempt("icon memory") { Glide.get(app).clearMemory() }
         signOut(app)
     }
 

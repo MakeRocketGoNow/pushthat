@@ -114,10 +114,8 @@ After the function answers, the client that asked clears what it holds and signs
 | The account key and any unconfirmed recovery key | yes | yes | yes | yes |
 | Decrypted files in the cache | none kept | yes | yes | yes |
 | Pushes queued for a retry | none kept | yes | yes | yes |
-| The site-icon lookups held in memory | none kept | yes | yes | yes |
 | The notification (FCM) token | not held by the page | yes | yes | no FCM |
 | The Analytics installation id | no Analytics | yes | yes | no Analytics |
-| Cached icon images on disk | the browser's cache | yes (Glide) | none kept | none kept |
 
 The device id stays everywhere, as it does at sign-out: it belongs to the install, not the
 account. The extension's worker keeps its own FCM token in `chrome.storage`; it stops being
@@ -145,10 +143,12 @@ are shown as refusals.
 ## The public page
 
 `/delete-account` (`apps/web/src/pages/DeleteAccount.tsx`) names the app and the developer,
-gives the steps, lists what is deleted and what is kept, and has the form. It is served as
-static HTML as well ([the web app](web.md#pages-that-read-without-javascript)), so all of
-it but the form reads without JavaScript, and it is reachable signed out: the person may
-have uninstalled every app. The form signs in on a second Firebase app that lives only for
+gives the steps, lists what is deleted and what is kept, and has the form. It is one of the
+static pages ([the web app](web.md#pages-that-read-without-javascript)), so all of it but
+the form reads without JavaScript, and it is reachable signed out: the person may have
+uninstalled every app. A static page may not import Firebase or hold state, so the form is
+a component of its own (`components/DeleteAccountForm.tsx`) that the page fetches once it
+is on screen. The form signs in on a second Firebase app that lives only for
 the call (`services/account.ts` says why), so it works the same signed in or out. Someone
 who has forgotten their password resets it first; someone who cannot sign in at all writes
 to support.

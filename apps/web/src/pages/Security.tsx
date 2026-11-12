@@ -2,8 +2,8 @@ import { Helmet } from 'react-helmet';
 import { Link } from 'react-router';
 
 import LegalContainer from '@/components/LegalContainer';
+import { MIN_PASSWORD_LENGTH } from '@/config/password';
 import { LIMITS, SUPPORT_EMAIL } from '@/config/plan';
-import { MIN_PASSWORD_LENGTH } from '@/services/signIn';
 
 /**
  * Security, `/security`: the gist of docs/e2ee.md for the people it protects. What is
@@ -53,7 +53,7 @@ export function Security() {
       <h5>WHAT IS ENCRYPTED</h5>
 
       <ul>
-        <li>The link you push, and the title of its page.</li>
+        <li>The link you push, and the title and icon of its page.</li>
         <li>A file&rsquo;s name, its type and its contents. Files are stored under a random name.</li>
         <li>
           The words search looks for. Search uses scrambled tokens made with your key, so the server can match a search
