@@ -113,6 +113,18 @@ jobs:
       - run: node --check index.js
       - run: npm test
 
+  # The script android-promote.yml releases to production with. That workflow runs only
+  # when someone starts it, so without this a broken change to the script would be found
+  # at the moment of a release. No install: the script has no dependencies.
+  play-promote:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+      - run: node --test '.github/scripts/*.test.mjs'
+
   # Which of the two deploys this run makes. A push deploys a folder when it changed since
   # the last push to `main` whose run succeeded: that commit is known to be live, and a run
   # that failed (a check, or a deploy) leaves its changes to be picked up by the next one.

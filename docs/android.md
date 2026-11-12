@@ -53,14 +53,37 @@ Each value can also come from the environment, which is how CI signs:
 
 ## Shipping to Play
 
-A push to `main` that touches `apps/android/` builds a signed bundle and uploads it to the
-closed testing track and rolls it out to that track's testers (`.github/workflows/android.yml`,
-`status: completed`): once Play's checks pass, testers get it without anyone opening Play
-Console. Production is not touched; promoting a build there stays a manual release in Play
-Console. Run the workflow
-from the Actions tab on `main` to cut a build without a push. Pull requests and other
-branches run only the `build` job: the tests and an unsigned bundle, which proves the
-release path compiles, with no secrets and nothing published.
+A build moves through three tracks, and CI only ever starts the first two:
+
+- **Internal testing, on every merge.** A push to `main` that touches `apps/android/`
+  builds a signed bundle, uploads it to the internal testing track and rolls it out to that
+  track's testers (`.github/workflows/android.yml`, `status: completed`). Play does not
+  review internal releases, so the build is on their phones within minutes and nobody opens
+  Play Console.
+- **Closed testing, when someone asks.** Run the workflow from the Actions tab on `main`
+  with "Send this build to closed testing" ticked. It builds `main` as it stands, under a
+  new version code, and releases it to the closed track, where Play reviews it before
+  testers get it. Promoting an internal release in Play Console does the same with the
+  exact bundle the internal testers had.
+- **Production, when someone approves it.** Run the "Android promote" workflow, or promote
+  a release in Play Console. Either way Play reviews it again. See
+  [Promoting to production](#promoting-to-production). `android.yml` names only `internal`
+  and `alpha`, so a merge cannot reach production.
+
+Every merge used to go to closed testing. Play reviews each closed release, and a newer
+submission replaces one still in review, so several merges in a day meant reviews of builds
+no tester ever received. Closed testing is now for the builds worth a review.
+
+The internal track has its own tester list in Play Console (Internal testing, Testers), of
+up to 100 people, separate from the closed track's: someone on only the closed list gets
+nothing from a merge.
+
+Running the workflow from the Actions tab on `main` without the box ticked cuts an internal
+build without a push. A run started by hand waits behind a build in progress like any
+other, and GitHub keeps only the newest waiting run, so a merge that lands while it waits
+displaces it: start it again. Pull requests and other branches run only the `build` job:
+the tests and an unsigned bundle, which proves the release path compiles, with no secrets
+and nothing published.
 
 Don't build a bundle by hand for Play. A local build keeps `versionCode = 8`, which Play has
 already seen; CI passes the workflow's run number plus 100, which only rises. Never lower
@@ -89,6 +112,52 @@ back on the repository and reopens that, so set them as:
 ```bash
 gh secret set ANDROID_KEY_PASSWORD --env play --repo MakeRocketGoNow/pushthat
 ```
+
+## Promoting to production
+
+Run "Android promote" from the Actions tab on `main` (`.github/workflows/android-promote.yml`).
+It builds nothing: it asks Play to release a bundle it already has, so production gets the
+build testers ran. Two inputs:
+
+- **Version code.** Empty means the newest build on internal testing. Otherwise any code a
+  track is serving now, internal or closed. An older build that no track serves any more
+  is promoted in Play Console instead.
+- **Rollout.** A whole percentage, 10 unless changed. Run the workflow again with the same
+  version code and a larger number to widen the rollout, and with 100 to finish it.
+
+The run then waits for approval, and approving it is the release. The release keeps the
+name and the "What's new" note it had on the track it came from. Play reviews it before
+anyone gets it, and a commit to Play cancels a review already under way for this app and
+submits everything together, so promoting while a closed testing release is in review
+restarts that review.
+
+From a terminal:
+
+```bash
+gh workflow run android-promote.yml --ref main -f rollout=10
+```
+
+Play Console does the same by hand (Internal testing or Closed testing, the release,
+Promote release, Production), and is the only way to halt a rollout.
+
+One-off setup, in this order:
+
+1. Create the `play-production` Environment (Settings, Environments) with a required
+   reviewer and Deployment branches limited to `main`.
+2. Only then put the key on it:
+   `gh secret set PLAY_SERVICE_ACCOUNT_JSON --env play-production --repo MakeRocketGoNow/pushthat`.
+   The same service account as the `play` Environment works if it may release to
+   production in Play Console (Users and permissions); a second account that only this
+   Environment holds keeps the per-merge key unable to.
+
+The order matters because GitHub creates an Environment the first time a job names it,
+with no rules. Without the key the run stops before it reaches Play, so an Environment
+that exists but is unprotected is harmless only while it is empty.
+
+The work is done by `.github/scripts/play-promote.mjs`, which has no dependencies and
+whose tests (`node --test '.github/scripts/*.test.mjs'`) run on every pull request. They
+prove what the script asks Play for against a stand-in; only a real promotion proves Play
+agrees.
 
 ## Release notes
 
