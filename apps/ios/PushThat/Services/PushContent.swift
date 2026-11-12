@@ -511,11 +511,19 @@ enum PushTitle {
         // whitespace, as Jsoup collapses the text it has already decoded. Jsoup also drops
         // the soft hyphen and the zero-width space as it collapses, however they were
         // written, so they are dropped here too.
+        //
+        // Jsoup's whitespace, not Unicode's: it collapses only these six, so a thin space
+        // (`&thinsp;`), the narrow no-break space French puts before `!` or an ideographic
+        // space is kept as written. `\s` and `.whitespacesAndNewlines` would flatten them to a
+        // space and store a different title from Android's. Then Java's `trim()`, which
+        // takes everything up to U+0020 off the ends and nothing above it.
         return decodingEntities(String(html[range]))
             .replacingOccurrences(of: "[\\u00AD\\u200B]", with: "", options: .regularExpression)
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+            .replacingOccurrences(of: "[ \\t\\n\\f\\r\\u00A0]+", with: " ", options: .regularExpression)
+            .trimmingCharacters(in: javaTrimmed)
     }
+
+    private static let javaTrimmed = CharacterSet(charactersIn: "\u{0000}"..."\u{0020}")
 
     private static let titlePattern = try! NSRegularExpression(
         pattern: "<title[^>]*>([^<]+)</title>", options: .caseInsensitive

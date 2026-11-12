@@ -730,6 +730,11 @@ final class PushTitleTests: XCTestCase {
         let html = "<html><head><TITLE lang=\"en\">\n  &nbsp;Tea&#8217;s&#10;ready&#x20;&#x20;now &#160;</TITLE></head></html>"
         XCTAssertEqual(PushTitle.extract(from: html), "Tea\u{2019}s ready now")
         XCTAssertEqual(PushTitle.extract(from: "<title>Re&shy;use&#x200B;d\u{00AD} it</title>"), "Reused it")
+        // Only Jsoup's six are collapsed: a thin, narrow or ideographic space, a line
+        // separator or a vertical tab stays as it is.
+        XCTAssertEqual(PushTitle.extract(from: "<title>&#x2028;10&thinsp;km &#8239;! x\u{3000}y&#11;z</title>"),
+                       "\u{2028}10\u{2009}km \u{202F}! x\u{3000}y\u{000B}z")
+        XCTAssertEqual(PushTitle.extract(from: "<title>\u{0001} a &#9; </title>"), "a")
         XCTAssertNil(PushTitle.extract(from: "<html><head></head></html>"))
     }
 }
