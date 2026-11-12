@@ -132,9 +132,13 @@ class SwivelCheckView @JvmOverloads constructor(
     private fun startLookup(origin: String) {
         iconLookup = iconScope.launch {
             val candidates = Favicons.candidates(origin)
-            // Still this row's site: a recycled view's lookup was cancelled in loadFavicon,
-            // and this guards the moment between the answer and the cancel.
-            if (iconOrigin == origin) showSiteIcon(candidates)
+            // Still this row's site (a recycled view's lookup was cancelled in loadFavicon,
+            // and this guards the moment between the answer and the cancel), and on screen.
+            // RecyclerView binds the rows ahead of a scroll without attaching them, so such
+            // a row never gets onDetachedFromWindow to cancel this, and drawing for it
+            // after its activity was destroyed throws in `Glide.with`. It draws when it is
+            // attached instead (onAttachedToWindow).
+            if (iconOrigin == origin && isAttachedToWindow) showSiteIcon(candidates)
         }
     }
 
@@ -149,14 +153,17 @@ class SwivelCheckView @JvmOverloads constructor(
     }
 
     /**
-     * The other half: RecyclerView puts a row back from its cache without binding it again,
-     * so a row whose lookup was cancelled on the way out takes it up again here, or it
-     * would come back showing the placeholder for good.
+     * The other half, for the two rows that arrive here with an icon owed: one RecyclerView
+     * puts back from its cache without binding it again, whose lookup was cancelled on the
+     * way out, and one it bound ahead of a scroll, whose lookup finished while it was not
+     * attached and so drew nothing. Either would otherwise show the placeholder for good.
+     * A row whose icon is already drawn asks Glide for it once more, which Glide answers
+     * from memory.
      */
     override fun onAttachedToWindow() {
         super.onAttachedToWindow()
         val origin = iconOrigin ?: return
-        if (iconLookup?.isCancelled != true) return
+        if (iconLookup?.isActive == true) return
         Favicons.known(origin)?.let { showSiteIcon(it) } ?: startLookup(origin)
     }
 
