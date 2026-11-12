@@ -517,7 +517,10 @@ enum PushTitle {
         // space is kept as written. `\s` and `.whitespacesAndNewlines` would flatten them to a
         // space and store a different title from Android's. Then Java's `trim()`, which
         // takes everything up to U+0020 off the ends and nothing above it.
-        return decodingEntities(String(html[range]))
+        //
+        // A NUL written into the page is U+FFFD to an HTML parser, Jsoup's included, so it
+        // is here too rather than kept, or trimmed off an end as Java's `trim()` would.
+        return decodingEntities(String(html[range]).replacingOccurrences(of: "\u{0000}", with: "\u{FFFD}"))
             .replacingOccurrences(of: "[\\u00AD\\u200B]", with: "", options: .regularExpression)
             .replacingOccurrences(of: "[ \\t\\n\\f\\r\\u00A0]+", with: " ", options: .regularExpression)
             .trimmingCharacters(in: javaTrimmed)

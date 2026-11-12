@@ -747,6 +747,7 @@ final class PushTitleTests: XCTestCase {
         XCTAssertEqual(PushTitle.extract(from: "<title>&#x2028;10&thinsp;km &#8239;! x\u{3000}y&#11;z</title>"),
                        "\u{2028}10\u{2009}km \u{202F}! x\u{3000}y\u{000B}z")
         XCTAssertEqual(PushTitle.extract(from: "<title>\u{0001} a &#9; </title>"), "a")
+        XCTAssertEqual(PushTitle.extract(from: "<title>\u{0000}a\u{0000}b</title>"), "\u{FFFD}a\u{FFFD}b")
         XCTAssertNil(PushTitle.extract(from: "<html><head></head></html>"))
     }
 }
