@@ -1,3 +1,4 @@
+import { FirebaseError } from 'firebase/app';
 import { useEffect, useState } from 'react';
 import { Helmet } from 'react-helmet';
 import { Link } from 'react-router';
@@ -39,6 +40,9 @@ import styles from './DeleteAccount.module.css';
  * same one signed in to another account) gets the form and not someone else's result.
  */
 let deletedHere = false;
+
+/** Firebase has throttled sign-ins for this account: not a connection problem, and said as what it is. */
+const TOO_MANY_TRIES = 'Too many tries. Nothing was deleted. Wait a few minutes and try again.';
 
 /** For a failure before the function was called. The same words as the Android app. */
 const NOT_ASKED =
@@ -88,7 +92,9 @@ export function DeleteAccount() {
           ? 'The email or password is not right.'
           : err instanceof OutcomeUnknownError
             ? UNCONFIRMED
-            : errorText(err, NOT_ASKED)
+            : err instanceof FirebaseError && err.code === 'auth/too-many-requests'
+              ? TOO_MANY_TRIES
+              : errorText(err, NOT_ASKED)
       );
     } finally {
       setBusy(false);
