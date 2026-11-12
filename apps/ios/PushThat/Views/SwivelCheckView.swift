@@ -2,9 +2,12 @@ import SwiftUI
 
 /// Custom 3D flip checkbox that shows a favicon on the front and a checkmark on the back
 /// Matches the Android SwivelCheckView behavior
+///
+/// It takes an image the caller already holds, not a URL: drawing a row fetches nothing
+/// (docs/e2ee.md, "Icons"). `fallbackIcon` is drawn when there is none.
 struct SwivelCheckView: View {
     let isChecked: Bool
-    let imageURL: URL?
+    let image: Image?
     var fallbackIcon: String = "link.circle.fill"
 
     @State private var rotation: Double = 0
@@ -40,23 +43,12 @@ struct SwivelCheckView: View {
 
     private var frontSide: some View {
         Group {
-            if let url = imageURL {
-                AsyncImage(url: url) { phase in
-                    switch phase {
-                    case .empty:
-                        ProgressView()
-                            .frame(width: 40, height: 40)
-                    case .success(let image):
-                        image
-                            .resizable()
-                            .aspectRatio(contentMode: .fit)
-                            .clipShape(RoundedRectangle(cornerRadius: 8))
-                    case .failure:
-                        fallbackIconView
-                    @unknown default:
-                        fallbackIconView
-                    }
-                }
+            if let image {
+                image
+                    .resizable()
+                    .interpolation(.high)
+                    .aspectRatio(contentMode: .fit)
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
             } else {
                 fallbackIconView
             }
@@ -83,27 +75,17 @@ struct SwivelCheckView: View {
 
 #Preview {
     VStack(spacing: 20) {
-        // Unchecked state
-        SwivelCheckView(
-            isChecked: false,
-            imageURL: URL(string: "https://www.google.com/s2/favicons?domain=github.com&sz=256")
-        )
-        .frame(width: 40, height: 40)
+        // Unchecked state, with no icon: the placeholder
+        SwivelCheckView(isChecked: false, image: nil)
+            .frame(width: 40, height: 40)
 
         // Checked state
-        SwivelCheckView(
-            isChecked: true,
-            imageURL: URL(string: "https://www.google.com/s2/favicons?domain=github.com&sz=256")
-        )
-        .frame(width: 40, height: 40)
+        SwivelCheckView(isChecked: true, image: nil)
+            .frame(width: 40, height: 40)
 
         // With file icon
-        SwivelCheckView(
-            isChecked: false,
-            imageURL: URL(string: "https://pushthat.link/files/pdf.png"),
-            fallbackIcon: "doc.fill"
-        )
-        .frame(width: 40, height: 40)
+        SwivelCheckView(isChecked: false, image: Image("file-pdf"), fallbackIcon: "doc.fill")
+            .frame(width: 40, height: 40)
 
         // Interactive demo
         SwivelCheckViewDemo()
@@ -116,11 +98,8 @@ struct SwivelCheckViewDemo: View {
 
     var body: some View {
         VStack {
-            SwivelCheckView(
-                isChecked: isChecked,
-                imageURL: URL(string: "https://www.google.com/s2/favicons?domain=apple.com&sz=256")
-            )
-            .frame(width: 64, height: 64)
+            SwivelCheckView(isChecked: isChecked, image: Image("file-zip"))
+                .frame(width: 64, height: 64)
             .onTapGesture {
                 isChecked.toggle()
             }

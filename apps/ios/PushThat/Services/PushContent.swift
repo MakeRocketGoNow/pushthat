@@ -1,13 +1,18 @@
 import Foundation
+import ImageIO
+import UniformTypeIdentifiers
 
 /// What a push's envelope holds (docs/e2ee.md, "The push envelope"), and the keys this
-/// device seals and opens it with. Foundation, CryptoKit and Security only: the app, the
-/// share extension, the notification service extension and the tests all compile it, and
-/// only the first two have Firestore.
+/// device seals and opens it with. Foundation, CryptoKit, Security and ImageIO only: the
+/// app, the share extension, the notification service extension and the tests all compile
+/// it, and only the first two have Firestore.
 ///
 /// This file is the same in `apps/ios` and `apps/macos`.
 enum PushContent: Equatable {
-    case url(url: String, title: String, ext: String)
+    /// `icon` is the site's icon (`PushIcon`), nil when the push has none. It defaults to
+    /// nil so that a push made before a page is read, which is every push at creation, need
+    /// not say so.
+    case url(url: String, title: String, ext: String, icon: String? = nil)
     case file(PushFile)
 
     enum ContentError: LocalizedError {
@@ -41,7 +46,7 @@ enum PushContent: Equatable {
     /// overlong title cannot crowd the URL's tokens out of the 3000.
     var searchText: String {
         switch self {
-        case let .url(url, title, _): return String(title.prefix(Self.maxTitleLength)) + " " + url
+        case let .url(url, title, _, _): return String(title.prefix(Self.maxTitleLength)) + " " + url
         case let .file(file): return file.name
         }
     }
@@ -51,8 +56,12 @@ enum PushContent: Equatable {
     func json() throws -> Data {
         let object: [String: Any]
         switch self {
-        case let .url(url, title, ext):
-            object = ["url": url, "title": String(title.prefix(Self.maxTitleLength)), "ext": ext]
+        case let .url(url, title, ext, icon):
+            var fields: [String: Any] = ["url": url, "title": String(title.prefix(Self.maxTitleLength)), "ext": ext]
+            // Left out rather than written empty when there is none, which is how every
+            // push before icons reads and what the vectors' URL envelope holds.
+            if let icon, !icon.isEmpty { fields["icon"] = icon }
+            object = fields
         case let .file(file):
             if let fk = file.fk, let np = file.np {
                 object = [
@@ -73,7 +82,10 @@ enum PushContent: Equatable {
         switch type {
         case "url":
             guard let url = object["url"] as? String else { throw ContentError.malformed }
-            self = .url(url: url, title: object["title"] as? String ?? "", ext: ext)
+            // Absent on a push from before icons, and "" means none as well (docs/e2ee.md,
+            // "Icons"), so both read as nil and nothing downstream tells them apart.
+            let icon = (object["icon"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+            self = .url(url: url, title: object["title"] as? String ?? "", ext: ext, icon: icon)
         case "file":
             guard let name = object["name"] as? String else { throw ContentError.malformed }
             let mime = object["mime"] as? String ?? ""
@@ -99,6 +111,17 @@ enum PushContent: Equatable {
         guard enc.ct.count <= E2eeCrypto.maxEnvelopeCiphertextLength else { throw ContentError.tooLarge }
         let tokens = E2eeCrypto.blindIndex(searchKey: keys.searchKey, tokens: SearchTokenGenerator.generate(from: searchText))
         return (enc, tokens)
+    }
+
+    /// A URL push sealed with its icon, or without it when the envelope with it would be
+    /// over the rules' bound (docs/e2ee.md, "Icons"): a long URL keeps its title rather than
+    /// losing both. Still too large without it, it throws `tooLarge` as before.
+    static func sealURL(url: String, title: String, ext: String, icon: String?, keys: PushKeys, pushId: String) throws -> (enc: E2eeCrypto.Envelope, searchTokens: [String]) {
+        do {
+            return try PushContent.url(url: url, title: title, ext: ext, icon: icon).seal(keys: keys, pushId: pushId)
+        } catch ContentError.tooLarge where icon != nil {
+            return try PushContent.url(url: url, title: title, ext: ext).seal(keys: keys, pushId: pushId)
+        }
     }
 
     /// Opens a push's envelope, or nil when this device cannot: a push made under another
@@ -201,4 +224,253 @@ struct PreparedPush: Codable, Equatable {
     }
 
     var enc: E2eeCrypto.Envelope { E2eeCrypto.Envelope(v: encVersion, n: encNonce, ct: encCiphertext) }
+}
+
+/// A URL push's icon (docs/e2ee.md, "Icons"): the standard base64 of a PNG no larger than
+/// 64 by 64 pixels and no more than 4096 bytes, carried in the envelope with the title so
+/// that no device asks anyone for it in order to draw the list. Google's favicon service
+/// drew it before, and so learned the host of every pushed link each time a list was drawn.
+///
+/// What needs no network is here rather than in `TitleScraperService`, which does the
+/// fetching: this file is compiled by both apps and by the tests (which have no Firebase,
+/// and a new file would mean a new entry in each project), so the candidate order, the
+/// bounds and the decoding for display are written once per app and checked. ImageIO
+/// rather than UIImage or NSImage for the same reason: it opens ICO and PNG on iOS and
+/// macOS alike, so this is the same in both apps.
+enum PushIcon {
+    /// The longest side, in pixels, an icon is stored at.
+    static let maxSide = 64
+    /// The side tried once more when the PNG at `maxSide` is over `maxBytes`.
+    static let fallbackSide = 32
+    /// The most bytes of PNG an icon may be, 5464 characters of base64: with a URL and a
+    /// title it still fits `enc.ct`'s 16384 for every ordinary link.
+    static let maxBytes = 4096
+    /// How much of each candidate is read. A larger file is passed over rather than cut,
+    /// since a truncated image can still decode, with its lower part missing.
+    static let maxDownloadBytes = 256 * 1024
+    /// Frames longer than this on a side are passed over: a frame is decoded whole to be
+    /// shrunk, and 256 KiB of PNG can hold a frame that would take hundreds of megabytes.
+    /// No icon worth drawing at 64 pixels is that large.
+    static let maxSourceSide = 2048
+    /// The most `<link>` candidates tried before `/favicon.ico`. A page names a handful at
+    /// most; the cap keeps one that names hundreds from turning a scrape into hundreds of
+    /// requests. The same on every client (docs/e2ee.md, "Icons").
+    static let maxLinkCandidates = 8
+
+    // MARK: Candidates
+
+    /// The URLs to try, best first, for the page whose HTML is `html` and whose final URL
+    /// (after redirects) is `pageURL`: every `apple-touch-icon` link, then every `icon`
+    /// link (`shortcut icon` included) that is not SVG by its type or its path, then
+    /// `/favicon.ico` at the page's origin. Only http and https, each once, and at most
+    /// `maxLinkCandidates` links. A `<base href>` is not followed, as on every client: the
+    /// final URL is what all of them agree on.
+    ///
+    /// SVG is left out because ImageIO does not draw it: fetching one would be a request
+    /// the site sees for nothing. The spec leaves the `apple-touch-icon` links unfiltered,
+    /// and so does this; one that does not decode is simply passed over.
+    static func candidates(html: String, pageURL: URL) -> [URL] {
+        var touchIcons: [URL] = []
+        var icons: [URL] = []
+        for attributes in linkTags(in: html) {
+            guard let rel = attributes["rel"], let href = attributes["href"],
+                  let url = resolve(href, against: pageURL)
+            else { continue }
+            let rels = Set(rel.lowercased().split(whereSeparator: \.isWhitespace).map(String.init))
+            if rels.contains("apple-touch-icon") || rels.contains("apple-touch-icon-precomposed") {
+                touchIcons.append(url)
+            } else if rels.contains("icon") {
+                let type = attributes["type"]?.trimmingCharacters(in: .whitespaces).lowercased()
+                guard type != "image/svg+xml", url.pathExtension.lowercased() != "svg" else { continue }
+                icons.append(url)
+            }
+        }
+        var seen = Set<URL>()
+        var all = Array((touchIcons + icons).filter { seen.insert($0).inserted }.prefix(maxLinkCandidates))
+        if let favicon = favicon(of: pageURL), !all.contains(favicon) { all.append(favicon) }
+        return all
+    }
+
+    /// The attributes of every `<link>` tag, names lowercased, values unquoted and their
+    /// common entities decoded. A scanner rather than a parser, as the scraper finds the
+    /// `<title>`: a link's attributes are all an icon needs, and there is no HTML parser in
+    /// the project to lean on. It takes attributes in any order, quoted either way or not at
+    /// all, in any case, and a quoted value holding a `>`.
+    static func linkTags(in html: String) -> [[String: String]] {
+        linkPattern.matches(in: html, range: NSRange(html.startIndex..., in: html)).compactMap { match in
+            guard let range = Range(match.range(at: 1), in: html) else { return nil }
+            let tag = String(html[range])
+            var attributes: [String: String] = [:]
+            for attribute in attributePattern.matches(in: tag, range: NSRange(tag.startIndex..., in: tag)) {
+                guard let name = Range(attribute.range(at: 1), in: tag) else { continue }
+                let value = (2...4).lazy.compactMap { Range(attribute.range(at: $0), in: tag) }.first.map { String(tag[$0]) } ?? ""
+                let key = tag[name].lowercased()
+                // The first of a repeated attribute counts, as it does in a browser.
+                if attributes[key] == nil { attributes[key] = decodeEntities(value) }
+            }
+            return attributes
+        }
+    }
+
+    private static let linkPattern = try! NSRegularExpression(
+        pattern: #"<link\b((?:[^>"']|"[^"]*"|'[^']*')*)>"#, options: .caseInsensitive
+    )
+    private static let attributePattern = try! NSRegularExpression(
+        pattern: #"([^\s"'<>/=]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+)))?"#
+    )
+
+    /// The entities an `href` holds in practice, `&amp;` between query parameters above
+    /// all. `&amp;` goes last so that `&amp;lt;` reads as the text `&lt;`.
+    private static func decodeEntities(_ value: String) -> String {
+        guard value.contains("&") else { return value }
+        var out = value
+        for (entity, text) in [("&quot;", "\""), ("&#34;", "\""), ("&apos;", "'"), ("&#39;", "'"), ("&lt;", "<"), ("&gt;", ">"), ("&#38;", "&"), ("&amp;", "&")] {
+            out = out.replacingOccurrences(of: entity, with: text, options: .caseInsensitive)
+        }
+        return out
+    }
+
+    private static func resolve(_ href: String, against page: URL) -> URL? {
+        let href = href.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !href.isEmpty, let url = URL(string: href, relativeTo: page)?.absoluteURL,
+              isWeb(url.scheme), url.host != nil
+        else { return nil }
+        return url
+    }
+
+    /// `/favicon.ico` at the page's origin: its scheme, host and port, nothing else.
+    private static func favicon(of page: URL) -> URL? {
+        guard isWeb(page.scheme), let host = page.host else { return nil }
+        var components = URLComponents()
+        components.scheme = page.scheme?.lowercased()
+        components.host = host
+        components.port = page.port
+        components.path = "/favicon.ico"
+        return components.url
+    }
+
+    private static func isWeb(_ scheme: String?) -> Bool {
+        let scheme = scheme?.lowercased()
+        return scheme == "http" || scheme == "https"
+    }
+
+    // MARK: Encoding
+
+    /// What a candidate's bytes came to.
+    enum Encoded: Equatable {
+        /// The icon, within the bounds.
+        case icon(String)
+        /// ImageIO could not open them (or they are over `maxDownloadBytes`): the next
+        /// candidate is tried.
+        case undecodable
+        /// They opened, but the PNG is over `maxBytes` at 32 by 32 as well. The first
+        /// candidate that decodes decides, so there is no icon and no further candidate
+        /// is tried, as on every client (docs/e2ee.md, "Icons").
+        case tooLarge
+    }
+
+    static func encode(_ data: Data) -> Encoded {
+        guard data.count <= maxDownloadBytes,
+              let source = CGImageSourceCreateWithData(data as CFData, nil),
+              let index = bestFrame(of: source),
+              let image = CGImageSourceCreateImageAtIndex(source, index, nil)
+        else { return .undecodable }
+        for side in [maxSide, fallbackSide] {
+            guard let png = png(of: image, fitting: side) else { return .undecodable }
+            if png.count <= maxBytes { return .icon(png.base64EncodedString()) }
+        }
+        return .tooLarge
+    }
+
+    /// The frame to shrink, by its longer side: the smallest of at least `maxSide`, so an
+    /// ICO's 64-pixel frame, drawn for that size, wins over its 256 one shrunk; else the
+    /// largest there is. The first wins a tie, which takes an animated GIF's first frame.
+    private static func bestFrame(of source: CGImageSource) -> Int? {
+        var best: (index: Int, side: Int)?
+        for index in 0..<CGImageSourceGetCount(source) {
+            guard let side = longerSide(source, index), side <= maxSourceSide else { continue }
+            guard let current = best else {
+                best = (index, side)
+                continue
+            }
+            let better = side >= maxSide
+                ? current.side < maxSide || side < current.side
+                : current.side < maxSide && side > current.side
+            if better { best = (index, side) }
+        }
+        return best?.index
+    }
+
+    private static func pixelSize(_ source: CGImageSource, _ index: Int) -> (width: Int, height: Int)? {
+        guard let properties = CGImageSourceCopyPropertiesAtIndex(source, index, nil) as? [CFString: Any],
+              let width = (properties[kCGImagePropertyPixelWidth] as? NSNumber)?.intValue,
+              let height = (properties[kCGImagePropertyPixelHeight] as? NSNumber)?.intValue,
+              width > 0, height > 0
+        else { return nil }
+        return (width, height)
+    }
+
+    private static func longerSide(_ source: CGImageSource, _ index: Int) -> Int? {
+        pixelSize(source, index).map { max($0.width, $0.height) }
+    }
+
+    /// `image` scaled down to fit `side` by `side` with its aspect kept, never up, as PNG.
+    /// Drawn into a context of exactly the target size rather than through ImageIO's
+    /// thumbnails, whose handling of an image already smaller than the limit is not
+    /// documented. Drawn in sRGB, so an icon in another color space (a CMYK JPEG, a P3 PNG)
+    /// comes out as every platform will show it; ImageIO marks that with a short `sRGB`
+    /// chunk, not a whole ICC profile, so it costs a few bytes of the 4096.
+    private static func png(of image: CGImage, fitting side: Int) -> Data? {
+        let scale = min(1, Double(side) / Double(max(image.width, image.height)))
+        let width = max(1, Int((Double(image.width) * scale).rounded()))
+        let height = max(1, Int((Double(image.height) * scale).rounded()))
+        guard let sRGB = CGColorSpace(name: CGColorSpace.sRGB), let context = CGContext(
+            data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0,
+            space: sRGB, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else { return nil }
+        context.interpolationQuality = .high
+        context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
+        guard let scaled = context.makeImage() else { return nil }
+        let data = NSMutableData()
+        guard let destination = CGImageDestinationCreateWithData(data, UTType.png.identifier as CFString, 1, nil) else { return nil }
+        CGImageDestinationAddImage(destination, scaled, nil)
+        guard CGImageDestinationFinalize(destination) else { return nil }
+        return data as Data
+    }
+
+    // MARK: Showing
+
+    /// The image to draw for a push's `icon`, or nil when it is not a PNG within the
+    /// bounds, which draws the placeholder. Decoded once per icon and kept, failures too: a
+    /// row's body is evaluated far more often than its push changes.
+    static func image(_ icon: String) -> CGImage? {
+        let key = icon as NSString
+        if let decoded = cache.object(forKey: key) { return decoded.image }
+        let image = decode(icon)
+        cache.setObject(Decoded(image), forKey: key)
+        return image
+    }
+
+    /// Opens an `icon` as the spec bounds it. Only PNG, and only up to 64 by 64, checked
+    /// before any pixel is decoded: whatever wrote the envelope, a small file must not
+    /// become a large image in a list of them.
+    static func decode(_ icon: String) -> CGImage? {
+        guard let data = Data(base64Encoded: icon),
+              let source = CGImageSourceCreateWithData(data as CFData, nil),
+              CGImageSourceGetType(source) as String? == UTType.png.identifier,
+              let size = pixelSize(source, 0), size.width <= maxSide, size.height <= maxSide
+        else { return nil }
+        return CGImageSourceCreateImageAtIndex(source, 0, nil)
+    }
+
+    private final class Decoded {
+        let image: CGImage?
+        init(_ image: CGImage?) { self.image = image }
+    }
+
+    private static let cache: NSCache<NSString, Decoded> = {
+        let cache = NSCache<NSString, Decoded>()
+        cache.countLimit = 500
+        return cache
+    }()
 }

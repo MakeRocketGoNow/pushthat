@@ -137,11 +137,13 @@ enum PushDocuments {
 
     // MARK: - Titles
 
-    /// The scraped title written back to an encrypted URL push: exactly `enc` and
+    /// The scraped title and icon written back to an encrypted URL push: exactly `enc` and
     /// `searchTokens` (`isEncryptedRetitle` in the rules), the URL and ext as they were, the
-    /// new title under a fresh nonce. Only under the push's own key version, and only when
-    /// that is the one this device holds: a push made under another key is not ours to
+    /// title and icon under a fresh nonce. Only under the push's own key version, and only
+    /// when that is the one this device holds: a push made under another key is not ours to
     /// rewrite. Last write wins.
+    /// With the icon the envelope can be over the rules' bound on `enc.ct`, and then the
+    /// title is written alone (`PushContent.sealURL`).
     static func retitle(
         firestore: Firestore,
         keys: PushKeys,
@@ -150,10 +152,11 @@ enum PushDocuments {
         keyVersion: Int?,
         url: String,
         ext: String,
-        title: String
+        title: String,
+        icon: String? = nil
     ) async throws {
         guard keyVersion == keys.keyVersion, userId == keys.uid else { return }
-        let sealed = try PushContent.url(url: url, title: title, ext: ext).seal(keys: keys, pushId: pushId)
+        let sealed = try PushContent.sealURL(url: url, title: title, ext: ext, icon: icon, keys: keys, pushId: pushId)
         try await firestore.collection("pushes").document(pushId).updateData([
             "enc": sealed.enc.firestoreData,
             "searchTokens": sealed.searchTokens,

@@ -16,7 +16,7 @@ struct PushRowView: View {
             // Swivel checkbox / favicon
             SwivelCheckView(
                 isChecked: isSelected,
-                imageURL: faviconURL,
+                image: icon,
                 fallbackIcon: item.type == .file ? "doc.fill" : "link.circle.fill"
             )
             .frame(width: 40, height: 40)
@@ -123,18 +123,23 @@ struct PushRowView: View {
         return date.relativeFormatted()
     }
 
-    private var faviconURL: URL? {
-        // A locked push shows the placeholder: there is no URL or name to show one for.
+    /// What the row draws, all of it already on the device: nothing is fetched to draw a
+    /// row (docs/e2ee.md, "Icons"). A URL push draws the icon that came in it, else the
+    /// icon for its `ext` from the asset catalog (a link to a file has no page to take an
+    /// icon from); a file push draws its type's icon. Nil draws the placeholder a locked
+    /// push draws, also for an icon that does not decode. The order is the same on every
+    /// client.
+    ///
+    /// This was Google's favicon service for every link, which learned the host of each
+    /// pushed link whenever the list was drawn, and pushthat.link for file types, whose logs
+    /// learned the type of each encrypted file.
+    private var icon: Image? {
+        // A locked push shows the placeholder: there is nothing it can be known by.
         if item.isLocked { return nil }
-
-        // Check for file extension icon first
-        if let ext = item.ext, FileTypeIcons.supported.contains(ext.lowercased()) {
-            return URL(string: "https://pushthat.link/files/\(ext.lowercased()).png")
+        if item.type == .url, let icon = item.icon, let image = PushIcon.image(icon) {
+            return Image(decorative: image, scale: 1)
         }
-
-        // Fall back to Google favicon service
-        guard let urlHost = URL(string: item.url)?.host else { return nil }
-        return URL(string: "https://www.google.com/s2/favicons?domain=\(urlHost)&sz=256")
+        return FileTypeIcons.assetName(for: item.ext).map { Image($0) }
     }
 }
 

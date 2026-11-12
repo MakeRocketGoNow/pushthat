@@ -20,6 +20,9 @@ struct PushItem: Identifiable, Equatable {
     let source: Source
     /// The push's `keyVersion`, which a retitle has to match.
     let keyVersion: Int?
+    /// An encrypted URL push's icon (`PushIcon`), nil when it has none. Kept as the
+    /// envelope holds it, so that a retitle writes it back unchanged.
+    let icon: String?
 
     enum PushType: String {
         case url
@@ -77,7 +80,8 @@ struct PushItem: Identifiable, Equatable {
         type: PushType = .url,
         ext: String? = nil,
         source: Source = .plaintext,
-        keyVersion: Int? = nil
+        keyVersion: Int? = nil,
+        icon: String? = nil
     ) {
         self.id = id
         self.url = url
@@ -88,6 +92,7 @@ struct PushItem: Identifiable, Equatable {
         self.ext = ext
         self.source = source
         self.keyVersion = keyVersion
+        self.icon = icon
     }
 
     /// A push document, opened with `keys` when it is encrypted. Nil for a document that is
@@ -117,10 +122,11 @@ struct PushItem: Identifiable, Equatable {
         }
 
         switch content {
-        case let .url(url, title, ext):
+        case let .url(url, title, ext, icon):
             self.init(
                 id: id, url: url, userId: userId, createdAt: createdAt, title: title, type: .url,
-                ext: ext.isEmpty ? nil : ext, source: .encrypted(file: nil, objectPath: nil), keyVersion: keyVersion
+                ext: ext.isEmpty ? nil : ext, source: .encrypted(file: nil, objectPath: nil), keyVersion: keyVersion,
+                icon: icon
             )
         case let .file(file):
             self.init(
