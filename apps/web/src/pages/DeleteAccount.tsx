@@ -112,8 +112,8 @@ export function DeleteAccount() {
       <ul>
         <li>Your account: your email address, your sign-in and your account ID.</li>
         <li>
-          Every push: the links, page titles and file records, which are stored encrypted, and the search tokens made
-          from them.
+          Every push: the links, the titles and icons of their pages, and the file records, which are stored encrypted,
+          and the search tokens made from them.
         </li>
         <li>Every file you pushed that is still stored, in its encrypted form.</li>
         <li>
