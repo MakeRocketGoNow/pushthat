@@ -106,7 +106,7 @@
     <string name="deleting_account">Deleting your account…</string>
     <string name="account_deleted">Your account is deleted.</string>
     <string name="delete_account_failed">Your account could not be deleted. Nothing was removed. Please try again.</string>
-    <string name="wrong_password">That is not your password. Nothing was deleted.</string>
+    <string name="wrong_password">That is not your password.</string>
     <string name="password_again_to_finish">Enter your password again to finish.</string>
     <!-- Pushes encrypted under the account key (docs/e2ee.md, phase 4), word for word with
          the other apps. -->

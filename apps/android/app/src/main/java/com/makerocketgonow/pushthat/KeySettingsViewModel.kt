@@ -49,9 +49,26 @@ class KeySettingsViewModel(application: Application) : AndroidViewModel(applicat
         State.RecoveryKey(keys.replaceRecoveryKey())
     }
 
+    /**
+     * Its failures are worded here and not in [messageFor], which all three settings share:
+     * what is true of a deletion that failed ("nothing was deleted") is not true of a
+     * password change, and was being said to someone who had only mistyped their current
+     * password there.
+     */
     fun deleteAccount(password: String) = run(R.string.deleting_account) {
-        AccountDeletion.delete(getApplication(), password)
-        State.AccountDeleted
+        val app = getApplication<Application>()
+        try {
+            AccountDeletion.delete(app, password)
+            State.AccountDeleted
+        } catch (e: FirebaseAuthInvalidCredentialsException) {
+            State.Failed(app.getString(R.string.wrong_password))
+        } catch (e: AccountDeletion.RefusedException) {
+            // The function's own sentence, written for the person, when it gave one.
+            State.Failed(e.message ?: app.getString(R.string.delete_account_failed))
+        } catch (e: IOException) {
+            Log.w(TAG, "The account could not be deleted", e)
+            State.Failed(app.getString(R.string.delete_account_failed))
+        }
     }
 
     /** The result has been seen. */
@@ -86,9 +103,6 @@ class KeySettingsViewModel(application: Application) : AndroidViewModel(applicat
         return when (e) {
             // Before FirebaseException, whose own message for this is about a "credential".
             is FirebaseAuthInvalidCredentialsException -> app.getString(R.string.wrong_password)
-            // The function's own sentence, written for the person, when it gave one.
-            is AccountDeletion.RefusedException -> e.message ?: app.getString(R.string.delete_account_failed)
-            is IOException -> app.getString(R.string.delete_account_failed)
             // Retrying cannot help: the key this install holds is not the account's.
             is KeysChangedException, is AccountKeys.NoAccountKeyException -> app.getString(R.string.keys_changed_here)
             // Firebase's own message for its errors: a wrong current password, no network.
