@@ -48,7 +48,10 @@ async function isGone(user: User): Promise<boolean> {
  */
 async function endSession(): Promise<void> {
   await clearAccountKey().catch((error) => console.error('Could not clear the account key:', error));
-  await signOut(auth);
+  // Caught, like the line above: the account is gone by now, and a failure thrown from
+  // here reached the page as "your account was not deleted". Firebase ends a session
+  // whose account is gone by itself, at the next token refresh.
+  await signOut(auth).catch((error) => console.error("Could not end the deleted account's session:", error));
 }
 
 /**
