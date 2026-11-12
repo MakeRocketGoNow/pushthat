@@ -129,6 +129,73 @@ class PushDocumentTest {
     }
 
     // -------------------------------------------------------------------------------------
+    // Icons
+
+    /** Valid base64 of the right length for a full-size icon; the envelope never decodes it. */
+    private val bigIcon = "A".repeat(5464)
+
+    @Test
+    fun anIconTravelsInTheEnvelope() {
+        val content = PushContent.Url("https://example.com", "Example", "", icon = "iVBORw0KGgo=")
+        val fields = PreparedPush.prepare(keys, "push-11", content).fields()
+        assertEquals(PushDocument.Read.Opened(content), PushDocument.read(keys, "push-11", fields))
+    }
+
+    @Test
+    fun noIconWritesTheSameJsonAsBeforeIcons() {
+        val json = String(PushContent.Url("https://example.com", "Example", "").toJson(), Charsets.UTF_8)
+        assertEquals(setOf("url", "title", "ext"), org.json.JSONObject(json).keys().asSequence().toSet())
+    }
+
+    @Test
+    fun anEnvelopeFromBeforeIconsOrWithAnEmptyOneHasNone() {
+        val old = """{"url":"https://example.com","title":"Example","ext":""}""".toByteArray()
+        assertEquals("", (PushContent.parse("url", old) as PushContent.Url).icon)
+        val empty = """{"url":"https://example.com","title":"Example","ext":"","icon":""}""".toByteArray()
+        assertEquals("", (PushContent.parse("url", empty) as PushContent.Url).icon)
+    }
+
+    private fun opened(prepared: PreparedPush?, id: String): PushContent.Url =
+        (PushDocument.read(keys, id, prepared!!.fields()) as PushDocument.Read.Opened).content as PushContent.Url
+
+    @Test
+    fun aRetitleHappensForANewTitleOrAFirstIcon() {
+        val untitled = PushContent.Url("https://example.com", "", "")
+        assertEquals(PushContent.Url("https://example.com", "Example", ""), opened(PushDocument.retitle(keys, "r1", untitled, "Example", null), "r1"))
+        assertEquals(PushContent.Url("https://example.com", "", "", "QUJD"), opened(PushDocument.retitle(keys, "r1", untitled, null, "QUJD"), "r1"))
+
+        val titled = PushContent.Url("https://example.com", "Example", "")
+        assertNull(PushDocument.retitle(keys, "r2", titled, "Example", null))
+        assertNull(PushDocument.retitle(keys, "r2", titled, " ", ""))
+        assertEquals(PushContent.Url("https://example.com", "Example", "", "QUJD"), opened(PushDocument.retitle(keys, "r2", titled, "Example", "QUJD"), "r2"))
+    }
+
+    @Test
+    fun aPushKeepsTheIconItHas() {
+        val withIcon = PushContent.Url("https://example.com", "Old", "", "QUJD")
+        // A scrape that finds none does not take it away.
+        assertEquals(withIcon.copy(title = "New"), opened(PushDocument.retitle(keys, "r3", withIcon, "New", null), "r3"))
+        // Nor is it replaced, and a different icon alone is no reason to rewrite.
+        assertEquals(withIcon.copy(title = "New"), opened(PushDocument.retitle(keys, "r3", withIcon, "New", "REVG"), "r3"))
+        assertNull(PushDocument.retitle(keys, "r3", withIcon, "Old", "REVG"))
+    }
+
+    @Test
+    fun anIconThatDoesNotFitLeavesTheTitleAlone() {
+        // Fits with its title, not with a full-size icon as well.
+        val long = PushContent.Url("https://example.com/" + "a".repeat(8000), "", "")
+        assertEquals(long.copy(title = "Example"), opened(PushDocument.retitle(keys, "r4", long, "Example", bigIcon), "r4"))
+        // With no new title, there is nothing left to write.
+        assertNull(PushDocument.retitle(keys, "r4", long, null, bigIcon))
+        assertNull(PushDocument.retitle(keys, "r4", long.copy(title = "Example"), "Example", bigIcon))
+        // Even the push's own icon goes when the new title does not fit beside it.
+        assertEquals(long.copy(title = "Example"), opened(PushDocument.retitle(keys, "r4", long.copy(icon = bigIcon), "Example", null), "r4"))
+
+        val absurd = PushContent.Url("https://example.com/" + "a".repeat(13_000), "", "")
+        assertThrows(PushTooLargeException::class.java) { PushDocument.retitle(keys, "r5", absurd, "Example", bigIcon) }
+    }
+
+    // -------------------------------------------------------------------------------------
     // Reading
 
     @Test

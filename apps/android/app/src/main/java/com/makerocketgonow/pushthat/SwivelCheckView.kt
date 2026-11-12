@@ -1,10 +1,10 @@
 package com.makerocketgonow.pushthat
 
 import android.content.Context
+import android.graphics.Bitmap
 import android.graphics.Camera
-import android.net.Uri
 import android.util.AttributeSet
-import android.util.Log
+import android.util.LruCache
 import android.view.View
 import android.view.animation.Animation
 import android.view.animation.Transformation
@@ -12,8 +12,7 @@ import android.widget.Checkable
 import android.widget.ImageView
 import android.widget.ViewFlipper
 import androidx.interpolator.view.animation.FastOutSlowInInterpolator
-import com.bumptech.glide.Glide
-import com.bumptech.glide.request.target.Target
+import com.makerocketgonow.pushthat.e2ee.E2ee
 
 class SwivelCheckView @JvmOverloads constructor(
     context: Context,
@@ -35,6 +34,8 @@ class SwivelCheckView @JvmOverloads constructor(
         View.inflate(context, R.layout.merge_swivel_check, this)
         frontImageView = getChildAt(0) as ImageView
         backImageView = getChildAt(1) as ImageView
+        backImageView.setImageResource(R.drawable.ic_check_circle)
+        backImageView.setColorFilter(context.getColor(R.color.checkmark_color))
     }
 
     fun setChecked(targetState: Boolean, shouldAnimate: Boolean = true) {
@@ -71,51 +72,22 @@ class SwivelCheckView @JvmOverloads constructor(
     override fun toggle() = setChecked(!isChecked)
 
     /**
-     * The icon for [fileExt] when there is one, else [url]'s favicon. A push with neither
-     * (an encrypted file of an unknown type, a locked push) gets the placeholder: there is
-     * no host to ask for, and a locked push's URL is not known at all.
+     * The row's icon, from what the push carries and nothing else: nothing is fetched to
+     * draw a row (docs/e2ee.md, Icons). [pageIcon] is a URL push's `icon`, drawn when it
+     * decodes; else the app's own icon for [fileExt], when it has one (a file push, or a
+     * link to a file, which has no page to take an icon from); else the placeholder, which
+     * is also what a locked push draws.
+     *
+     * The page's icon wins over the type: a link whose path ends in `.html` is a page, and
+     * its own icon says more than the type's.
      */
-    fun loadFavicon(url: String?, fileExt: String? = null) {
-        // Check if there's a file extension and it matches our supported icons
-        if (!fileExt.isNullOrBlank()) {
-            Log.d("SwivelCheckView", "File extension is not null or blank")
-            val iconName = SUPPORTED_FILE_ICONS.find { it == "${fileExt.lowercase()}.png" }
-            if (iconName != null) {
-                // Load file type icon from PushThat CDN
-                Glide.with(context)
-                    .load("https://pushthat.link/files/${iconName}")
-                    .fitCenter()
-                    .override(Target.SIZE_ORIGINAL)
-                    .error(R.drawable.default_favicon)
-                    .into(frontImageView)
-
-                // Load checkmark for back side
-                backImageView.setImageResource(R.drawable.ic_check_circle)
-                backImageView.setColorFilter(context.getColor(R.color.checkmark_color))
-                return
-            }
+    fun showIcon(pageIcon: String?, fileExt: String? = null) {
+        val bitmap = pageIcon?.takeIf { it.isNotEmpty() }?.let { decodedIcon(it) }
+        if (bitmap != null) {
+            frontImageView.setImageBitmap(bitmap)
+        } else {
+            frontImageView.setImageResource(FileIcons.forExt(fileExt) ?: R.drawable.default_favicon)
         }
-
-        // If no file extension or unsupported, fall back to favicon
-        val host = url?.let { Uri.parse(it).host }
-        if (host.isNullOrEmpty()) {
-            Glide.with(context).clear(frontImageView)
-            frontImageView.setImageResource(R.drawable.default_favicon)
-            backImageView.setImageResource(R.drawable.ic_check_circle)
-            backImageView.setColorFilter(context.getColor(R.color.checkmark_color))
-            return
-        }
-        val faviconUrl = "https://www.google.com/s2/favicons?domain=${Uri.encode(host)}&sz=256"
-
-        Glide.with(context)
-            .load(faviconUrl)
-            .fitCenter()
-            .override(Target.SIZE_ORIGINAL)
-            .error(R.drawable.default_favicon)
-            .into(frontImageView)
-
-        backImageView.setImageResource(R.drawable.ic_check_circle)
-        backImageView.setColorFilter(context.getColor(R.color.checkmark_color))
     }
 
     fun setOnCheckedChangeListener(listener: (SwivelCheckView, Boolean) -> Unit) {
@@ -123,13 +95,27 @@ class SwivelCheckView @JvmOverloads constructor(
     }
 
     companion object {
-        private val SUPPORTED_FILE_ICONS = listOf(
-            "pproj.png", "zip.png", "indd.png", "csv.png", "css.png", "pdf.png",
-            "aac.png", "png.png", "xls.png", "avi.png", "txt.png", "mp3.png",
-            "tiff.png", "psd.png", "jpg.png", "jpeg.png", "mov.png", "html.png",
-            "ai.png", "js.png", "flac.png", "mp4.png", "gif.png", "doc.png",
-            "xml.png", "apk.png"
-        )
+        /**
+         * Page icons already decoded, by their base64. Decoding one is cheap (at most 64 by
+         * 64 and 4 KB), but a bind happens on every scroll, so each is decoded once on the
+         * main thread rather than per bind or through a loader thread. Keyed by the string
+         * rather than the push, so a push whose icon changes is never drawn with the old one.
+         * 256 icons of at most 16 KB each is about 4 MB.
+         */
+        private val decodedIcons = LruCache<String, Bitmap>(256)
+
+        private fun decodedIcon(icon: String): Bitmap? {
+            decodedIcons.get(icon)?.let { return it }
+            val bitmap = try {
+                // Sampled like a scraped icon: the envelope says 64 by 64, but a PNG of a few
+                // KB can claim to be far larger, and decoded whole it would not fit in memory.
+                PageIcons.decode(E2ee.fromBase64(icon))
+            } catch (e: IllegalArgumentException) {
+                null
+            } ?: return null
+            decodedIcons.put(icon, bitmap)
+            return bitmap
+        }
 
         private fun toChecked(calculateCenterX: () -> Float, updateDisplayedSide: (DisplaySide) -> Unit) =
             createAnimation(0f..180f, calculateCenterX, updateDisplayedSide)

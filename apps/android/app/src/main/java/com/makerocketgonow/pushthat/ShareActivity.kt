@@ -36,6 +36,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.tasks.await
 import androidx.lifecycle.lifecycleScope
 import androidx.work.*
+import okhttp3.HttpUrl
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.jsoup.Jsoup
@@ -533,6 +534,10 @@ class ShareActivity : AppCompatActivity() {
  * this install holds; another device scraping the same push writes the same title, and
  * the last write wins. A plaintext push (a job queued before this version) gets its title
  * alone, as before; the migration encrypts it.
+ *
+ * An encrypted push that has no icon also gets the page's (docs/e2ee.md, Icons), looked for
+ * in the page this pass already read, so the list never has to ask anyone for it. A push
+ * that has one keeps it and is not looked up again.
  */
 class TitleScrapingWorker(
     context: Context,
@@ -556,14 +561,16 @@ class TitleScrapingWorker(
             val updates: Map<String, Any> = when (val push = PushDocument.read(keys, documentId, data)) {
                 is PushDocument.Read.Opened -> {
                     val content = push.content as? PushContent.Url ?: return Result.success()
-                    val title = scrapeTitle(content.url)
-                    if (title.isNullOrBlank() || title == content.title) return Result.success()
-                    val prepared = PreparedPush.prepare(keys, documentId, content.copy(title = title))
+                    val page = scrape(content.url, withIcon = content.icon.isEmpty()) ?: return Result.success()
+                    val prepared = PushDocument.retitle(keys, documentId, content, page.title, page.icon)
+                        ?: return Result.success()
                     mapOf("enc" to prepared.enc.toMap(), "searchTokens" to prepared.searchTokens)
                 }
                 is PushDocument.Read.Plain -> {
                     if (push.type != PushContent.TYPE_URL) return Result.success()
-                    val title = scrapeTitle(push.url)
+                    // No icon: a plaintext push has no envelope to carry one, and the
+                    // migration that gives it one does not scrape.
+                    val title = scrape(push.url, withIcon = false)?.title
                     if (title.isNullOrBlank() || title == push.title) return Result.success()
                     mapOf("title" to PreparedPush.cutTitle(title))
                 }
@@ -587,16 +594,23 @@ class TitleScrapingWorker(
         }
     }
 
-    private suspend fun scrapeTitle(url: String): String? {
+    /** What a scrape found: either may be null. */
+    private class Scraped(val title: String?, val icon: String?)
+
+    /**
+     * [url]'s title and, when [withIcon], its icon as the envelope's `icon`. Null when there
+     * is no HTML page to read (an error, a file, a URL OkHttp refuses).
+     */
+    private suspend fun scrape(url: String, withIcon: Boolean): Scraped? {
         return withContext(Dispatchers.IO) {
+            val client = OkHttpClient()
             try {
-                val client = OkHttpClient()
                 val request = Request.Builder()
                     .url(url)
-                    .header("User-Agent", "Mozilla/5.0")
+                    .header("User-Agent", USER_AGENT)
                     .build()
 
-                client.newCall(request).execute().use { response ->
+                val (doc, finalUrl) = client.newCall(request).execute().use { response ->
                     if (!response.isSuccessful) {
                         Log.e(TAG, "HTTP request failed: ${response.code}")
                         return@withContext null
@@ -606,7 +620,8 @@ class TitleScrapingWorker(
                     // archives), which have no title to find, and the worker runs for received
                     // ones too. Only an HTML page is read, and only its first 256 KiB, where
                     // the <title> is: `string()` pulled a whole file into memory. iOS and
-                    // macOS read the same.
+                    // macOS read the same. No page means no icon either: a link to a file
+                    // has no <link rel=icon> to look in, and its row shows the file's type.
                     val body = response.body
                     val type = body.contentType()
                     if (type == null || !type.subtype.lowercase().contains("html")) return@withContext null
@@ -615,10 +630,13 @@ class TitleScrapingWorker(
                     val bytes = source.buffer.readByteArray(minOf(source.buffer.size, MAX_PAGE_BYTES))
                     // The header's charset, or, when it names none, whatever the page's
                     // <meta> says. The cap can cut the last character in two, well past the
-                    // <title>, so that costs nothing.
-                    val doc = Jsoup.parse(ByteArrayInputStream(bytes), type.charset()?.name(), url)
-                    doc.title().takeIf { it.isNotBlank() }
+                    // <title>, so that costs nothing. The base is the final URL, after
+                    // redirects, which is what the icon's links are relative to.
+                    val finalUrl = response.request.url
+                    Jsoup.parse(ByteArrayInputStream(bytes), type.charset()?.name(), finalUrl.toString()) to finalUrl
                 }
+                val icon = if (withIcon) fetchIcon(client, PageIcons.candidates(doc, finalUrl)) else null
+                Scraped(doc.title().takeIf { it.isNotBlank() }, icon)
             } catch (e: IOException) {
                 // The exception's type only: its message can name the page's host.
                 Log.e(TAG, "Error scraping title: ${e.javaClass.simpleName}")
@@ -630,11 +648,44 @@ class TitleScrapingWorker(
         }
     }
 
+    /**
+     * The first of [candidates] that `BitmapFactory` opens, as the envelope's `icon`, or
+     * null. A candidate that fails in any way is passed over: an icon is a nicety, and
+     * nothing about it may cost the push its title. Logged by the exception's type only,
+     * since its message can name the host.
+     */
+    private fun fetchIcon(client: OkHttpClient, candidates: List<HttpUrl>): String? {
+        for (candidate in candidates) {
+            try {
+                val request = Request.Builder().url(candidate).header("User-Agent", USER_AGENT).build()
+                val bytes = client.newCall(request).execute().use { response ->
+                    if (!response.isSuccessful) return@use null
+                    val source = response.body.source()
+                    // One byte past the cap tells a file that fits from one that does not.
+                    // A cut image would decode partly or not at all, so it is skipped.
+                    source.request(PageIcons.MAX_FETCH_BYTES + 1)
+                    if (source.buffer.size > PageIcons.MAX_FETCH_BYTES) null else source.buffer.readByteArray()
+                } ?: continue
+                val bitmap = PageIcons.decode(bytes) ?: continue
+                try {
+                    return PageIcons.encode(bitmap)
+                } finally {
+                    bitmap.recycle()
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Could not fetch an icon: ${e.javaClass.simpleName}")
+            }
+        }
+        return null
+    }
+
     companion object {
         private const val KEY_DOCUMENT_ID = "documentId"
 
         /** How much of a page the title is looked for in. */
         private const val MAX_PAGE_BYTES = 256L * 1024
+
+        private const val USER_AGENT = "Mozilla/5.0"
 
         fun enqueue(context: Context, documentId: String) {
             val constraints = Constraints.Builder()

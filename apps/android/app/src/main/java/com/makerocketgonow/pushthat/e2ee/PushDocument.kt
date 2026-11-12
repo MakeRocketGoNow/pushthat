@@ -18,11 +18,21 @@ sealed class PushContent {
 
     abstract fun toJson(): ByteArray
 
-    data class Url(val url: String, val title: String, val ext: String) : PushContent() {
+    /**
+     * A link. [icon] is the page's icon as base64 PNG (docs/e2ee.md, Icons), or empty for
+     * none: a push from before icons, a page with no icon this device could decode, or one
+     * whose icon would not fit beside its URL and title.
+     */
+    data class Url(val url: String, val title: String, val ext: String, val icon: String = "") : PushContent() {
         override val type get() = TYPE_URL
         override val searchText get() = "$title $url"
-        override fun toJson(): ByteArray =
-            E2ee.utf8(JSONObject().put("url", url).put("title", title).put("ext", ext).toString())
+        override fun toJson(): ByteArray {
+            val json = JSONObject().put("url", url).put("title", title).put("ext", ext)
+            // Left out rather than written empty: the spec reads the two alike, and an icon-less
+            // push then encrypts the same bytes it did before icons, which vector 3 pins.
+            if (icon.isNotEmpty()) json.put("icon", icon)
+            return E2ee.utf8(json.toString())
+        }
     }
 
     /**
@@ -65,7 +75,14 @@ sealed class PushContent {
             try {
                 val obj = JSONObject(String(json, Charsets.UTF_8))
                 return when (type) {
-                    TYPE_URL -> Url(obj.getString("url"), obj.optString("title", ""), obj.optString("ext", ""))
+                    // `icon` is optional: a push from before icons, or from a client that found
+                    // none, has no such key.
+                    TYPE_URL -> Url(
+                        obj.getString("url"),
+                        obj.optString("title", ""),
+                        obj.optString("ext", ""),
+                        obj.optString("icon", ""),
+                    )
                     TYPE_FILE -> {
                         val legacyPlain = obj.optBoolean("legacyPlain", false)
                         val fk = if (legacyPlain) null else E2ee.fromBase64(obj.getString("fk"))
@@ -254,6 +271,36 @@ object PushDocument {
             Read.Opened(PushContent.parse(data["type"] as? String, E2ee.openPush(keys.metaKey, userId, id, enc)))
         } catch (e: GeneralSecurityException) {
             Read.Locked
+        }
+    }
+
+    /**
+     * The rewrite of URL push [id] after its page was scraped (docs/e2ee.md, Titles and
+     * Icons), or null when there is nothing to write. [title] and [icon] are what the scrape
+     * found, either of them null for nothing.
+     *
+     * A rewrite happens when the title changed or an icon was found for a push that had
+     * none. A push that has an icon keeps it: the worker does not look for one then, and a
+     * scrape that finds none must not take it away. When the envelope with an icon would
+     * not fit `enc.ct`'s bound, the title is written alone, since the title is what the row
+     * is read by; with no new title, that leaves nothing to write. Throws
+     * [PushTooLargeException] when even the title alone does not fit, as before icons.
+     */
+    fun retitle(keys: PushKeys, id: String, content: PushContent.Url, title: String?, icon: String?): PreparedPush? {
+        val newTitle = title?.takeIf { it.isNotBlank() && it != content.title }
+        val newIcon = icon?.takeIf { it.isNotEmpty() && content.icon.isEmpty() }
+        if (newTitle == null && newIcon == null) return null
+        val updated = content.copy(title = newTitle ?: content.title, icon = newIcon ?: content.icon)
+        return try {
+            PreparedPush.prepare(keys, id, updated)
+        } catch (e: PushTooLargeException) {
+            when {
+                newTitle == null -> null
+                updated.icon.isEmpty() -> throw e
+                // The icon goes even when it was the push's own: the URL and new title did
+                // not fit beside it, and the title is worth more than the picture.
+                else -> PreparedPush.prepare(keys, id, updated.copy(icon = ""))
+            }
         }
     }
 
