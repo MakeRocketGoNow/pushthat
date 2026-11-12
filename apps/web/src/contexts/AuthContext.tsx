@@ -18,9 +18,21 @@ const AuthContext = createContext<AuthContextType>({
   signOut: async () => {},
 });
 
+/**
+ * Set by `main.tsx` when it has already waited for Firebase to read the session back,
+ * which it does on a page that arrived as static HTML. The provider then starts with the
+ * session in hand instead of rendering nothing for one pass: that empty pass replaced the
+ * static text with a blank root, which is the flash the wait was there to prevent.
+ */
+let sessionKnown = false;
+
+export function markSessionKnown(): void {
+  sessionKnown = true;
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [user, setUser] = useState<User | null>(() => (sessionKnown ? auth.currentUser : null));
+  const [loading, setLoading] = useState(!sessionKnown);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
