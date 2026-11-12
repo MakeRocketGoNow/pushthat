@@ -107,6 +107,22 @@ object PageIcons {
     }
 
     /**
+     * An envelope's `icon` for a row, or null when it is not what the spec says one is: a
+     * PNG of at most [MAX_SIDE] a side and [MAX_ICON_BYTES], checked before decoding. Every
+     * client draws exactly that and nothing else (docs/e2ee.md, Icons), so an icon some
+     * other writer got wrong is passed over the same way everywhere rather than drawing on
+     * one platform and not another, and a PNG claiming to be huge is never decoded.
+     */
+    fun decodeForDisplay(bytes: ByteArray): Bitmap? {
+        if (bytes.size > MAX_ICON_BYTES) return null
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+        if (bounds.outMimeType != "image/png") return null
+        if (bounds.outWidth !in 1..MAX_SIDE || bounds.outHeight !in 1..MAX_SIDE) return null
+        return BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+    }
+
+    /**
      * [bitmap] as the envelope's `icon`: fit to [MAX_SIDE], PNG, base64; at [FALLBACK_SIDE]
      * when that is over [MAX_ICON_BYTES]; null when that is too. Null is no icon, not a
      * reason to try the next candidate: the decoder opened this one, and the spec takes the

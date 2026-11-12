@@ -96,24 +96,27 @@ class SwivelCheckView @JvmOverloads constructor(
 
     companion object {
         /**
-         * Page icons already decoded, by their base64. Decoding one is cheap (at most 64 by
-         * 64 and 4 KB), but a bind happens on every scroll, so each is decoded once on the
-         * main thread rather than per bind or through a loader thread. Keyed by the string
-         * rather than the push, so a push whose icon changes is never drawn with the old one.
-         * 256 icons of at most 16 KB each is about 4 MB.
+         * Page icons already decoded, by their base64. Decoding one is cheap (a PNG of at
+         * most 64 by 64 and 4 KB), but a bind happens on every scroll, so each is decoded once
+         * on the main thread rather than per bind or through a loader thread. Keyed by the
+         * string rather than the push, so a push whose icon changes is never drawn with the
+         * old one. 256 icons of at most 16 KB each is about 4 MB.
          */
         private val decodedIcons = LruCache<String, Bitmap>(256)
 
+        /** Icons that would not draw, remembered so a bind does not decode them again. */
+        private val refusedIcons = LruCache<String, Unit>(64)
+
         private fun decodedIcon(icon: String): Bitmap? {
             decodedIcons.get(icon)?.let { return it }
-            val bitmap = try {
-                // Sampled like a scraped icon: the envelope says 64 by 64, but a PNG of a few
-                // KB can claim to be far larger, and decoded whole it would not fit in memory.
-                PageIcons.decode(E2ee.fromBase64(icon))
+            if (refusedIcons.get(icon) != null) return null
+            val bytes = try {
+                E2ee.fromBase64(icon)
             } catch (e: IllegalArgumentException) {
                 null
-            } ?: return null
-            decodedIcons.put(icon, bitmap)
+            }
+            val bitmap = bytes?.let { PageIcons.decodeForDisplay(it) }
+            if (bitmap == null) refusedIcons.put(icon, Unit) else decodedIcons.put(icon, bitmap)
             return bitmap
         }
 

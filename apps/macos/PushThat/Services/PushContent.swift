@@ -473,7 +473,7 @@ enum PushIcon {
     /// before any pixel is decoded: whatever wrote the envelope, a small file must not
     /// become a large image in a list of them.
     static func decode(_ icon: String) -> CGImage? {
-        guard let data = Data(base64Encoded: icon),
+        guard let data = Data(base64Encoded: icon), data.count <= maxBytes,
               let source = CGImageSourceCreateWithData(data as CFData, nil),
               CGImageSourceGetType(source) as String? == UTType.png.identifier,
               let size = pixelSize(source, 0), size.width <= maxSide, size.height <= maxSide
