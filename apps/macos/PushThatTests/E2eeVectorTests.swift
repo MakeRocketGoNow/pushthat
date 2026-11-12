@@ -1,4 +1,6 @@
 import XCTest
+import ImageIO
+import UniformTypeIdentifiers
 
 /// Checks `E2eeCrypto` and `SearchTokenGenerator` against vectors 1 to 6 of
 /// `packages/push-test/vectors.json` (docs/e2ee.md, "Test vectors"), byte for byte. The file is copied into the test bundle
@@ -218,6 +220,7 @@ final class E2eeVectorTests: XCTestCase {
         let contents: [PushContent] = [
             .url(url: "https://example.com/a", title: "", ext: ""),
             .url(url: "https://example.com/b.pdf", title: "Example \u{e9}", ext: "pdf"),
+            .url(url: "https://example.com/c", title: "Example", ext: "", icon: "iVBORw0KGgo="),
             .file(PushFile(name: "Report (final) v2.pdf", mime: "application/pdf", size: 3_145_729, ext: "pdf",
                            fk: E2eeCrypto.newFileKey(), np: E2eeCrypto.newFilePrefix())),
             .file(PushFile(name: "old.txt", mime: "", size: 0, ext: "txt", fk: nil, np: nil)),
@@ -245,11 +248,74 @@ final class E2eeVectorTests: XCTestCase {
         let long = PushContent.url(url: "https://example.com", title: String(repeating: "t", count: 5000), ext: "")
         let opened = try XCTUnwrap(PushContent.open(keys: keys, userId: keys.uid, pushId: "p", type: "url", keyVersion: 1,
                                                     enc: PreparedPush(content: long, keys: keys, pushId: "p").enc))
-        guard case let .url(_, title, _) = opened else { return XCTFail("not a URL push") }
+        guard case let .url(_, title, _, _) = opened else { return XCTFail("not a URL push") }
         XCTAssertEqual(title.count, PushContent.maxTitleLength)
 
         let absurd = PushContent.url(url: "https://example.com/" + String(repeating: "a", count: 13_000), title: "", ext: "")
         XCTAssertThrowsError(try PreparedPush(content: absurd, keys: keys, pushId: "p")) { error in
+            XCTAssertEqual(error as? PushContent.ContentError, .tooLarge)
+        }
+    }
+
+    /// `icon` is optional: absent and "" both read as none, and none is not written, so a
+    /// push without one is the same plaintext as before icons.
+    func testURLIconIsOptional() throws {
+        let without = try XCTUnwrap(JSONSerialization.jsonObject(with: PushContent.url(url: "https://example.com", title: "T", ext: "").json()) as? [String: Any])
+        XCTAssertNil(without["icon"])
+        let empty = try XCTUnwrap(JSONSerialization.jsonObject(with: PushContent.url(url: "https://example.com", title: "T", ext: "", icon: "").json()) as? [String: Any])
+        XCTAssertNil(empty["icon"])
+        let with = try XCTUnwrap(JSONSerialization.jsonObject(with: PushContent.url(url: "https://example.com", title: "T", ext: "", icon: "AAAA").json()) as? [String: Any])
+        XCTAssertEqual(with["icon"] as? String, "AAAA")
+
+        XCTAssertEqual(try PushContent(json: Data(#"{"url":"https://example.com","title":"T","ext":""}"#.utf8), type: "url"),
+                       .url(url: "https://example.com", title: "T", ext: "", icon: nil))
+        XCTAssertEqual(try PushContent(json: Data(#"{"url":"https://example.com","title":"T","ext":"","icon":""}"#.utf8), type: "url"),
+                       .url(url: "https://example.com", title: "T", ext: "", icon: nil))
+        XCTAssertEqual(try PushContent(json: Data(#"{"url":"https://example.com","title":"T","ext":"","icon":"AAAA"}"#.utf8), type: "url"),
+                       .url(url: "https://example.com", title: "T", ext: "", icon: "AAAA"))
+        // The icon is not searched.
+        XCTAssertEqual(PushContent.url(url: "https://example.com", title: "T", ext: "", icon: "AAAA").searchText, "T https://example.com")
+    }
+
+    /// What a scrape writes back (`PushContent.rescraped`), opened again to compare.
+    private func rescrape(_ current: PushContent, title: String?, icon: String?) throws -> PushContent?? {
+        let keys = try vectorKeys()
+        guard let sealed = try PushContent.rescraped(current, title: title, icon: icon, keys: keys, pushId: "p") else { return .some(nil) }
+        return PushContent.open(keys: keys, userId: keys.uid, pushId: "p", type: "url", keyVersion: 1, enc: sealed.enc)
+    }
+
+    /// A rewrite happens for a new title or a first icon, keeps the icon a push has, and
+    /// does not happen when the scrape found nothing new.
+    func testARescrapeWritesOnlyANewTitleOrAFirstIcon() throws {
+        let url = "https://example.com"
+        let untitled = PushContent.url(url: url, title: "", ext: "", icon: nil)
+        let titled = PushContent.url(url: url, title: "T", ext: "", icon: "AAAA")
+
+        XCTAssertEqual(try rescrape(untitled, title: "T", icon: "AAAA"), .url(url: url, title: "T", ext: "", icon: "AAAA"))
+        XCTAssertEqual(try rescrape(untitled, title: nil, icon: "AAAA"), .url(url: url, title: "", ext: "", icon: "AAAA"))
+        XCTAssertEqual(try rescrape(untitled, title: "T", icon: nil), .url(url: url, title: "T", ext: "", icon: nil))
+        // An icon the push has is kept, and not replaced by another.
+        XCTAssertEqual(try rescrape(titled, title: "U", icon: "BBBB"), .url(url: url, title: "U", ext: "", icon: "AAAA"))
+        // Nothing new: the same title, a blank one, or an icon where there is one already.
+        XCTAssertEqual(try rescrape(titled, title: "T", icon: "BBBB"), .some(nil))
+        XCTAssertEqual(try rescrape(untitled, title: "  ", icon: nil), .some(nil))
+        XCTAssertEqual(try rescrape(untitled, title: nil, icon: ""), .some(nil))
+    }
+
+    /// When the envelope with the icon would be over the bound, a new title is written alone,
+    /// and an icon that was the only new thing is no reason to write.
+    func testARescrapeDropsAnIconThatDoesNotFit() throws {
+        let icon = String(repeating: "A", count: 5464)
+        let long = "https://example.com/" + String(repeating: "a", count: 9000)
+        let untitled = PushContent.url(url: long, title: "", ext: "", icon: nil)
+
+        XCTAssertEqual(try rescrape(untitled, title: "T", icon: icon), .url(url: long, title: "T", ext: "", icon: nil))
+        XCTAssertEqual(try rescrape(untitled, title: nil, icon: icon), .some(nil))
+        XCTAssertEqual(try rescrape(.url(url: "https://example.com", title: "", ext: "", icon: nil), title: "T", icon: icon),
+                       .url(url: "https://example.com", title: "T", ext: "", icon: icon))
+
+        let absurd = PushContent.url(url: "https://example.com/" + String(repeating: "a", count: 13_000), title: "", ext: "", icon: nil)
+        XCTAssertThrowsError(try rescrape(absurd, title: "T", icon: icon)) { error in
             XCTAssertEqual(error as? PushContent.ContentError, .tooLarge)
         }
     }
@@ -477,5 +543,137 @@ final class E2eeVectorTests: XCTestCase {
         XCTAssertThrowsError(try PushContent(json: Data(#"{"name":"a","fk":"AA=="}"#.utf8), type: "file"))
         XCTAssertEqual(PushFile.ext(of: "Report (final) v2.PDF"), "pdf")
         XCTAssertEqual(PushFile.ext(of: "README"), "")
+    }
+}
+
+/// The icon's capture and display (docs/e2ee.md, "Icons"). No network: the candidates are
+/// read from a string and the images are made here.
+final class PushIconTests: XCTestCase {
+    private let page = URL(string: "https://www.example.com:8443/dir/page?q=1#top")!
+
+    func testCandidateOrder() {
+        let html = """
+        <html><head>
+        <LINK href='/a.png' REL="Shortcut Icon">
+        <link rel=icon type="image/svg+xml" href="/vector">
+        <link rel="icon" href="logo.SVG?v=1">
+        <link data-x="a>b" rel="apple-touch-icon" href="https://cdn.example.com/t.png?a=1&amp;b=2">
+        <link rel="apple-touch-icon-precomposed" href="javascript:void(0)">
+        <link rel="stylesheet" href="s.css">
+        <link rel="icon" href="//other.example.com/i.ico" />
+        <linkx rel="icon" href="/not-a-link.png">
+        <link rel="icon" href="/a.png">
+        <link rel="icon" href="data:image/png;base64,AAAA">
+        """
+        XCTAssertEqual(PushIcon.candidates(html: html, pageURL: page).map(\.absoluteString), [
+            "https://cdn.example.com/t.png?a=1&b=2",
+            "https://www.example.com:8443/a.png",
+            "https://other.example.com/i.ico",
+            "https://www.example.com:8443/favicon.ico",
+        ])
+    }
+
+    func testCandidatesResolveRelativeToThePage() {
+        XCTAssertEqual(PushIcon.candidates(html: #"<link href="icons/x.ico" rel="icon">"#, pageURL: page).map(\.absoluteString), [
+            "https://www.example.com:8443/dir/icons/x.ico",
+            "https://www.example.com:8443/favicon.ico",
+        ])
+        // A <base href> is not followed.
+        XCTAssertEqual(PushIcon.candidates(html: #"<base href="https://elsewhere.example.com/"><link rel="icon" href="x.ico">"#, pageURL: page).first?.absoluteString,
+                       "https://www.example.com:8443/dir/x.ico")
+        // No links: only the origin's favicon. Not http: nothing.
+        XCTAssertEqual(PushIcon.candidates(html: "", pageURL: URL(string: "http://example.com/a/b")!).map(\.absoluteString), ["http://example.com/favicon.ico"])
+        XCTAssertEqual(PushIcon.candidates(html: "", pageURL: URL(string: "ftp://example.com/a")!), [])
+    }
+
+    func testAtMostEightLinksThenTheFavicon() {
+        let html = (1...20).map { #"<link rel="icon" href="/\#($0).png">"# }.joined()
+        let candidates = PushIcon.candidates(html: html, pageURL: page).map(\.path)
+        XCTAssertEqual(candidates, (1...8).map { "/\($0).png" } + ["/favicon.ico"])
+    }
+
+    func testEncodeScalesDownKeepingAspect() throws {
+        let icon = try XCTUnwrap(icon(PushIcon.encode(png(width: 200, height: 100))))
+        let image = try XCTUnwrap(PushIcon.decode(icon))
+        XCTAssertEqual([image.width, image.height], [64, 32])
+        XCTAssertLessThanOrEqual(try XCTUnwrap(Data(base64Encoded: icon)).count, PushIcon.maxBytes)
+    }
+
+    func testEncodeNeverScalesUp() throws {
+        let image = try XCTUnwrap(PushIcon.decode(try XCTUnwrap(icon(PushIcon.encode(png(width: 16, height: 16))))))
+        XCTAssertEqual([image.width, image.height], [16, 16])
+    }
+
+    /// Gray noise is over 4096 bytes at 64 pixels and under it at 32.
+    func testEncodeFallsBackTo32() throws {
+        let icon = try XCTUnwrap(icon(PushIcon.encode(png(width: 64, height: 64, noise: .gray))))
+        let image = try XCTUnwrap(PushIcon.decode(icon))
+        XCTAssertEqual([image.width, image.height], [32, 32])
+        XCTAssertLessThanOrEqual(try XCTUnwrap(Data(base64Encoded: icon)).count, PushIcon.maxBytes)
+    }
+
+    /// Noise in every channel, alpha too, is over 4096 bytes even at 32 pixels.
+    func testEncodeGivesUpOverTheBound() {
+        XCTAssertEqual(PushIcon.encode(png(width: 48, height: 48, noise: .everyChannel)), .tooLarge)
+    }
+
+    func testEncodeRefusesWhatDoesNotDecode() {
+        XCTAssertEqual(PushIcon.encode(Data("<html>not an image</html>".utf8)), .undecodable)
+        XCTAssertEqual(PushIcon.encode(Data(count: PushIcon.maxDownloadBytes + 1)), .undecodable)
+    }
+
+    /// Display opens only a PNG within 64 by 64.
+    func testDecodeChecksTheBounds() throws {
+        XCTAssertNotNil(PushIcon.decode(png(width: 64, height: 64).base64EncodedString()))
+        XCTAssertNil(PushIcon.decode(png(width: 65, height: 10).base64EncodedString()))
+        XCTAssertNil(PushIcon.decode(jpeg(width: 16, height: 16).base64EncodedString()))
+        XCTAssertNil(PushIcon.decode("not base64"))
+        XCTAssertNil(PushIcon.decode(""))
+    }
+
+    // MARK: - Images
+
+    private func icon(_ encoded: PushIcon.Encoded) -> String? {
+        if case let .icon(icon) = encoded { return icon }
+        return nil
+    }
+
+    private enum Noise { case none, gray, everyChannel }
+
+    /// A test image: flat gray, or noise from a fixed seed, so every run makes the same one.
+    private func image(width: Int, height: Int, noise: Noise) -> CGImage {
+        let context = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: width * 4,
+                                space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+        let pixels = context.data!.assumingMemoryBound(to: UInt8.self)
+        var seed: UInt32 = 1
+        for i in 0..<(width * height) {
+            seed = seed &* 1_664_525 &+ 1_013_904_223
+            let byte = { (shift: UInt32) in UInt8(truncatingIfNeeded: seed >> shift) }
+            switch noise {
+            case .none:
+                pixels[i * 4] = 128; pixels[i * 4 + 1] = 128; pixels[i * 4 + 2] = 128; pixels[i * 4 + 3] = 255
+            case .gray:
+                pixels[i * 4] = byte(24); pixels[i * 4 + 1] = byte(24); pixels[i * 4 + 2] = byte(24); pixels[i * 4 + 3] = 255
+            case .everyChannel:
+                pixels[i * 4] = byte(24); pixels[i * 4 + 1] = byte(16); pixels[i * 4 + 2] = byte(8); pixels[i * 4 + 3] = max(byte(4), 1)
+            }
+        }
+        return context.makeImage()!
+    }
+
+    private func png(width: Int, height: Int, noise: Noise = .none) -> Data {
+        encoded(image(width: width, height: height, noise: noise), as: .png)
+    }
+
+    private func jpeg(width: Int, height: Int) -> Data {
+        encoded(image(width: width, height: height, noise: .none), as: .jpeg)
+    }
+
+    private func encoded(_ image: CGImage, as type: UTType) -> Data {
+        let data = NSMutableData()
+        let destination = CGImageDestinationCreateWithData(data, type.identifier as CFString, 1, nil)!
+        CGImageDestinationAddImage(destination, image, nil)
+        CGImageDestinationFinalize(destination)
+        return data as Data
     }
 }

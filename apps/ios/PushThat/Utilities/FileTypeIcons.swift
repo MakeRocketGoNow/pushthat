@@ -1,10 +1,15 @@
 import Foundation
 
-/// Maps file extensions to icons hosted on PushThat CDN
-/// Matches the Android SUPPORTED_FILE_ICONS list exactly
+/// The file types with an icon of their own, drawn from the app's asset catalog as
+/// `file-<ext>` (copies of `apps/web/public/files/<ext>.png`). Matches the Android list.
+///
+/// They were loaded from pushthat.link/files, which put the type of every encrypted file a
+/// list showed in the hosting logs (docs/e2ee.md, "Icons"); shipped in the app, drawing
+/// one asks nobody anything.
 struct FileTypeIcons {
 
-    /// Set of supported file extensions that have custom icons
+    /// The extensions that have an icon. The one list: an extension added here needs its
+    /// `file-<ext>` image set in Assets.xcassets, in both apps.
     static let supported: Set<String> = [
         "pproj", "zip", "indd", "csv", "css", "pdf", "aac", "png",
         "xls", "avi", "txt", "mp3", "tiff", "psd", "jpg", "jpeg",
@@ -12,11 +17,10 @@ struct FileTypeIcons {
         "xml", "apk"
     ]
 
-    /// Returns the URL for a file type icon, or nil if not supported
-    static func iconURL(for fileExtension: String) -> URL? {
-        let ext = fileExtension.lowercased()
-        guard supported.contains(ext) else { return nil }
-        return URL(string: "https://pushthat.link/files/\(ext).png")
+    /// The asset catalog name of the icon for `fileExtension`, or nil when it has none.
+    static func assetName(for fileExtension: String?) -> String? {
+        guard let ext = fileExtension?.lowercased(), supported.contains(ext) else { return nil }
+        return "file-\(ext)"
     }
 
     /// Returns a SF Symbol name appropriate for the file type

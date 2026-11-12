@@ -109,7 +109,7 @@ final class NotificationService: UNNotificationServiceExtension {
 
         let result = base.mutableCopy() as! UNMutableNotificationContent
         switch content {
-        case let .url(url, title, _):
+        case let .url(url, title, _, _):
             result.title = title.isEmpty ? (URL(string: url)?.host ?? url) : title
             result.body = url
             var userInfo = result.userInfo

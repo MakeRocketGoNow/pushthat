@@ -53,7 +53,7 @@ export function Security() {
       <h5>WHAT IS ENCRYPTED</h5>
 
       <ul>
-        <li>The link you push, and the title of its page.</li>
+        <li>The link you push, and the title and icon of its page.</li>
         <li>A file&rsquo;s name, its type and its contents. Files are stored under a random name.</li>
         <li>
           The words search looks for. Search uses scrambled tokens made with your key, so the server can match a search
