@@ -5,6 +5,7 @@ import android.util.Log
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import okhttp3.OkHttpClient
@@ -76,6 +77,7 @@ object Favicons {
     }
 
     /** The icons already found for [origin], if its lookup has finished: lets a row draw without a flash. */
+    @OptIn(ExperimentalCoroutinesApi::class) // getCompleted, on a lookup already checked to be complete
     fun known(origin: String): List<String>? =
         lookups[origin]?.takeIf { it.isCompleted && !it.isCancelled }
             ?.let { runCatching { it.getCompleted() }.getOrNull() }?.candidates
