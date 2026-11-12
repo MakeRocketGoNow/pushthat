@@ -1,3 +1,3 @@
-Your pushes are now end-to-end encrypted: only devices you sign in on can read them. Signing in shows a recovery key. Save it, because it is the only way back to your pushes if you forget your password. Change password and Show a new recovery key are in the menu.
+Your pushes are now end-to-end encrypted: only devices you sign in on can read them. Signing in shows a recovery key. Save it: it is the only way back to your pushes if you forget your password. Change password and Show a new recovery key are in the menu.
 
-A link's icon now comes from the page and is kept with the push, so drawing your list asks Google for nothing. Notifications and search work on encrypted pushes, and a share that cannot be confirmed is retried, not dropped.
+A link's icon now comes from its page and travels with the push, so your list never asks Google. Older links show a plain icon. Notifications and search work on encrypted pushes, and an unconfirmed share is retried, not dropped.
