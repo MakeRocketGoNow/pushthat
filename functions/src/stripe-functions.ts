@@ -4,6 +4,7 @@ import * as logger from 'firebase-functions/logger';
 import { defineSecret } from 'firebase-functions/params';
 import { CallableRequest, HttpsError, onCall, onRequest } from 'firebase-functions/v2/https';
 
+import { deletionRef } from './deletion-marker';
 import { PlanUser, canSubscribe, compRunning, planReportOf } from './plan';
 import {
   ENDED_SUBSCRIPTION,
@@ -225,9 +226,8 @@ export const createCheckoutSession = onCall({ cors: true, secrets }, async (requ
   const now = new Date();
   // A deleted account's last ID token still gets here for up to an hour (docs/account-deletion.md),
   // and a checkout made with it would be a customer and a subscription for an account
-  // that is gone. The marker is the deletion's own (account-deletion.ts); read here by
-  // its path because that file imports this one.
-  if ((await db.collection('accountDeletions').doc(uid).get()).exists) {
+  // that is gone.
+  if ((await deletionRef(db, uid).get()).exists) {
     throw new HttpsError('failed-precondition', 'This account has been deleted.');
   }
   const user = await readUser(db, uid);

@@ -5,6 +5,7 @@ import * as logger from 'firebase-functions/logger';
 import { HttpsError, onCall } from 'firebase-functions/v2/https';
 import { onSchedule } from 'firebase-functions/v2/scheduler';
 
+import { deletionMarkers, deletionRef } from './deletion-marker';
 import {
   ENDED_SUBSCRIPTION,
   StripeConfig,
@@ -64,9 +65,6 @@ export const DELETION_SETTLE_MS = 70 * 60 * 1000;
 
 /** How many documents one batch deletes: Firestore's limit on a commit. */
 const DELETE_BATCH = 500;
-
-/** The marker a deletion leaves until the second purge: when, and nothing else. */
-const deletionRef = (db: Firestore, uid: string) => db.collection('accountDeletions').doc(uid);
 
 /** The two calls made to Firebase Authentication, so the suites can watch them. */
 export interface AuthAdmin {
@@ -294,7 +292,7 @@ export async function finishDeletions(
   now: Date,
   { db = getFirestore(), auth = getAuth(), stripe }: Pick<DeletionDeps, 'db' | 'auth' | 'stripe'> = {}
 ): Promise<string[]> {
-  const due = await db.collection('accountDeletions').where('settleAt', '<=', Timestamp.fromDate(now)).get();
+  const due = await deletionMarkers(db).where('settleAt', '<=', Timestamp.fromDate(now)).get();
   const finished: string[] = [];
   for (const marker of due.docs) {
     const uid = marker.id;
