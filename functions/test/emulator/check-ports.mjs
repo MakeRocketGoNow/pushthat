@@ -6,7 +6,7 @@ import { readFileSync } from 'node:fs';
 import { createServer } from 'node:net';
 
 const config = JSON.parse(readFileSync(new URL('../../../firebase.json', import.meta.url), 'utf8'));
-const ports = ['firestore', 'storage'].map((name) => [name, config.emulators?.[name]?.port]).filter(([, p]) => p);
+const ports = ['auth', 'firestore', 'storage'].map((name) => [name, config.emulators?.[name]?.port]).filter(([, p]) => p);
 
 const taken = [];
 for (const [name, port] of ports) {

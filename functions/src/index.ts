@@ -31,6 +31,7 @@ export {
   refreshSubscription,
   stripeWebhook,
 } from './stripe-functions';
+export { deleteAccount, finishAccountDeletions } from './account-deletion';
 export { expireFilePushes } from './expiry';
 export { deleteOrphanedUploads } from './orphans';
 

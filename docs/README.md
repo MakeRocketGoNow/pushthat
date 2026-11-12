@@ -13,5 +13,7 @@ house style ([AGENTS.md](../AGENTS.md)).
   and what stays manual.
 - [Billing](billing.md): the plan, the Stripe accounts, and how the functions and the rules
   enforce it.
+- [Account deletion](account-deletion.md): what deleting an account removes, the callable and
+  its second purge, and what is kept for how long.
 - [End-to-end encryption](e2ee.md): the specification for encrypting pushes, which every
   client implements and the rules require.

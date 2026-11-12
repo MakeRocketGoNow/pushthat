@@ -63,7 +63,8 @@ import {
 const STRIPE_SECRET_KEY = defineSecret('STRIPE_SECRET_KEY');
 const STRIPE_WEBHOOK_SECRET = defineSecret('STRIPE_WEBHOOK_SECRET');
 const STRIPE_PRO_PRICE_ID = defineSecret('STRIPE_PRO_PRICE_ID');
-const secrets = [STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET, STRIPE_PRO_PRICE_ID];
+/** Exported for `deleteAccount` (account-deletion.ts), which ends the account's subscription. */
+export const secrets = [STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET, STRIPE_PRO_PRICE_ID];
 
 /** Where the checkout and the portal come back to. The emulator may point it elsewhere. */
 const APP_URL = (process.env.APP_URL || 'https://pushthat.link').replace(/\/$/, '');
@@ -72,7 +73,7 @@ function planPageUrl(query?: string): string {
   return `${APP_URL}/plan${query ? `?${query}` : ''}`;
 }
 
-function stripeConfig(): StripeConfig | undefined {
+export function stripeConfig(): StripeConfig | undefined {
   return stripeOf({
     STRIPE_SECRET_KEY: STRIPE_SECRET_KEY.value(),
     STRIPE_WEBHOOK_SECRET: STRIPE_WEBHOOK_SECRET.value(),
@@ -82,7 +83,7 @@ function stripeConfig(): StripeConfig | undefined {
 }
 
 /** The signed-in account, or the refusal a callable gives without one. */
-function uidOf(request: CallableRequest): string {
+export function uidOf(request: CallableRequest): string {
   if (!request.auth) throw new HttpsError('unauthenticated', 'Sign in first.');
   return request.auth.uid;
 }

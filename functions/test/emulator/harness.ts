@@ -49,6 +49,17 @@ export async function clearFirestore(): Promise<void> {
   if (!res.ok) throw new Error(`clearing the emulator answered ${res.status}`);
 }
 
+/**
+ * Deletes every user in the Auth emulator, which `test:emulator` starts beside the other
+ * two and the Admin SDK reaches through `FIREBASE_AUTH_EMULATOR_HOST`.
+ */
+export async function clearAuth(): Promise<void> {
+  const host = process.env.FIREBASE_AUTH_EMULATOR_HOST;
+  if (!host) throw new Error('FIREBASE_AUTH_EMULATOR_HOST is not set: run these with `npm run test:emulator`.');
+  const res = await fetch(`http://${host}/emulator/v1/projects/${PROJECT}/accounts`, { method: 'DELETE' });
+  if (!res.ok) throw new Error(`clearing the Auth emulator answered ${res.status}`);
+}
+
 /** Billing on, against `stripe`. */
 export function billingOn(stripe: StripeStandIn): void {
   process.env.STRIPE_SECRET_KEY = 'sk_test_emulator';
@@ -231,13 +242,21 @@ export async function deliver(
 
 // --- Callables ------------------------------------------------------------------------------
 
-/** Calls an `onCall` function as the signed-in `uid`, or signed out with `uid` null. */
-export function call<T>(fn: CallableFunction<unknown, Promise<T>>, uid: string | null, data: unknown = {}): Promise<T> {
+/**
+ * Calls an `onCall` function as the signed-in `uid`, or signed out with `uid` null.
+ * `claims` are further fields of the ID token, such as `auth_time`.
+ */
+export function call<T>(
+  fn: CallableFunction<unknown, Promise<T>>,
+  uid: string | null,
+  data: unknown = {},
+  claims: Record<string, unknown> = {}
+): Promise<T> {
   const request = {
     data,
     rawRequest: {},
     acceptsStreaming: false,
-    ...(uid ? { auth: { uid, token: { uid, email: `${uid}@example.com` }, rawToken: 'token' } } : {}),
+    ...(uid ? { auth: { uid, token: { uid, email: `${uid}@example.com`, ...claims }, rawToken: 'token' } } : {}),
   } as unknown as CallableRequest<unknown>;
   return fn.run(request) as Promise<T>;
 }

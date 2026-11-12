@@ -111,9 +111,10 @@ npm ci && node --check index.js && npm test
 ```
 
 `npm run test:rules` and `npm run test:emulator` run against the Firestore and Storage
-emulators, through the root `firebase.json`. They need a Java runtime and the Firebase CLI,
-and the emulator ports free (8080 and 9199): a run refuses to start otherwise, naming the
-port, and one run cannot share another's emulators, so run them one after the other. The
+emulators, through the root `firebase.json`; the functions' suites start the Auth emulator
+too. They need a Java runtime and the Firebase CLI, and the emulator ports free (8080 and
+9199, and 9099 for Auth): a run refuses to start otherwise, naming the port, and one run
+cannot share another's emulators, so run them one after the other. The
 functions' suites deliver signed events to the webhook over HTTP and point
 `STRIPE_API_URL` at a stand-in for Stripe's API, so nothing reaches Stripe.
 
