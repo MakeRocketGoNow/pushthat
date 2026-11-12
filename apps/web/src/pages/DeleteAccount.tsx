@@ -123,7 +123,9 @@ export function DeleteAccount() {
         <li>
           Choose <strong>Delete account</strong>.
         </li>
-        <li>Enter your password to confirm, and press Delete.</li>
+        <li>
+          Enter your password to confirm, and press <strong>Delete account</strong>.
+        </li>
       </ol>
 
       <p>Without the app, on this page:</p>
