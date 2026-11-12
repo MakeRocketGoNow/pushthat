@@ -5,6 +5,7 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.SystemClock
 import android.util.Log
 import android.view.animation.Animation
 import android.view.animation.RotateAnimation
@@ -32,6 +33,8 @@ import com.makerocketgonow.pushthat.e2ee.PushKeys
 import com.makerocketgonow.pushthat.e2ee.PushStore
 import com.makerocketgonow.pushthat.e2ee.PushTooLargeException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.tasks.await
@@ -626,7 +629,10 @@ class TitleScrapingWorker(
      */
     private suspend fun scrape(url: String, withIcon: Boolean): Scraped? {
         return withContext(Dispatchers.IO) {
-            val client = OkHttpClient()
+            // `callTimeout` bounds a whole request, where the default timeouts bound only a
+            // gap between bytes: a server sending one byte every few seconds held a request
+            // open indefinitely, and the icon adds up to nine requests to the page's.
+            val client = OkHttpClient.Builder().callTimeout(CALL_TIMEOUT_SECONDS, TimeUnit.SECONDS).build()
             try {
                 val request = Request.Builder()
                     .url(url)
@@ -677,8 +683,14 @@ class TitleScrapingWorker(
      * nothing about it may cost the push its title. Logged by the exception's type only,
      * since its message can name the host.
      */
-    private fun fetchIcon(client: OkHttpClient, candidates: List<HttpUrl>): String? {
+    private suspend fun fetchIcon(client: OkHttpClient, candidates: List<HttpUrl>): String? {
+        // Stopped between candidates when WorkManager stops the worker (the network went, or
+        // its time ran out), and after a budget for the lot: the requests block, so without
+        // these checks the loop ran on through every candidate on an IO thread regardless.
+        val deadline = SystemClock.elapsedRealtime() + ICON_BUDGET_MS
         for (candidate in candidates) {
+            currentCoroutineContext().ensureActive()
+            if (SystemClock.elapsedRealtime() > deadline) return null
             try {
                 val request = Request.Builder().url(candidate).header("User-Agent", USER_AGENT).build()
                 val bytes = client.newCall(request).execute().use { response ->
@@ -709,6 +721,12 @@ class TitleScrapingWorker(
         private const val MAX_PAGE_BYTES = 256L * 1024
 
         private const val USER_AGENT = "Mozilla/5.0"
+
+        /** The longest any one request of a scrape may take, start to finish. */
+        private const val CALL_TIMEOUT_SECONDS = 15L
+
+        /** How long the icon candidates are tried for, after the page. */
+        private const val ICON_BUDGET_MS = 30_000L
 
         fun enqueue(context: Context, documentId: String) {
             val constraints = Constraints.Builder()

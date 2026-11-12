@@ -38,6 +38,9 @@ actor TitleScraperService {
     /// How much of a page is read for its title and its icon links.
     private static let maxPageBytes = 256 * 1024
 
+    /// How long the icon candidates are tried for, after the page.
+    private static let iconBudget: TimeInterval = 30
+
     /// Sent with the page's request and its icons' alike, so the site sees one browser.
     private static let userAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15"
 
@@ -97,8 +100,13 @@ actor TitleScraperService {
     /// time, best first, so a page whose first candidate is good costs one request more
     /// than its title.
     private func fetchIcon(from candidates: [URL]) async -> String? {
+        // A budget for the lot, checked between candidates and while one downloads:
+        // `timeoutInterval` bounds a gap between bytes, not a request, so a server sending a
+        // byte every few seconds held one open indefinitely, and there can be nine.
+        let deadline = Date().addingTimeInterval(Self.iconBudget)
         for candidate in candidates {
-            guard let data = await download(candidate) else { continue }
+            guard !Task.isCancelled, Date() < deadline else { return nil }
+            guard let data = await download(candidate, until: deadline) else { continue }
             switch PushIcon.encode(data) {
             case let .icon(icon): return icon
             case .tooLarge: return nil
@@ -111,7 +119,7 @@ actor TitleScraperService {
     /// A candidate's bytes, or nil when it does not answer 200 or is over
     /// `PushIcon.maxDownloadBytes`. Streamed as the page is, so a large file is given up at
     /// the cap rather than pulled into memory first.
-    private func download(_ url: URL) async -> Data? {
+    private func download(_ url: URL, until deadline: Date) async -> Data? {
         var request = URLRequest(url: url)
         request.setValue(Self.userAgent, forHTTPHeaderField: "User-Agent")
         request.timeoutInterval = 10
@@ -124,6 +132,7 @@ actor TitleScraperService {
             for try await byte in bytes {
                 data.append(byte)
                 if data.count > PushIcon.maxDownloadBytes { return nil }
+                if data.count % 4096 == 0, Task.isCancelled || Date() >= deadline { return nil }
             }
             return data
         } catch {
