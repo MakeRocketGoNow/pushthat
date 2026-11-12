@@ -4,7 +4,10 @@ import android.content.Context
 import android.util.Log
 import com.bumptech.glide.Glide
 import com.google.firebase.Firebase
+import com.google.firebase.FirebaseException
 import com.google.firebase.analytics.FirebaseAnalytics
+import com.google.firebase.auth.FirebaseAuthInvalidUserException
+import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.auth.auth
 import com.google.firebase.messaging.FirebaseMessaging
 import com.makerocketgonow.pushthat.data.AppDatabase
@@ -33,33 +36,73 @@ object AccountDeletion {
     private const val DELETE_ACCOUNT_URL = "https://us-central1-push-that.cloudfunctions.net/deleteAccount"
 
     /**
-     * The function said no, in [message]: a sentence it wrote for the person (a
-     * subscription that could not be cancelled, say), or null when it gave none.
+     * The function said no before deleting anything, in [message]: a sentence it wrote for
+     * the person (a subscription that could not be cancelled, say).
      */
-    class RefusedException(message: String?) : Exception(message)
+    class RefusedException(message: String) : Exception(message)
 
-    // A long read: the function deletes an account's pushes five hundred at a time before
-    // it answers, and an answer lost to a timeout would leave this install signed in to an
-    // account that is already gone.
+    /**
+     * The call ended with no answer from the function (a timeout, a dropped connection, a
+     * crash on the server) and the account still exists. Nothing can be said about how far
+     * the deletion got: once the function is past Stripe it has left a marker, and the
+     * server finishes what it started within about two hours whether or not anyone asks
+     * again. So the message for this never says that nothing was deleted.
+     */
+    class OutcomeUnknownException(cause: Exception) : Exception(cause)
+
+    // A little more than the five minutes the function allows itself (`timeoutSeconds` in
+    // functions/src/account-deletion.ts), so the function always answers first. It deletes
+    // an account's pushes five hundred at a time before it answers and sends nothing
+    // meanwhile; at two minutes this gave up on a large account that the server then went
+    // on to delete, and told its owner nothing had been removed.
     private val http = OkHttpClient.Builder()
         .connectTimeout(10, TimeUnit.SECONDS)
-        .readTimeout(120, TimeUnit.SECONDS)
+        .readTimeout(310, TimeUnit.SECONDS)
         .build()
+
+    /** The statuses the function refuses with before it has deleted anything. */
+    private val REFUSALS = setOf("FAILED_PRECONDITION", "UNAVAILABLE", "UNAUTHENTICATED")
 
     /**
      * Deletes the signed-in account. Throws what the sign-in throws for a wrong password
-     * (`FirebaseAuthInvalidCredentialsException`), [RefusedException] when the function
-     * refuses, and `IOException` when it could not be reached; in each case nothing on
-     * this install has changed and the session is as it was.
+     * (`FirebaseAuthInvalidCredentialsException`) or no network, [RefusedException] when
+     * the function refuses, and [OutcomeUnknownException] when the call ended with no
+     * answer; in each case nothing on this install has changed and the session is as it
+     * was.
+     *
+     * An account found to be gone already counts as deleted, whichever step finds it: an
+     * earlier try whose answer was lost has finished on the server, and what is left to do
+     * is here.
      */
     suspend fun delete(context: Context, password: String) {
         val app = context.applicationContext
-        val uid = Firebase.auth.currentUser?.uid ?: throw IllegalStateException("not signed in")
+        val user = Firebase.auth.currentUser ?: throw IllegalStateException("not signed in")
+        val uid = user.uid
         // The function refuses a sign-in older than five minutes, so the token is one made
         // by this proof of the password, not the one the session has been using.
-        val token = AccountKeys(app).freshTokenFor(password)
-        callDeleteAccount(token)
+        val token = try {
+            AccountKeys(app).freshTokenFor(password)
+        } catch (e: FirebaseAuthInvalidUserException) {
+            forget(app, uid)
+            return
+        }
+        try {
+            callDeleteAccount(token)
+        } catch (e: IOException) {
+            // The Auth user is the last thing the function deletes, so gone means done.
+            if (!isGone(user)) throw OutcomeUnknownException(e)
+        }
         forget(app, uid)
+    }
+
+    private suspend fun isGone(user: FirebaseUser): Boolean = try {
+        user.reload().await()
+        false
+    } catch (e: FirebaseAuthInvalidUserException) {
+        true
+    } catch (e: FirebaseException) {
+        // Could not ask (no network): not known to be gone.
+        false
     }
 
     private suspend fun callDeleteAccount(token: String) = withContext(Dispatchers.IO) {
@@ -71,11 +114,15 @@ object AccountDeletion {
         http.newCall(request).execute().use { response ->
             val body = runCatching { JSONObject(response.body.string()) }.getOrNull()
             if (response.isSuccessful && body?.optJSONObject("result")?.optBoolean("deleted") == true) return@use
-            // A callable's refusal is `{"error": {"status", "message"}}`. A bare status
-            // repeated as the message ("INTERNAL") is not a sentence for anyone.
+            // A callable's refusal is `{"error": {"status", "message"}}`, and the function
+            // makes its own before it deletes anything, each with a sentence for the
+            // person. Any other failure (INTERNAL, a gateway's error page) says nothing
+            // about how far the deletion got, and is treated like an answer that never came.
             val error = body?.optJSONObject("error")
-            val message = error?.optString("message")?.takeIf { it.isNotBlank() && it != error.optString("status") }
-            if (error == null && !response.isSuccessful) throw IOException("deleteAccount answered ${response.code}")
+            val message = error?.optString("message")?.takeIf { it.isNotBlank() }
+            if (error == null || message == null || error.optString("status") !in REFUSALS) {
+                throw IOException("deleteAccount answered ${response.code}")
+            }
             throw RefusedException(message)
         }
     }

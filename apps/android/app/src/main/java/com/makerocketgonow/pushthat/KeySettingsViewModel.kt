@@ -6,6 +6,7 @@ import androidx.annotation.StringRes
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.firebase.FirebaseException
+import com.google.firebase.FirebaseNetworkException
 import com.google.firebase.auth.FirebaseAuthInvalidCredentialsException
 import com.makerocketgonow.pushthat.e2ee.AccountKeyStore
 import com.makerocketgonow.pushthat.e2ee.AccountKeys
@@ -15,7 +16,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import java.io.IOException
 
 /**
  * "Change password", "Show a new recovery key" and "Delete account" from the list's menu.
@@ -63,11 +63,14 @@ class KeySettingsViewModel(application: Application) : AndroidViewModel(applicat
         } catch (e: FirebaseAuthInvalidCredentialsException) {
             State.Failed(app.getString(R.string.wrong_password))
         } catch (e: AccountDeletion.RefusedException) {
-            // The function's own sentence, written for the person, when it gave one.
-            State.Failed(e.message ?: app.getString(R.string.delete_account_failed))
-        } catch (e: IOException) {
-            Log.w(TAG, "The account could not be deleted", e)
-            State.Failed(app.getString(R.string.delete_account_failed))
+            // The function's own sentence, written for the person.
+            State.Failed(e.message ?: app.getString(R.string.delete_account_unconfirmed))
+        } catch (e: AccountDeletion.OutcomeUnknownException) {
+            Log.w(TAG, "The deletion ended without an answer", e)
+            State.Failed(app.getString(R.string.delete_account_unconfirmed))
+        } catch (e: FirebaseNetworkException) {
+            // The sign-in that proves the password never reached Firebase: nothing was asked.
+            State.Failed(app.getString(R.string.delete_account_offline))
         }
     }
 
