@@ -713,6 +713,14 @@ final class PushTitleTests: XCTestCase {
                        "<b> \"Q\" 'A' \u{00A9} \u{00AE} \u{2013} \u{2014} &")
     }
 
+    func testHTML4Names() {
+        XCTAssertEqual(PushTitle.decodingEntities("&lsquo;Caf&eacute;&rsquo; &ldquo;menu&rdquo;&hellip; &laquo;&euro;5&raquo; &middot; &bull; Brand&trade;"),
+                       "\u{2018}Caf\u{00E9}\u{2019} \u{201C}menu\u{201D}\u{2026} \u{00AB}\u{20AC}5\u{00BB} \u{00B7} \u{2022} Brand\u{2122}")
+        // The longest name, case kept apart, and the two HTML5 moved.
+        XCTAssertEqual(PushTitle.decodingEntities("&thetasym; &Eacute;&eacute; &lang;x&rang;"), "\u{03D1} \u{00C9}\u{00E9} \u{27E8}x\u{27E9}")
+        XCTAssertEqual(PushTitle.decodingEntities("&EACUTE; &thetasymx;"), "&EACUTE; &thetasymx;")
+    }
+
     func testMixedAndDecodedOnce() {
         XCTAssertEqual(PushTitle.decodingEntities("Fish &amp; Chips&#8482; &#x2014 It&#39;s &amp;#39; &#38;amp;"),
                        "Fish & Chips\u{2122} \u{2014} It's &#39; &amp;")
@@ -721,6 +729,7 @@ final class PushTitleTests: XCTestCase {
     func testExtractDecodesThenCollapsesWhitespace() {
         let html = "<html><head><TITLE lang=\"en\">\n  &nbsp;Tea&#8217;s&#10;ready&#x20;&#x20;now &#160;</TITLE></head></html>"
         XCTAssertEqual(PushTitle.extract(from: html), "Tea\u{2019}s ready now")
+        XCTAssertEqual(PushTitle.extract(from: "<title>Re&shy;use&#x200B;d\u{00AD} it</title>"), "Reused it")
         XCTAssertNil(PushTitle.extract(from: "<html><head></head></html>"))
     }
 }
