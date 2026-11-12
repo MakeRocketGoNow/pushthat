@@ -535,10 +535,12 @@ enum PushTitle {
     /// reference this does not know, or a numeric one that names no character (zero, a
     /// surrogate, past U+10FFFF, or no digits at all), is left as it was written.
     ///
-    /// Jsoup parts from this on those: it makes U+FFFD of a number past U+10FFFF and a lone
-    /// surrogate of one in that range (which a Swift `String` cannot hold), and it reads the
-    /// handful of legacy names that need no `;` (`&amp`). No page means any of them, so
-    /// the text as written was kept over copying each of Jsoup's answers.
+    /// Jsoup parts from this on those numbers: it makes U+FFFD of one past U+10FFFF and a
+    /// lone surrogate of one in that range (which a Swift `String` cannot hold). No page
+    /// means either, so the text as written was kept over copying Jsoup's answer.
+    ///
+    /// A name needs its `;`, except the 106 in `legacy`, which HTML reads without one, as
+    /// Jsoup and browsers do: hand-written titles hold `&copy 2024` and `Fish &amp Chips`.
     ///
     /// The numeric ones used to be deleted, so a title with a typographic apostrophe lost
     /// it, and every device then read the title with the letter missing.
@@ -565,8 +567,10 @@ enum PushTitle {
     /// (`&rsquo;`, `&hellip;`, `&eacute;`). `&lang;` and `&rang;` take HTML5's code points,
     /// which replaced HTML 4's, as Jsoup does. Each decodes to its own character: a few once
     /// became ASCII stand-ins (`-` for both dashes, `(c)`), which disagreed with Jsoup and
-    /// with the same character written as a number.
+    /// with the same character written as a number. HTML5's uppercase aliases of six of
+    /// them (`&AMP;`, `&COPY;`) are here too, being among the legacy names in `legacy`.
     private static let named: [String: Unicode.Scalar] = [
+        "AMP": "\u{0026}", "COPY": "\u{00A9}", "GT": "\u{003E}", "LT": "\u{003C}", "QUOT": "\u{0022}", "REG": "\u{00AE}",
         "quot": "\u{0022}", "amp": "\u{0026}", "apos": "\u{0027}", "lt": "\u{003C}", "gt": "\u{003E}",
         "nbsp": "\u{00A0}", "iexcl": "\u{00A1}", "cent": "\u{00A2}", "pound": "\u{00A3}", "curren": "\u{00A4}",
         "yen": "\u{00A5}", "brvbar": "\u{00A6}", "sect": "\u{00A7}", "uml": "\u{00A8}", "copy": "\u{00A9}",
@@ -620,8 +624,24 @@ enum PushTitle {
         "diams": "\u{2666}", "lang": "\u{27E8}", "rang": "\u{27E9}",
     ]
 
-    /// How far past an `&` a name's `;` can be: the longest name, `thetasym`, and its `;`.
-    private static let longestReference = named.keys.map(\.count).max()! + 1
+    /// The names HTML reads without their `;`, kept from before HTML required one: Latin-1
+    /// and the four that `&` and markup need, with the uppercase aliases. Every one is in
+    /// `named`. HTML5 lists them, and Jsoup reads them so.
+    private static let legacy: Set<String> = [
+        "Aacute", "aacute", "Acirc", "acirc", "acute", "AElig", "aelig", "Agrave", "agrave", "AMP",
+        "amp", "Aring", "aring", "Atilde", "atilde", "Auml", "auml", "brvbar", "Ccedil", "ccedil",
+        "cedil", "cent", "COPY", "copy", "curren", "deg", "divide", "Eacute", "eacute", "Ecirc",
+        "ecirc", "Egrave", "egrave", "ETH", "eth", "Euml", "euml", "frac12", "frac14", "frac34",
+        "GT", "gt", "Iacute", "iacute", "Icirc", "icirc", "iexcl", "Igrave", "igrave", "iquest",
+        "Iuml", "iuml", "laquo", "LT", "lt", "macr", "micro", "middot", "nbsp", "not", "Ntilde",
+        "ntilde", "Oacute", "oacute", "Ocirc", "ocirc", "Ograve", "ograve", "ordf", "ordm",
+        "Oslash", "oslash", "Otilde", "otilde", "Ouml", "ouml", "para", "plusmn", "pound", "QUOT",
+        "quot", "raquo", "REG", "reg", "sect", "shy", "sup1", "sup2", "sup3", "szlig", "THORN",
+        "thorn", "times", "Uacute", "uacute", "Ucirc", "ucirc", "Ugrave", "ugrave", "uml", "Uuml",
+        "uuml", "Yacute", "yacute", "yen", "yuml",
+    ]
+
+    private static let longestLegacyName = legacy.map(\.count).max()!
 
     /// What the code points 0x80 to 0x9F mean in a numeric reference: HTML reads them as
     /// Windows-1252, as Jsoup and every browser do, so the `&#146;` an old page wrote for an
@@ -638,13 +658,7 @@ enum PushTitle {
     private static func reference(in scalars: [Unicode.Scalar], at start: Int) -> (String, Int)? {
         var index = start + 1
         guard index < scalars.count else { return nil }
-        guard scalars[index] == "#" else {
-            // A named reference needs its `;`, as before.
-            guard let semicolon = scalars[index...].prefix(longestReference).firstIndex(of: ";"),
-                  let scalar = named[String(String.UnicodeScalarView(scalars[index..<semicolon]))]
-            else { return nil }
-            return (String(Character(scalar)), semicolon + 1 - start)
-        }
+        guard scalars[index] == "#" else { return namedReference(in: scalars, at: start) }
         index += 1
         var radix: UInt32 = 10
         if index < scalars.count, scalars[index] == "x" || scalars[index] == "X" {
@@ -667,6 +681,30 @@ enum PushTitle {
         // `Unicode.Scalar` refuses surrogates and anything past U+10FFFF.
         guard value != 0, let scalar = Unicode.Scalar(value) else { return nil }
         return (String(Character(scalar)), index - start)
+    }
+
+    /// A name and its `;` from `named`, or else the longest start of the name that is in
+    /// `legacy`, the rest of it left as text. That is how HTML reads a name in a title, and
+    /// how Jsoup does: `&notin;` is the one character, `&notit;` is `¬it;`, `&copy2024` is
+    /// `©2024`, while `&hellip` without its `;` stays as written.
+    private static func namedReference(in scalars: [Unicode.Scalar], at start: Int) -> (String, Int)? {
+        var end = start + 1
+        while end < scalars.count, isASCIIAlphanumeric(scalars[end]) { end += 1 }
+        func name(_ length: Int) -> String { String(String.UnicodeScalarView(scalars[(start + 1)..<(start + 1 + length)])) }
+        let length = end - start - 1
+        if end < scalars.count, scalars[end] == ";", let scalar = named[name(length)] {
+            return (String(Character(scalar)), length + 2)
+        }
+        for prefix in stride(from: min(length, longestLegacyName), through: 2, by: -1) {
+            if legacy.contains(name(prefix)), let scalar = named[name(prefix)] {
+                return (String(Character(scalar)), prefix + 1)
+            }
+        }
+        return nil
+    }
+
+    private static func isASCIIAlphanumeric(_ scalar: Unicode.Scalar) -> Bool {
+        ("a"..."z").contains(scalar) || ("A"..."Z").contains(scalar) || ("0"..."9").contains(scalar)
     }
 
     /// ASCII digits only: `Character.wholeNumberValue` would also take other scripts' digits,

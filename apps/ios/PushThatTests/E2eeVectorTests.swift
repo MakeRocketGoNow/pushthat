@@ -680,7 +680,7 @@ final class PushIconTests: XCTestCase {
 
 /// The title a scrape stores. Every device reads the one stored, so the expected strings
 /// are what Android's Jsoup 1.23.2 gives for the same `<title>`, checked against it, except
-/// in `testInvalidReferencesStayAsText` (see `PushTitle.decodingEntities`).
+/// for the numbers in `testInvalidReferencesStayAsText` (see `PushTitle.decodingEntities`).
 final class PushTitleTests: XCTestCase {
     func testDecimalReferences() {
         XCTAssertEqual(PushTitle.decodingEntities("Tea&#8217;s ready &#8212; at 4&#58;30"), "Tea\u{2019}s ready \u{2014} at 4:30")
@@ -703,7 +703,7 @@ final class PushTitleTests: XCTestCase {
 
     func testInvalidReferencesStayAsText() {
         for text in ["&#;", "&#x;", "&#xZZ;", "&#0;", "&#xD800;", "&#55296;", "&#x110000;", "&#1114112;",
-                     "&#99999999999999999999;", "&#-5;", "&#\u{0663};", "&bogus;", "&amp", "&", "a & b", "&;"] {
+                     "&#99999999999999999999;", "&#-5;", "&#\u{0663};", "&bogus;", "&", "a & b", "&;"] {
             XCTAssertEqual(PushTitle.decodingEntities(text), text, text)
         }
     }
@@ -719,6 +719,18 @@ final class PushTitleTests: XCTestCase {
         // The longest name, case kept apart, and the two HTML5 moved.
         XCTAssertEqual(PushTitle.decodingEntities("&thetasym; &Eacute;&eacute; &lang;x&rang;"), "\u{03D1} \u{00C9}\u{00E9} \u{27E8}x\u{27E9}")
         XCTAssertEqual(PushTitle.decodingEntities("&EACUTE; &thetasymx;"), "&EACUTE; &thetasymx;")
+    }
+
+    func testLegacyNamesNeedNoSemicolon() {
+        XCTAssertEqual(PushTitle.decodingEntities("&copy 2024 Example &amp Co &AMP; &COPY &Eacute"),
+                       "\u{00A9} 2024 Example & Co & \u{00A9} \u{00C9}")
+        // The longest legacy name the run starts with, the rest left as text.
+        XCTAssertEqual(PushTitle.decodingEntities("&notin; &notit; &notin &copy2024 &frac12x &sup2x &ampx &lt5 &gt="),
+                       "\u{2209} \u{00AC}it; \u{00AC}in \u{00A9}2024 \u{00BD}x \u{00B2}x &x <5 >=")
+        // Not legacy: these need their `;`.
+        for text in ["&hellip", "&rsquo", "&thetasym", "&sup", "&supx", "&frac1", "&Copy", "&a", "&am"] {
+            XCTAssertEqual(PushTitle.decodingEntities(text), text, text)
+        }
     }
 
     func testMixedAndDecodedOnce() {
