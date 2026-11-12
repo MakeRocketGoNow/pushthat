@@ -1,4 +1,5 @@
 import Foundation
+import ImageIO
 import SwiftUI
 #if canImport(UIKit)
 import UIKit
@@ -17,10 +18,16 @@ typealias PlatformImage = NSImage
 /// `apple-touch-icon`), and `/favicon.ico` stands in when it names none. Nothing goes
 /// through our server or any third party.
 ///
-/// Results are kept per origin, in memory only, for as long as the process runs, so a row
-/// that scrolls back or re-renders shows its icon at once and never fetches it again. Not
-/// on disk: a plaintext list of the hosts someone has pushed would sit beside an encrypted
-/// push list. `clear()` drops it on sign-out and account deletion.
+/// Results are kept per origin, in memory only, so a row that scrolls back or re-renders
+/// shows its icon at once without fetching it again. Not on disk: a plaintext list of the
+/// hosts someone has pushed would sit beside an encrypted push list. `clear()` drops it on
+/// sign-out and account deletion.
+///
+/// What is kept is bounded, because the Mac app runs for weeks: icons are decoded at the
+/// size they are drawn and held in an `NSCache`, which the system empties under memory
+/// pressure, and "this site has no icon" is only remembered when the site said so. A
+/// lookup that never reached the site (no network, a timeout) is not remembered at all,
+/// so the row asks again the next time it appears.
 ///
 /// This file is the same in `apps/ios` and `apps/macos`.
 final class FaviconResolver: @unchecked Sendable {
@@ -33,15 +40,27 @@ final class FaviconResolver: @unchecked Sendable {
         init(_ image: PlatformImage) { self.image = image }
     }
 
-    private enum Entry {
+    /// What a lookup came to. `unreachable` is kept apart from `none` because only `none`
+    /// is an answer: a lookup made the moment a Mac woke, before its network came back,
+    /// used to pin every site in the list to the placeholder until the app was quit.
+    private enum Outcome {
         case icon(Icon)
-        /// Looked up and nothing loaded: the placeholder, without asking again.
+        /// The site answered and offers nothing that loads.
         case none
+        /// The site could not be asked.
+        case unreachable
     }
 
     private let lock = NSLock()
-    private var resolved: [String: Entry] = [:]
-    private var inFlight: [String: Task<Icon?, Never>] = [:]
+    /// Decoded icons, a couple of hundred at most, let go under memory pressure.
+    private let icons: NSCache<NSString, Icon> = {
+        let cache = NSCache<NSString, Icon>()
+        cache.countLimit = 200
+        return cache
+    }()
+    /// Origins that answered with no icon: the placeholder, without asking again.
+    private var without: Set<String> = []
+    private var inFlight: [String: Task<Outcome, Never>] = [:]
     /// Moved on by `clear()`, so a lookup that finishes after a sign-out does not put the
     /// previous account's host back into the cache.
     private var generation = 0
@@ -61,8 +80,11 @@ final class FaviconResolver: @unchecked Sendable {
 
     /// How much of the root page is read for its `<link>` tags, which sit in the `<head>`.
     private static let maxPageBytes = 256 * 1024
-    /// An icon larger than this is not an icon worth holding in memory for a 40 pt square.
+    /// An icon larger than this is not an icon worth downloading for a 40 pt square.
     private static let maxIconBytes = 1024 * 1024
+    /// The longest edge an icon is decoded to: the row's 40 pt at 3x. A site's largest
+    /// declared icon is tried first, and a 512 px one held whole is a megabyte of bitmap.
+    private static let maxIconPixels = 120
     /// Declared icons tried before `/favicon.ico`, largest first.
     private static let maxCandidates = 3
 
@@ -86,10 +108,7 @@ final class FaviconResolver: @unchecked Sendable {
     /// on its first frame, so that one re-created by the list does not flash the placeholder.
     func cached(for url: URL) -> Icon? {
         guard let key = Self.origin(of: url)?.absoluteString else { return nil }
-        lock.lock()
-        defer { lock.unlock() }
-        if case let .icon(icon) = resolved[key] { return icon }
-        return nil
+        return icons.object(forKey: key as NSString)
     }
 
     /// The icon for this link's origin, fetched once per origin however many rows ask at
@@ -99,9 +118,10 @@ final class FaviconResolver: @unchecked Sendable {
         let key = origin.absoluteString
         let (task, generation) = startOrJoin(key: key, origin: origin)
         guard let task else { return cached(for: url) }
-        let icon = await task.value
-        finish(key: key, icon: icon, generation: generation)
-        return icon
+        let outcome = await task.value
+        finish(key: key, outcome: outcome, generation: generation)
+        if case let .icon(icon) = outcome { return icon }
+        return nil
     }
 
     /// Forgets every origin. On sign-out and account deletion, so the next account on this
@@ -112,41 +132,59 @@ final class FaviconResolver: @unchecked Sendable {
         generation += 1
         inFlight.values.forEach { $0.cancel() }
         inFlight.removeAll()
-        resolved.removeAll()
+        without.removeAll()
+        icons.removeAllObjects()
     }
 
     // MARK: - Bookkeeping
 
     /// The running lookup for `key`, started if there is none; nil once it has resolved.
-    private func startOrJoin(key: String, origin: URL) -> (Task<Icon?, Never>?, Int) {
+    private func startOrJoin(key: String, origin: URL) -> (Task<Outcome, Never>?, Int) {
         lock.lock()
         defer { lock.unlock() }
-        if resolved[key] != nil { return (nil, generation) }
+        if without.contains(key) || icons.object(forKey: key as NSString) != nil { return (nil, generation) }
         if let running = inFlight[key] { return (running, generation) }
         let task = Task { [session] in await Self.resolve(origin: origin, session: session) }
         inFlight[key] = task
         return (task, generation)
     }
 
-    private func finish(key: String, icon: Icon?, generation: Int) {
+    private func finish(key: String, outcome: Outcome, generation: Int) {
         lock.lock()
         defer { lock.unlock() }
         guard generation == self.generation else { return }
         inFlight[key] = nil
-        if resolved[key] == nil {
-            resolved[key] = icon.map(Entry.icon) ?? Entry.none
+        switch outcome {
+        case let .icon(icon): icons.setObject(icon, forKey: key as NSString)
+        case .none: without.insert(key)
+        // Not remembered: the next row to show this site asks again.
+        case .unreachable: break
         }
     }
 
     // MARK: - Fetching
 
-    private static func resolve(origin: URL, session: URLSession) async -> Icon? {
-        for candidate in await declaredIcons(origin: origin, session: session).prefix(maxCandidates) {
-            if Task.isCancelled { return nil }
-            if let icon = await loadIcon(candidate, session: session) { return icon }
+    /// `unreachable` when nothing loaded and any request on the way failed to get an
+    /// answer: with the network down every one of them fails, and that says nothing about
+    /// the site.
+    private static func resolve(origin: URL, session: URLSession) async -> Outcome {
+        var unreachable = false
+        let (declared, pageReached) = await declaredIcons(origin: origin, session: session)
+        if !pageReached { unreachable = true }
+        for candidate in declared.prefix(maxCandidates) {
+            if Task.isCancelled { return .unreachable }
+            switch await loadIcon(candidate, session: session) {
+            case let .icon(icon): return .icon(icon)
+            case .unreachable: unreachable = true
+            case .none: break
+            }
         }
-        guard !Task.isCancelled, let fallback = URL(string: "/favicon.ico", relativeTo: origin)?.absoluteURL else { return nil }
-        return await loadIcon(fallback, session: session)
+        guard !Task.isCancelled, let fallback = URL(string: "/favicon.ico", relativeTo: origin)?.absoluteURL else { return .unreachable }
+        switch await loadIcon(fallback, session: session) {
+        case let .icon(icon): return .icon(icon)
+        case .unreachable: return .unreachable
+        case .none: return unreachable ? .unreachable : .none
+        }
     }
 
     /// No Referer is ever set (URLSession adds none of its own), so the request says which
@@ -164,23 +202,31 @@ final class FaviconResolver: @unchecked Sendable {
         return request
     }
 
+    private enum Fetched {
+        case body(Data, HTTPURLResponse)
+        /// The site answered, with something that is not wanted (a 404, the wrong type).
+        case refused
+        /// No answer: no network, a timeout, a connection that dropped.
+        case unreachable
+    }
+
     /// Reads at most `limit` bytes of a 200 response, streamed, so that a site answering
     /// with something huge costs no more than the cap.
-    private static func read(_ url: URL, limit: Int, session: URLSession, accept: (HTTPURLResponse) -> Bool) async -> (Data, HTTPURLResponse)? {
+    private static func read(_ url: URL, limit: Int, session: URLSession, accept: (HTTPURLResponse) -> Bool) async -> Fetched {
         do {
             let (bytes, response) = try await session.bytes(for: request(url))
             guard let http = response as? HTTPURLResponse, http.statusCode == 200, accept(http),
                   isWeb(http.url ?? url)
-            else { return nil }
+            else { return .refused }
             var data = Data()
             for try await byte in bytes {
                 data.append(byte)
                 if data.count >= limit { break }
             }
-            return (data, http)
+            return .body(data, http)
         } catch {
             // Nothing logged: the error would carry the site's address.
-            return nil
+            return .unreachable
         }
     }
 
@@ -191,28 +237,59 @@ final class FaviconResolver: @unchecked Sendable {
 
     /// The icons the root page declares, largest first, resolved against the address the
     /// page was finally served from (a redirect to `www.` moves relative paths with it).
-    private static func declaredIcons(origin: URL, session: URLSession) async -> [URL] {
-        guard let (data, http) = await read(origin, limit: maxPageBytes, session: session, accept: {
+    /// With them, whether the page was reached at all.
+    private static func declaredIcons(origin: URL, session: URLSession) async -> ([URL], reached: Bool) {
+        let fetched = await read(origin, limit: maxPageBytes, session: session, accept: {
             $0.mimeType?.lowercased().contains("html") == true
-        }) else { return [] }
+        })
+        guard case let .body(data, http) = fetched else {
+            if case .unreachable = fetched { return ([], false) }
+            return ([], true)
+        }
         // Lossy on purpose, unlike the title scraper: only ASCII markup is wanted here, and a
         // page cut mid-character at the cap still has its <head> intact.
         let html = String(decoding: data, as: UTF8.self)
         let base = http.url ?? origin
-        return iconLinks(in: html)
+        let urls: [URL] = iconLinks(in: html)
             .sorted { $0.size > $1.size }
             .compactMap { link in
                 guard let url = URL(string: link.href, relativeTo: base)?.absoluteURL, isWeb(url) else { return nil }
                 return url
             }
+        return (urls, true)
     }
 
-    private static func loadIcon(_ url: URL, session: URLSession) async -> Icon? {
-        guard let (data, _) = await read(url, limit: maxIconBytes, session: session, accept: { response in
+    private static func loadIcon(_ url: URL, session: URLSession) async -> Outcome {
+        let fetched = await read(url, limit: maxIconBytes, session: session, accept: { response in
             // Some servers label icons loosely; refuse only what is plainly a page.
             !(response.mimeType?.lowercased().contains("html") ?? false)
-        }), data.count < maxIconBytes, let image = PlatformImage(data: data), image.size.width > 0 else { return nil }
-        return Icon(image)
+        })
+        switch fetched {
+        case .unreachable: return .unreachable
+        case .refused: return .none
+        case let .body(data, _):
+            guard data.count < maxIconBytes, let image = downsampled(data) else { return .none }
+            return .icon(Icon(image))
+        }
+    }
+
+    /// The image in `data`, decoded no larger than it is drawn. ImageIO reads the formats
+    /// icons come in (`.ico` among them) and makes the small bitmap without first making
+    /// the full one.
+    private static func downsampled(_ data: Data) -> PlatformImage? {
+        guard let source = CGImageSourceCreateWithData(data as CFData, [kCGImageSourceShouldCache: false] as CFDictionary),
+              let scaled = CGImageSourceCreateThumbnailAtIndex(source, 0, [
+                  kCGImageSourceCreateThumbnailFromImageAlways: true,
+                  kCGImageSourceCreateThumbnailWithTransform: true,
+                  kCGImageSourceThumbnailMaxPixelSize: maxIconPixels,
+              ] as CFDictionary),
+              scaled.width > 0
+        else { return nil }
+        #if canImport(UIKit)
+        return UIImage(cgImage: scaled)
+        #else
+        return NSImage(cgImage: scaled, size: NSSize(width: scaled.width, height: scaled.height))
+        #endif
     }
 
     // MARK: - Parsing
