@@ -276,9 +276,19 @@ export const deleteAccount = onCall({ cors: true, secrets, timeoutSeconds: 300 }
   return { deleted: true };
 });
 
-export const finishAccountDeletions = onSchedule({ schedule: 'every 60 minutes', timeZone: 'Etc/UTC' }, async () => {
-  const finished = await finishDeletions(new Date());
-  if (finished.length > 0) {
-    logger.info(`finishAccountDeletions: finished ${finished.length} deletion${finished.length === 1 ? '' : 's'}`);
+/**
+ * Nine minutes, the most a scheduled function may have, not the default one: this is
+ * also what finishes a deletion the callable was cut off in the middle of, which is by
+ * definition an account too large for five minutes. On the default, each hourly run
+ * would spend its minute on that one marker and be killed, and every deletion queued
+ * behind it would wait an hour per run, past the two hours the public page promises.
+ */
+export const finishAccountDeletions = onSchedule(
+  { schedule: 'every 60 minutes', timeZone: 'Etc/UTC', timeoutSeconds: 540 },
+  async () => {
+    const finished = await finishDeletions(new Date());
+    if (finished.length > 0) {
+      logger.info(`finishAccountDeletions: finished ${finished.length} deletion${finished.length === 1 ? '' : 's'}`);
+    }
   }
-});
+);
