@@ -5,9 +5,21 @@ import { auth } from '@/config/firebase';
 import { AuthContext } from '@/contexts/AuthContext';
 import { sendToExtension } from '@/services/extension';
 
+/**
+ * Whether Firebase has said who is signed in yet. On a prerendered page src/main.tsx waits
+ * for that before mounting, so the provider can start from the answer: starting from
+ * `loading` would render nothing first, and that empty render replaces the prerendered page
+ * for the moment before the listener below reports. Everywhere else the app mounts at once,
+ * this is still false, and the provider waits for the listener as it always has.
+ */
+let authKnown = false;
+auth.authStateReady().then(() => {
+  authKnown = true;
+});
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [user, setUser] = useState<User | null>(() => (authKnown ? auth.currentUser : null));
+  const [loading, setLoading] = useState(() => !authKnown);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
