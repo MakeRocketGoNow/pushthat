@@ -252,7 +252,10 @@ describe('deleteAccountOf', () => {
 
   test('an account that never subscribed asks nothing of Stripe', async () => {
     await getAuth().createUser({ uid: UID, email: `${UID}@example.com` });
-    await db().collection('users').doc(UID).set({ email: `${UID}@example.com`, fcmTokens: ['t'] });
+    await db()
+      .collection('users')
+      .doc(UID)
+      .set({ email: `${UID}@example.com`, fcmTokens: ['t'] });
 
     await deleteAccountOf(UID, { stripe: config(), now: NOW });
 
@@ -430,7 +433,10 @@ describe('deleteAccount', () => {
       billingOff();
       delete process.env.FUNCTIONS_EMULATOR;
       await getAuth().createUser({ uid: UID, email: `${UID}@example.com` });
-      await db().collection('users').doc(UID).set({ email: `${UID}@example.com` });
+      await db()
+        .collection('users')
+        .doc(UID)
+        .set({ email: `${UID}@example.com` });
 
       expect(await call(deleteAccount, UID, {}, { auth_time: nowSeconds() })).toEqual({ deleted: true });
     });
