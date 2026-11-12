@@ -13,6 +13,7 @@ import {
   deleteCustomer,
   ensureSubscriptionCanceled,
   expireOpenCheckouts,
+  isMissingAtStripe,
   subscriptionsOf,
 } from './stripe';
 import { secrets, stripeConfig, uidOf } from './stripe-functions';
@@ -174,9 +175,6 @@ async function customersOf(db: Firestore, uid: string): Promise<string[]> {
   const fromDoc = (user.data() as { billing?: { customerId?: unknown } } | undefined)?.billing?.customerId;
   return [...new Set([...(typeof fromDoc === 'string' && fromDoc ? [fromDoc] : []), ...rows.docs.map((d) => d.id)])];
 }
-
-const isMissingAtStripe = (err: unknown) =>
-  err instanceof StripeError && (err.status === 404 || err.code === 'resource_missing');
 
 /**
  * Ends what the account has at Stripe. The subscription is what must not survive: an

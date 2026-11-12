@@ -181,6 +181,10 @@ export async function createCustomer(
 
 const CUSTOMER_KEY_WINDOW_MS = 10 * 60 * 1000;
 
+/** Stripe saying the thing asked about does not exist (any more). */
+export const isMissingAtStripe = (err: unknown): boolean =>
+  err instanceof StripeError && (err.status === 404 || err.code === 'resource_missing');
+
 /**
  * Deletes the customer, for an account being deleted (account-deletion.ts): Stripe drops
  * the customer and the email it was made with from the account's customer list, and ends
@@ -192,7 +196,7 @@ export async function deleteCustomer(stripe: StripeConfig, customerId: string): 
   try {
     await stripeCall(stripe, 'DELETE', `/v1/customers/${encodeURIComponent(customerId)}`);
   } catch (err) {
-    if (err instanceof StripeError && (err.status === 404 || err.code === 'resource_missing')) return;
+    if (isMissingAtStripe(err)) return;
     throw err;
   }
 }
