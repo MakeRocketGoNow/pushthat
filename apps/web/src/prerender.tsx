@@ -14,8 +14,9 @@ export { STATIC_PAGES };
  * signed in.
  *
  * Not `App`: its providers read `localStorage` and IndexedDB as they start, which Node does
- * not have, and these pages use none of them. `Layout` still imports the Firebase config,
- * which only builds the SDK's objects and makes no request until something signs in.
+ * not have, and these pages use none of them. `Layout` reads only contexts/AuthContext.tsx,
+ * which imports no Firebase, and `scripts/prerender.mjs` fails the build if anything here
+ * does: Firebase Auth started in Node keeps the script from exiting.
  */
 export function render(path: string): { html: string; title: string } {
   const entry = STATIC_PAGES.find((p) => p.path === path);
