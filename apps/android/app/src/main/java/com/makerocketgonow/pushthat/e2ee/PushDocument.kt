@@ -287,7 +287,8 @@ object PushDocument {
      * [PushTooLargeException] when even the title alone does not fit, as before icons.
      */
     fun retitle(keys: PushKeys, id: String, content: PushContent.Url, title: String?, icon: String?): PreparedPush? {
-        val newTitle = title?.takeIf { it.isNotBlank() && it != content.title }
+        // Cut as the envelope cuts it, so a long title read again is not taken for a change.
+        val newTitle = title?.let { PreparedPush.cutTitle(it) }?.takeIf { it.isNotBlank() && it != content.title }
         val newIcon = icon?.takeIf { it.isNotEmpty() && content.icon.isEmpty() }
         if (newTitle == null && newIcon == null) return null
         val updated = content.copy(title = newTitle ?: content.title, icon = newIcon ?: content.icon)

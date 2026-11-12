@@ -168,6 +168,11 @@ class PushDocumentTest {
         assertNull(PushDocument.retitle(keys, "r2", titled, "Example", null))
         assertNull(PushDocument.retitle(keys, "r2", titled, " ", ""))
         assertEquals(PushContent.Url("https://example.com", "Example", "", "QUJD"), opened(PushDocument.retitle(keys, "r2", titled, "Example", "QUJD"), "r2"))
+
+        // A title over the limit is stored cut, and read again it is the same title.
+        val long = "x".repeat(PreparedPush.MAX_TITLE_LENGTH + 50)
+        val cut = PushContent.Url("https://example.com", PreparedPush.cutTitle(long), "")
+        assertNull(PushDocument.retitle(keys, "r2", cut, long, null))
     }
 
     @Test
