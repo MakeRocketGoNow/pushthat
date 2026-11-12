@@ -51,8 +51,14 @@ object Favicons {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
+    /**
+     * What a lookup found: the addresses to try, and whether the site answered. A lookup
+     * the site did not answer (no network, a timeout) is not kept, see [candidates].
+     */
+    private class Found(val candidates: List<String>, val answered: Boolean)
+
     /** One lookup per site, shared by every row that links to it, running or done. */
-    private val lookups = ConcurrentHashMap<String, Deferred<List<String>>>()
+    private val lookups = ConcurrentHashMap<String, Deferred<Found>>()
 
     /** `scheme://host[:port]` for a web address, or null for anything else (a `mailto:`, a typo). */
     fun originOf(url: String?): String? {
@@ -65,21 +71,33 @@ object Favicons {
 
     /** The icons already found for [origin], if its lookup has finished: lets a row draw without a flash. */
     fun known(origin: String): List<String>? =
-        lookups[origin]?.takeIf { it.isCompleted && !it.isCancelled }?.let { runCatching { it.getCompleted() }.getOrNull() }
+        lookups[origin]?.takeIf { it.isCompleted && !it.isCancelled }
+            ?.let { runCatching { it.getCompleted() }.getOrNull() }?.candidates
 
     /**
      * The addresses to try for [origin]'s icon, best first: what its front page names, then
      * `/favicon.ico`. Never empty and never throws: a site that cannot be read still has
      * `/favicon.ico` to try.
+     *
+     * A lookup that failed to reach the site is answered with `/favicon.ico` this once and
+     * then forgotten, so the next row to show the site asks again. Kept, it would have
+     * pinned a site whose icon is only named in its page to the fallback, or the
+     * placeholder, until the process died, for no more reason than the list having been
+     * opened in a lift.
      */
-    suspend fun candidates(origin: String): List<String> =
-        lookups.getOrPut(origin) { scope.async { lookUp(origin) } }.await()
+    suspend fun candidates(origin: String): List<String> {
+        val lookup = lookups.getOrPut(origin) { scope.async { lookUp(origin) } }
+        val found = lookup.await()
+        if (!found.answered) lookups.remove(origin, lookup)
+        return found.candidates
+    }
 
     /** Forgets every site looked up. At sign-out (`forgetSession`): the next account's list is its own. */
     fun clear() = lookups.clear()
 
-    private fun lookUp(origin: String): List<String> {
+    private fun lookUp(origin: String): Found {
         val fallback = "$origin/favicon.ico"
+        var answered = true
         val named = try {
             val request = Request.Builder().url("$origin/").header("User-Agent", "Mozilla/5.0").build()
             http.newCall(request).execute().use { response ->
@@ -99,9 +117,10 @@ object Favicons {
             // The exception's type only: its message can name the site, which is what a
             // pushed link's host is and what the log must not hold.
             Log.d(TAG, "No front page to read an icon from: ${e.javaClass.simpleName}")
+            answered = false
             emptyList()
         }
-        return (named + fallback).distinct()
+        return Found((named + fallback).distinct(), answered)
     }
 
     /**
