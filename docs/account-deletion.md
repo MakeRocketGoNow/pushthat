@@ -52,6 +52,12 @@ In order:
 5. **The Auth user**, last. It is what lets the person ask again, so if a step before it
    fails they can still sign in, and the next call picks up where this one stopped.
 
+Deleting the pushes starts `onPushRecordDeleted` once per push, link pushes included: for
+those it logs a line and returns. An account with tens of thousands of pushes therefore
+costs that many short invocations and log lines when it is deleted. That is the trigger as
+it has always been, and account deletion is the first thing to delete in bulk; it is noted
+here so the burst in the logs after a large deletion is recognised for what it is.
+
 Every step is content to find its work already done, so the call is idempotent: a second
 call, or one for an account already deleted (its last ID token can still reach the function
 for an hour), succeeds and changes nothing.
@@ -107,7 +113,7 @@ Three of these depend on settings outside the repository, which nothing here can
 ## Local data on each device
 
 After the function answers, the client that asked clears what it holds and signs out. What
-"what it holds" is differs by client, because what each one keeps differs:
+each client holds differs, because each keeps different things:
 
 | | Web and extension | Android | iOS | macOS |
 | --- | --- | --- | --- | --- |
@@ -129,24 +135,24 @@ addressed when the user document goes, and is replaced at the next sign-in.
 ## When the client hears nothing back
 
 The function may run for five minutes on a large account, so every client waits a little
-longer than that (310 seconds). If the call still ends with no answer (a dropped
-connection, a crash on the server), the client does not know how far the deletion got, and
-must not say "nothing was deleted": past Stripe the marker is written and the sweep will
-finish the job regardless. It asks Firebase whether the account still exists. The Auth user
-is the last thing deleted, so gone means done, and the client clears its local data and
-signs out; otherwise it says the outcome could not be confirmed, and that the account is gone
-once signing in with the right password no longer works. A retry that finds the account already gone is treated as the deletion having succeeded, on
-the apps. With email enumeration protection on, Firebase refuses a deleted account's
-password exactly as it would a wrong one, so the apps ask about the session they already
-hold (`reload`) and count only "no such user". A revoked session does not count there: a
-password change or reset on another device revokes every session too, and reading that as
-"deleted" told someone who had mistyped that their account was gone when the server had not
-been asked. It counts only straight after the deletion's own sign-in, when nothing but the
-function can have revoked it. The web cannot tell the two apart (Firebase answers both with
-"token expired" there), so a retry on the web reads "The email or password is not right",
-and the unconfirmed message says what that means. Only the function's own refusals (an old
-sign-in, a subscription that would not cancel), which are made before anything is deleted,
-are shown as refusals.
+longer than that (310 seconds). If the call still ends with no answer (a dropped connection,
+a crash on the server), the client does not know how far the deletion got, and must not say
+"nothing was deleted": past Stripe the marker is written and the sweep will finish the job
+regardless. It asks Firebase whether the account still exists. The Auth user is the last
+thing deleted, so gone means done, and the client clears its local data and signs out;
+otherwise it says the outcome could not be confirmed, and that the account is gone once
+signing in with the right password no longer works. A retry that finds the account already
+gone is treated as the deletion having succeeded, on the apps. With email enumeration
+protection on, Firebase refuses a deleted account's password exactly as it would a wrong
+one, so the apps ask about the session they already hold (`reload`) and count only "no such
+user". A revoked session does not count there: a password change or reset on another device
+revokes every session too, and reading that as "deleted" told someone who had mistyped that
+their account was gone when the server had not been asked. It counts only straight after the
+deletion's own sign-in, when nothing but the function can have revoked it. The web cannot
+tell the two apart (Firebase answers both with "token expired" there), so a retry on the web
+reads "The email or password is not right", and the unconfirmed message says what that
+means. Only the function's own refusals (an old sign-in, a subscription that would not
+cancel), which are made before anything is deleted, are shown as refusals.
 
 ## The public page
 
@@ -163,4 +169,3 @@ to support.
 
 The website's and the extension's menu item leads to this page. The Android, iOS and macOS
 apps ask for the password in a dialog of their own and call the function directly.
-
