@@ -244,6 +244,36 @@ class AccountKeys(
     }
 
     /**
+     * Proves [password] with a fresh sign-in and returns the ID token it gives, for the one
+     * call that needs a recent sign-in: deleting the account (`AccountDeletion`), which the
+     * function refuses from a session older than five minutes. Reads and writes no keys.
+     *
+     * The same passwords in the same order as [signInToFirebase], so an account that still
+     * has its raw password in Firebase (made before encryption, or straight after a reset)
+     * can be deleted without first being moved to `authKey`. Throws
+     * [FirebaseAuthInvalidCredentialsException] when none of them is the password.
+     */
+    suspend fun freshTokenFor(password: String): String {
+        val user = auth.currentUser ?: throw IllegalStateException("not signed in")
+        val email = user.email ?: throw IllegalStateException("the account has no email")
+        val keys = derive(email, password)
+        var refusal: FirebaseAuthInvalidCredentialsException? = null
+        for (candidate in listOf(keys.firebasePassword, password, password.trim()).distinct()) {
+            if (candidate.isEmpty()) continue
+            try {
+                user.reauthenticate(EmailAuthProvider.getCredential(email, candidate)).await()
+                refusal = null
+                break
+            } catch (e: FirebaseAuthInvalidCredentialsException) {
+                refusal = refusal ?: e
+            }
+        }
+        refusal?.let { throw it }
+        // Forced: the token in hand carries the old sign-in's time, not this one's.
+        return user.getIdToken(true).await().token ?: throw IllegalStateException("no ID token after signing in")
+    }
+
+    /**
      * The spec's order: a new password wrap first, then the Firebase password, then the old
      * wrap goes. A crash between any two leaves an account that opens with either password,
      * never one that opens with neither.

@@ -26,4 +26,10 @@ interface PendingPushDao {
 
     @Delete
     fun delete(pendingPush: PendingPush): Int
+
+    // For an account that has been deleted (AccountDeletion): its queued pushes have no
+    // account left to be written to. A row from before rows named their account has no
+    // user_id, and stays for whoever signs in next, as it always has.
+    @Query("DELETE FROM pending_pushes WHERE user_id = :userId")
+    fun deleteAllFor(userId: String): Int
 }
