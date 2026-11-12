@@ -36,6 +36,13 @@ import styles from './DeleteAccount.module.css';
  */
 let deletedHere = false;
 
+/**
+ * For a call that ended with no answer (`OutcomeUnknownError`, or anything unexpected).
+ * The same words on every client.
+ */
+const UNCONFIRMED =
+  'We could not confirm that your account was deleted. It may still be finishing. Try again in a few minutes: if your password is then refused, the account is gone.';
+
 export function DeleteAccount() {
   const { user } = useAuth();
   const sessionEmail = user?.email ?? '';
@@ -59,9 +66,10 @@ export function DeleteAccount() {
       setDone(true);
     } catch (err) {
       setError(
-        err instanceof WrongPasswordError
-          ? 'The email or password is not right. Nothing was deleted.'
-          : errorText(err, 'The account could not be deleted. Nothing was removed; try again shortly.')
+        // Neither says "nothing was deleted": only the function's own refusals can promise
+        // that, and they come with their own sentence. A wrong password on a second try
+        // may be the first try having worked.
+        err instanceof WrongPasswordError ? 'The email or password is not right.' : errorText(err, UNCONFIRMED)
       );
     } finally {
       setBusy(false);
