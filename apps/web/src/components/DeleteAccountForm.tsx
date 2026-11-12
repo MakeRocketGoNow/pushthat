@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 
 import { useAuth } from '@/contexts/AuthContext';
 import { OutcomeUnknownError, deleteAccount } from '@/services/account';
-import { errorText } from '@/services/plan';
+import { errorText } from '@/services/callable';
 import { WrongPasswordError } from '@/services/signIn';
 
 import styles from './DeleteAccountForm.module.css';

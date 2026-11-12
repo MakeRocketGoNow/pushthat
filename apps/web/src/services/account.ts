@@ -4,8 +4,8 @@ import { getFunctions, httpsCallable } from 'firebase/functions';
 
 import { app, auth } from '@/config/firebase';
 
+import { errorText } from './callable';
 import { clearAccountKey } from './keyStore';
-import { errorText } from './plan';
 import { proveByPassword } from './signIn';
 
 /**
@@ -82,7 +82,7 @@ async function endSession(): Promise<void> {
  * for this to resolve would be setting state on a component that is already gone.
  *
  * Throws `WrongPasswordError` for a wrong email or password, whatever the function
- * refused with in its own words (`errorText` in plan.ts reads it), and
+ * refused with in its own words (`errorText` in callable.ts reads it), and
  * `OutcomeUnknownError` when the call ended without an answer and the account is still
  * there.
  */
