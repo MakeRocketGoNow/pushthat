@@ -53,14 +53,36 @@ Each value can also come from the environment, which is how CI signs:
 
 ## Shipping to Play
 
-A push to `main` that touches `apps/android/` builds a signed bundle and uploads it to the
-closed testing track and rolls it out to that track's testers (`.github/workflows/android.yml`,
-`status: completed`): once Play's checks pass, testers get it without anyone opening Play
-Console. Production is not touched; promoting a build there stays a manual release in Play
-Console. Run the workflow
-from the Actions tab on `main` to cut a build without a push. Pull requests and other
-branches run only the `build` job: the tests and an unsigned bundle, which proves the
-release path compiles, with no secrets and nothing published.
+A build moves through three tracks, and CI only ever starts the first two:
+
+- **Internal testing, on every merge.** A push to `main` that touches `apps/android/`
+  builds a signed bundle, uploads it to the internal testing track and rolls it out to that
+  track's testers (`.github/workflows/android.yml`, `status: completed`). Play does not
+  review internal releases, so the build is on their phones within minutes and nobody opens
+  Play Console.
+- **Closed testing, when someone asks.** Run the workflow from the Actions tab on `main`
+  with "Send this build to closed testing" ticked. It builds `main` as it stands, under a
+  new version code, and releases it to the closed track, where Play reviews it before
+  testers get it. Promoting an internal release in Play Console does the same with the
+  exact bundle the internal testers had.
+- **Production, by hand.** Promote a closed testing release in Play Console (Closed
+  testing, the release, Promote release, Production), where Play reviews it again. The
+  workflow names only `internal` and `alpha`, so nothing in CI can reach production.
+
+Every merge used to go to closed testing. Play reviews each closed release, and a newer
+submission replaces one still in review, so several merges in a day meant reviews of builds
+no tester ever received. Closed testing is now for the builds worth a review.
+
+The internal track has its own tester list in Play Console (Internal testing, Testers), of
+up to 100 people, separate from the closed track's: someone on only the closed list gets
+nothing from a merge.
+
+Running the workflow from the Actions tab on `main` without the box ticked cuts an internal
+build without a push. A run started by hand waits behind a build in progress like any
+other, and GitHub keeps only the newest waiting run, so a merge that lands while it waits
+displaces it: start it again. Pull requests and other branches run only the `build` job:
+the tests and an unsigned bundle, which proves the release path compiles, with no secrets
+and nothing published.
 
 Don't build a bundle by hand for Play. A local build keeps `versionCode = 8`, which Play has
 already seen; CI passes the workflow's run number plus 100, which only rises. Never lower

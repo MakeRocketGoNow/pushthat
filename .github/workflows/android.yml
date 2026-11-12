@@ -1,7 +1,8 @@
 name: Android
 
-# Builds the release bundle and, on `main`, uploads it to Play's closed testing track. The
-# unit tests run in ci.yml on every pull request; this workflow is only about the bundle,
+# Builds the release bundle and, on `main`, uploads it to Play's internal testing track.
+# Closed testing gets a build only when someone starts this workflow by hand and asks for
+# it. The unit tests run in ci.yml on every pull request; this workflow is only about the bundle,
 # and is its own workflow so that a push that changes nothing in the app (a copy change on
 # the site, say) does not upload a build. See "Shipping to Play" in docs/android.md for the
 # secrets it reads and the one-off setup in Play Console and GitHub.
@@ -18,6 +19,14 @@ on:
   # Cutting a release build on demand, without waiting for a push. Started on `main` it
   # publishes; on any other branch it only builds.
   workflow_dispatch:
+    inputs:
+      # A checkbox rather than a free-text track name, so that the only tracks a run can
+      # reach are the two spelled out in the publish step. A text input would let anyone
+      # who can start the workflow type `production`.
+      closed_testing:
+        description: Send this build to closed testing (Play reviews it) instead of internal testing
+        type: boolean
+        default: false
 
 # A second push to a pull request makes the first one's build pointless, so don't pay to
 # finish it. Elsewhere a run that has started always finishes, and runs go one at a time,
@@ -124,7 +133,7 @@ jobs:
       # re-signs it per device; the APK is what `adb install` and a sideload take.
       #
       # The repository is public, so anyone signed in to GitHub can download a run's
-      # artifacts. The default 90 days would leave every closed-testing build open to them;
+      # artifacts. The default 90 days would leave every testing build open to them;
       # three is long enough to sideload a build for a quick check, and Play keeps its own
       # copy of the bundle for anything later.
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -149,25 +158,33 @@ jobs:
           name=$(grep -m1 'versionName = ' app/build.gradle.kts | sed 's/.*versionName = "\(.*\)".*/\1/')
           echo "name=${PUSHTHAT_VERSION_CODE} (${name})" >> "$GITHUB_OUTPUT"
 
+      # A merge goes to internal testing, and closed testing only when the run was started by
+      # hand with the box ticked. Every merge used to go to closed testing, but Play reviews
+      # each closed release and a newer submission replaces one still in review, so on a day
+      # with several merges the earlier builds were reviewed for nothing and testers could
+      # wait on a queue that kept restarting. Internal testing skips that review and has a
+      # build on phones within minutes, which is what a per-merge build wants; closed
+      # testing then gets the builds someone chose to put in front of its testers. `inputs`
+      # is empty on a push, so a push always lands on `internal`.
+      #
       # `status: completed` rolls the release out to the track's testers as soon as Play's
-      # checks pass, so a merge reaches their phones without anyone opening Play Console.
+      # checks pass, so a build reaches their phones without anyone opening Play Console.
       # It started as `draft`, which left every build waiting for a person to press the
-      # button, and closed testing is for getting each build onto testers' phones.
-      # Production is still promoted by hand in Play Console; nothing here can reach it,
-      # because the only track named is `alpha`.
+      # button. Production is still promoted by hand in Play Console; nothing here can
+      # reach it, because the only tracks named are `internal` and `alpha`.
       #
       # `alpha` is the API's name for the default closed testing track: "closed" is not a
       # track name, and a custom closed track is referenced by the name it was given in Play
       # Console. `tracks`, plural: the singular `track` still works but warns that it is
       # going away.
-      - name: Publish to Play closed testing
+      - name: Publish to Play
         if: steps.publishable.outputs.ready == 'true'
         uses: r0adkll/upload-google-play@e738b9dd8f2476ea806d921b64aacd24f34515a5 # v1.1.5
         with:
           serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
           packageName: com.makerocketgonow.pushthat
           releaseFiles: apps/android/app/build/outputs/bundle/release/*.aab
-          tracks: alpha
+          tracks: ${{ inputs.closed_testing && 'alpha' || 'internal' }}
           status: completed
           releaseName: ${{ steps.release_name.outputs.name }}
           # Written by hand in `apps/android/store/whatsnew/`, not generated from commit
