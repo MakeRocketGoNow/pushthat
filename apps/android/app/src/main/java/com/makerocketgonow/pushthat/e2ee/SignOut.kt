@@ -4,6 +4,7 @@ import android.content.Context
 import com.google.firebase.Firebase
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.auth
+import com.makerocketgonow.pushthat.Favicons
 import com.makerocketgonow.pushthat.PushFiles
 
 /**
@@ -21,10 +22,13 @@ fun signOut(context: Context, auth: FirebaseAuth = Firebase.auth) {
 
 /**
  * What a session leaves on this install, dropped when it ends however it ends (Logout, or
- * Firebase ending it on its own): the account key, and the last file decrypted with it,
- * which sits in plaintext in the cache until the next file is opened.
+ * Firebase ending it on its own): the account key, the last file decrypted with it, which
+ * sits in plaintext in the cache until the next file is opened, and the list of sites
+ * whose icons were looked up.
  */
 fun forgetSession(context: Context) {
     AccountKeyStore.clear(context)
     PushFiles.clear(context)
+    // The sites whose icons were looked up for this account's list, held in memory.
+    Favicons.clear()
 }
