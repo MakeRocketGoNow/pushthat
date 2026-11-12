@@ -41,6 +41,16 @@ actor TitleScraperService {
     /// How long the icon candidates are tried for, after the page.
     private static let iconBudget: TimeInterval = 30
 
+    /// The session every request of a scrape goes through. `timeoutInterval` bounds only a
+    /// gap between bytes, so a server sending one byte every few seconds held a request open
+    /// indefinitely, and the icon adds up to nine requests to the page's. The resource
+    /// timeout bounds each one start to finish, as `callTimeout` does on Android.
+    private static let session: URLSession = {
+        let configuration = URLSessionConfiguration.default
+        configuration.timeoutIntervalForResource = 15
+        return URLSession(configuration: configuration)
+    }()
+
     /// Sent with the page's request and its icons' alike, so the site sees one browser.
     private static let userAgent = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1"
 
@@ -60,7 +70,7 @@ actor TitleScraperService {
             // the <title> is; `timeoutInterval` bounds a stall, not a download, so without the
             // cap a large file would be pulled into memory on every launch. Nor is an icon
             // looked for on anything but a page: a link to a file shows its type's icon.
-            let (bytes, response) = try await URLSession.shared.bytes(for: request)
+            let (bytes, response) = try await Self.session.bytes(for: request)
 
             guard let httpResponse = response as? HTTPURLResponse,
                   httpResponse.statusCode == 200,
@@ -100,13 +110,12 @@ actor TitleScraperService {
     /// time, best first, so a page whose first candidate is good costs one request more
     /// than its title.
     private func fetchIcon(from candidates: [URL]) async -> String? {
-        // A budget for the lot, checked between candidates and while one downloads:
-        // `timeoutInterval` bounds a gap between bytes, not a request, so a server sending a
-        // byte every few seconds held one open indefinitely, and there can be nine.
+        // A budget for the lot, checked between candidates: each request is bounded by the
+        // session, and nine of them in a row still made a long scrape.
         let deadline = Date().addingTimeInterval(Self.iconBudget)
         for candidate in candidates {
-            guard !Task.isCancelled, Date() < deadline else { return nil }
-            guard let data = await download(candidate, until: deadline) else { continue }
+            guard Date() < deadline else { return nil }
+            guard let data = await download(candidate) else { continue }
             switch PushIcon.encode(data) {
             case let .icon(icon): return icon
             case .tooLarge: return nil
@@ -119,12 +128,12 @@ actor TitleScraperService {
     /// A candidate's bytes, or nil when it does not answer 200 or is over
     /// `PushIcon.maxDownloadBytes`. Streamed as the page is, so a large file is given up at
     /// the cap rather than pulled into memory first.
-    private func download(_ url: URL, until deadline: Date) async -> Data? {
+    private func download(_ url: URL) async -> Data? {
         var request = URLRequest(url: url)
         request.setValue(Self.userAgent, forHTTPHeaderField: "User-Agent")
         request.timeoutInterval = 10
         do {
-            let (bytes, response) = try await URLSession.shared.bytes(for: request)
+            let (bytes, response) = try await Self.session.bytes(for: request)
             guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200,
                   httpResponse.expectedContentLength <= Int64(PushIcon.maxDownloadBytes)
             else { return nil }
@@ -132,7 +141,6 @@ actor TitleScraperService {
             for try await byte in bytes {
                 data.append(byte)
                 if data.count > PushIcon.maxDownloadBytes { return nil }
-                if data.count % 4096 == 0, Task.isCancelled || Date() >= deadline { return nil }
             }
             return data
         } catch {
