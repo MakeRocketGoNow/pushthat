@@ -114,8 +114,13 @@ After the function answers, the client that asked clears what it holds and signs
 | The account key and any unconfirmed recovery key | yes | yes | yes | yes |
 | Decrypted files in the cache | none kept | yes | yes | yes |
 | Pushes queued for a retry | none kept | yes | yes | yes |
+| Icons decoded from the list's pushes, in memory | until the tab closes | until the app closes | until the app closes | until the app closes |
 | The notification (FCM) token | not held by the page | yes | yes | no FCM |
 | The Analytics installation id | no Analytics | yes | yes | no Analytics |
+
+The decoded icons are the one thing here that outlives the sign-out: each app keeps a
+bounded cache of the icons it has drawn, in memory only, which neither sign-out nor deletion
+empties. They go with the process.
 
 The device id stays everywhere, as it does at sign-out: it belongs to the install, not the
 account. The extension's worker keeps its own FCM token in `chrome.storage`; it stops being
