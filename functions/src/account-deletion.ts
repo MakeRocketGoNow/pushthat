@@ -43,7 +43,7 @@ import { secrets, stripeConfig, uidOf } from './stripe-functions';
  * signed in could write its notification token back to `users/{uid}`, or a push made in
  * the same second could be counted by `onNewPushCreated` after the purge. Refusing those
  * in the rules would cost every push a second document read for the life of the project.
- * Instead a marker, `accountDeletions/{uid}`, is left holding only the time, and
+ * Instead a marker, `accountDeletions/{uid}`, is left holding only two times, and
  * `finishAccountDeletions` purges the same places again once every token the account
  * ever had has expired, then removes the marker. So the first purge is immediate and the
  * second is what makes "nothing is left" true without depending on the clients.
@@ -303,7 +303,9 @@ export async function finishDeletions(
       await marker.ref.delete();
       finished.push(uid);
       if (report.pushes > 0) {
-        logger.info(`[account] user=${uid}: ${report.pushes} push(es) written after the deletion, removed`);
+        logger.info(
+          `[account] user=${uid}: ${report.pushes} push${report.pushes === 1 ? '' : 'es'} written after the deletion, removed`
+        );
       }
     } catch (err) {
       logger.error(`[account] user=${uid}: the second purge failed and will be tried again`, err);
