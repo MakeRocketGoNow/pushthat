@@ -26,8 +26,10 @@ function mount() {
 // long as that takes. Waiting for it first keeps the page on screen until React has the same
 // page to show. Elsewhere `#root` is empty and there is nothing to keep, so nothing waits.
 //
-// Not `hydrateRoot`: it reuses the markup only while the first render matches it exactly,
-// and that first render is the provider's empty one.
+// Not `hydrateRoot`. A signed-out visitor's first render does match the markup, but a
+// signed-in one's has the nav and the menu, which the prerender never has: hydration fails
+// for them, React reports an error and renders from scratch anyway. `createRoot` renders
+// from scratch for everyone without the error, at the cost of the DOM the reader was in.
 if (root.hasChildNodes()) {
   authKnownReady.then(mount, mount);
 } else {
