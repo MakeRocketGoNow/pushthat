@@ -253,16 +253,23 @@ export async function deleteAccountOf(
  * The second purge (see the top of this file): for every deletion whose tokens have all
  * expired by `now`, empties the same places again and removes the marker. Returns the
  * accounts finished. One that fails keeps its marker and is tried again the next hour.
+ *
+ * Stripe is asked again too, before the purge removes the rows that say which customer
+ * to ask about. `createCheckoutSession` refuses an account with a marker, but a checkout
+ * opened in the second before the marker was written could still have been paid since,
+ * and that subscription would renew for an account that does not exist.
  */
 export async function finishDeletions(
   now: Date,
-  { db = getFirestore(), auth = getAuth() }: Pick<DeletionDeps, 'db' | 'auth'> = {}
+  { db = getFirestore(), auth = getAuth(), stripe }: Pick<DeletionDeps, 'db' | 'auth' | 'stripe'> = {}
 ): Promise<string[]> {
   const due = await db.collection('accountDeletions').where('settleAt', '<=', Timestamp.fromDate(now)).get();
   const finished: string[] = [];
   for (const marker of due.docs) {
     const uid = marker.id;
     try {
+      const customerIds = await customersOf(db, uid);
+      if (stripe && customerIds.length > 0) await endBilling(stripe, customerIds, uid);
       const report = await purgeAccountData(db, uid);
       // Already gone unless the first call stopped before it got there.
       await unlessGone(() => auth.deleteUser(uid));
@@ -322,9 +329,9 @@ export const deleteAccount = onCall({ cors: true, secrets, timeoutSeconds: 300 }
  * behind it would wait an hour per run, past the two hours the public page promises.
  */
 export const finishAccountDeletions = onSchedule(
-  { schedule: 'every 60 minutes', timeZone: 'Etc/UTC', timeoutSeconds: 540 },
+  { schedule: 'every 60 minutes', timeZone: 'Etc/UTC', timeoutSeconds: 540, secrets },
   async () => {
-    const finished = await finishDeletions(new Date());
+    const finished = await finishDeletions(new Date(), { stripe: stripeConfig() });
     if (finished.length > 0) {
       logger.info(`finishAccountDeletions: finished ${finished.length} deletion${finished.length === 1 ? '' : 's'}`);
     }

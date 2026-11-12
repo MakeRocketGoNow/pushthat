@@ -344,6 +344,37 @@ describe('finishDeletions', () => {
     expect(await tracesOf(UID)).toEqual([]);
   });
 
+  test('ends a subscription bought with a token that outlived the deletion', async () => {
+    await getAuth().createUser({ uid: UID, email: `${UID}@example.com` });
+    await db()
+      .collection('users')
+      .doc(UID)
+      .set({ email: `${UID}@example.com` });
+    await deleteAccountOf(UID, { stripe: config(), now: NOW });
+    // A checkout that slipped in and was paid: a customer row for the deleted account.
+    await db().collection('stripeCustomers').doc('cus_late').set({ userId: UID, createdAt: NOW });
+    stripeHasCustomer('cus_late', 'sub_late');
+
+    expect(await finishDeletions(settled(NOW), { stripe: config() })).toEqual([UID]);
+
+    expect(stripe.made('DELETE /v1/subscriptions/sub_late')).toHaveLength(1);
+    expect(stripe.made('DELETE /v1/customers/cus_late')).toHaveLength(1);
+    expect(await tracesOf(UID)).toEqual([]);
+  });
+
+  test('keeps the marker, to try again, when that subscription cannot be cancelled', async () => {
+    await getAuth().createUser({ uid: UID, email: `${UID}@example.com` });
+    await deleteAccountOf(UID, { stripe: config(), now: NOW });
+    await db().collection('stripeCustomers').doc('cus_late').set({ userId: UID, createdAt: NOW });
+    stripeHasCustomer('cus_late', 'sub_late');
+    stripe.route('DELETE /v1/subscriptions/sub_late', () => stripeRefusal(500, 'try again'));
+    stripe.route('GET /v1/subscriptions/sub_late', subscription('sub_late', { customer: 'cus_late', created: 1 }));
+
+    expect(await finishDeletions(settled(NOW), { stripe: config() })).toEqual([]);
+
+    expect(await tracesOf(UID)).toContain(`accountDeletions/${UID}`);
+  });
+
   test('leaves a deletion whose tokens may still be alive', async () => {
     await seedAccount(UID, CUSTOMER);
     stripeHasCustomer(CUSTOMER, `sub_${UID}`);

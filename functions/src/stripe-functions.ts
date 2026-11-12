@@ -223,6 +223,13 @@ export const createCheckoutSession = onCall({ cors: true, secrets }, async (requ
   const uid = uidOf(request);
   const db = getFirestore();
   const now = new Date();
+  // A deleted account's last ID token still gets here for up to an hour (docs/account-deletion.md),
+  // and a checkout made with it would be a customer and a subscription for an account
+  // that is gone. The marker is the deletion's own (account-deletion.ts); read here by
+  // its path because that file imports this one.
+  if ((await db.collection('accountDeletions').doc(uid).get()).exists) {
+    throw new HttpsError('failed-precondition', 'This account has been deleted.');
+  }
   const user = await readUser(db, uid);
   const billing = user?.billing;
   // The comp first, so it gets its own sentence; then the one test the report's
