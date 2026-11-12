@@ -86,10 +86,7 @@ class SwivelCheckView @JvmOverloads constructor(
      * a locked push's URL is not known at all.
      */
     fun loadFavicon(url: String?, fileExt: String? = null) {
-        // Whatever this view was waiting on belongs to the row it showed before. Cancelled
-        // here and not when the view leaves the window: RecyclerView puts a row back from
-        // its cache without binding it again, and one whose lookup had been cancelled on
-        // the way out came back showing the placeholder for good.
+        // Whatever this view was waiting on belongs to the row it showed before.
         iconLookup?.cancel()
         iconLookup = null
         iconOrigin = null
@@ -128,13 +125,39 @@ class SwivelCheckView @JvmOverloads constructor(
         Favicons.known(origin)?.let { return showSiteIcon(it) }
         Glide.with(context).clear(frontImageView)
         frontImageView.setImageResource(R.drawable.default_favicon)
+        iconOrigin = origin
+        startLookup(origin)
+    }
+
+    private fun startLookup(origin: String) {
         iconLookup = iconScope.launch {
             val candidates = Favicons.candidates(origin)
-            // Still this row's site: a recycled view's lookup was cancelled above, and this
-            // guards the moment between the answer and the cancel.
+            // Still this row's site: a recycled view's lookup was cancelled in loadFavicon,
+            // and this guards the moment between the answer and the cancel.
             if (iconOrigin == origin) showSiteIcon(candidates)
         }
-        iconOrigin = origin
+    }
+
+    /**
+     * A lookup must not outlive the window. It can take seconds, and one that came back
+     * after its activity was destroyed (a rotation while icons load) drew into it:
+     * `Glide.with` throws for a destroyed activity, and nothing in `iconScope` catches.
+     */
+    override fun onDetachedFromWindow() {
+        super.onDetachedFromWindow()
+        iconLookup?.cancel()
+    }
+
+    /**
+     * The other half: RecyclerView puts a row back from its cache without binding it again,
+     * so a row whose lookup was cancelled on the way out takes it up again here, or it
+     * would come back showing the placeholder for good.
+     */
+    override fun onAttachedToWindow() {
+        super.onAttachedToWindow()
+        val origin = iconOrigin ?: return
+        if (iconLookup?.isCancelled != true) return
+        Favicons.known(origin)?.let { showSiteIcon(it) } ?: startLookup(origin)
     }
 
     /**
