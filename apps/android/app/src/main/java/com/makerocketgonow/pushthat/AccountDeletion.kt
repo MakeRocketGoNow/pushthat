@@ -150,19 +150,41 @@ object AccountDeletion {
             .post("{\"data\":{}}".toRequestBody("application/json".toMediaType()))
             .build()
         http.newCall(request).execute().use { response ->
-            val body = runCatching { JSONObject(response.body.string()) }.getOrNull()
-            if (response.isSuccessful && body?.optJSONObject("result")?.optBoolean("deleted") == true) return@use
-            // A callable's refusal is `{"error": {"status", "message"}}`, and the function
-            // makes its own before it deletes anything, each with a sentence for the
-            // person. Any other failure (INTERNAL, a gateway's error page) says nothing
-            // about how far the deletion got, and is treated like an answer that never came.
-            val error = body?.optJSONObject("error")
-            val message = error?.optString("message")?.takeIf { it.isNotBlank() }
-            if (error == null || message == null || error.optString("status") !in REFUSALS) {
-                throw IOException("deleteAccount answered ${response.code}")
+            when (val answer = answerOf(response.code, response.body.string())) {
+                Answer.Deleted -> Unit
+                is Answer.Refused -> throw RefusedException(answer.message)
+                Answer.Unknown -> throw IOException("deleteAccount answered ${response.code}")
             }
-            throw RefusedException(message)
         }
+    }
+
+    /** What the function's response says happened. */
+    internal sealed interface Answer {
+        data object Deleted : Answer
+
+        /** Refused before anything was deleted, with the function's sentence for the person. */
+        class Refused(val message: String) : Answer
+
+        /** Nothing can be said about how far the deletion got. */
+        data object Unknown : Answer
+    }
+
+    /**
+     * Reads a response's status and body. Apart from the request so that it can be tested:
+     * this is where "nothing was deleted" and "it may have been" are told apart, and a
+     * mistake either way tells someone the wrong thing about their account.
+     *
+     * Success is a 200 with `{"result": {"deleted": true}}`. A callable's refusal is
+     * `{"error": {"status", "message"}}`, and the function makes its own before it deletes
+     * anything, each with a sentence. Any other failure (INTERNAL, a gateway's error page,
+     * a body that is not JSON) is treated like an answer that never came.
+     */
+    internal fun answerOf(code: Int, body: String?): Answer {
+        val json = body?.let { runCatching { JSONObject(it) }.getOrNull() }
+        if (code in 200..299 && json?.optJSONObject("result")?.optBoolean("deleted") == true) return Answer.Deleted
+        val error = json?.optJSONObject("error") ?: return Answer.Unknown
+        val message = error.optString("message").takeIf { it.isNotBlank() } ?: return Answer.Unknown
+        return if (error.optString("status") in REFUSALS) Answer.Refused(message) else Answer.Unknown
     }
 
     /**
