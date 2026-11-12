@@ -375,6 +375,22 @@ describe('finishDeletions', () => {
     expect(await tracesOf(UID)).toContain(`accountDeletions/${UID}`);
   });
 
+  test('deletes the Auth user when the first call stopped before it got there', async () => {
+    await seedAccount(UID, CUSTOMER);
+    stripeHasCustomer(CUSTOMER, `sub_${UID}`);
+    const stopsAtTheUser = {
+      revokeRefreshTokens: (uid: string) => getAuth().revokeRefreshTokens(uid),
+      deleteUser: () => Promise.reject(new Error('the Auth service is down')),
+    };
+    await expect(deleteAccountOf(UID, { stripe: config(), now: NOW, auth: stopsAtTheUser })).rejects.toThrow(/is down/);
+    // Nobody asks again: the marker alone is what gets the rest done.
+    expect(await tracesOf(UID)).toEqual([`accountDeletions/${UID}`, `auth:${UID}`]);
+
+    expect(await finishDeletions(settled(NOW), { stripe: config() })).toEqual([UID]);
+
+    expect(await tracesOf(UID)).toEqual([]);
+  });
+
   test('leaves a deletion whose tokens may still be alive', async () => {
     await seedAccount(UID, CUSTOMER);
     stripeHasCustomer(CUSTOMER, `sub_${UID}`);
