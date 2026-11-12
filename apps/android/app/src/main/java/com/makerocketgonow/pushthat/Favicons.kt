@@ -31,6 +31,12 @@ import java.util.concurrent.TimeUnit
  * plaintext list of the sites an account pushes, on a phone whose pushes are otherwise held
  * as ciphertext; in memory they go with the process, and [clear] drops them at sign-out.
  * The cost is one small request per site per start of the app.
+ *
+ * That is true of this map and not of the images: Glide keeps what it downloads in its
+ * disk cache, as it did the icons from Google, under names hashed from their addresses.
+ * No site can be read off those names, but an image can be recognised. Deleting the
+ * account clears that cache (`AccountDeletion`); an ordinary sign-out leaves it, as it
+ * always has.
  */
 object Favicons {
     /** As much of a front page as is read: the `<head>` is at the top (the title scraper reads the same). */
