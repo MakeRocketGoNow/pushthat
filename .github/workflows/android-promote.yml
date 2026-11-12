@@ -1,0 +1,64 @@
+name: Android promote
+
+# Releases a build Play already has to production, started by hand from the Actions tab.
+# Nothing is built here: android.yml puts every merge on the internal testing track, and
+# this moves one of those bundles on, so production gets the bundle testers ran.
+#
+# Its own workflow, not a third option in android.yml, so that the workflow which runs on
+# every merge still cannot name the production track however it is started. See "Promoting
+# to production" in docs/android.md for the one-off setup.
+on:
+  workflow_dispatch:
+    inputs:
+      version_code:
+        description: Version code to release. Empty means the newest build on internal testing
+        type: string
+        required: false
+      rollout:
+        description: Percentage of production users, 1 to 100. Run again with a larger number to widen it
+        type: string
+        default: '10'
+
+# One promotion at a time, and one that has started always finishes: a cancelled run could
+# stop between changing the track and committing, which is harmless (the edit expires) but
+# leaves nobody sure what happened.
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  # The Play key this job reads lives on the `play-production` Environment, which accepts
+  # only `main` and has a required reviewer, so starting the workflow is a request and the
+  # approval is the release. That is why this is not the `play` Environment android.yml
+  # uses: that one has to let a merge publish with nobody watching.
+  #
+  # GitHub creates an Environment that a job names and nobody has set up, with no rules at
+  # all. That is safe here only because a new Environment has no secrets either, and the
+  # script stops when the key is missing: create the Environment with its reviewer before
+  # putting the key on it, never the other way round.
+  promote:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: play-production
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+
+      # Run here as well as in ci.yml, with no secret in reach, so the script that is about
+      # to touch production is one whose own commit passed.
+      - run: node --test '.github/scripts/*.test.mjs'
+
+      # The inputs go in as environment variables, not into the command line: text typed
+      # into a form is never spliced into a shell that also holds the key.
+      - name: Release to production
+        env:
+          PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          PLAY_PACKAGE_NAME: com.makerocketgonow.pushthat
+          VERSION_CODE: ${{ inputs.version_code }}
+          ROLLOUT_PERCENT: ${{ inputs.rollout }}
+        run: node .github/scripts/play-promote.mjs

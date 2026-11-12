@@ -108,6 +108,9 @@ xcodebuild -project PushThat.xcodeproj -scheme PushThat -destination 'platform=m
 
 # packages/push-test (sending needs a real key, so the send script is only parsed)
 npm ci && node --check index.js && npm test
+
+# .github/scripts (from the repository root; no install)
+node --test '.github/scripts/*.test.mjs'
 ```
 
 `npm run test:rules` and `npm run test:emulator` run against the Firestore and Storage
@@ -118,8 +121,8 @@ functions' suites deliver signed events to the webhook over HTTP and point
 `STRIPE_API_URL` at a stand-in for Stripe's API, so nothing reaches Stripe.
 
 CI (`.github/workflows/ci.yml`) runs the functions' unit tests, the web app's lint, key
-vectors and builds, the Android unit tests and the encryption reference's tests on every
-pull request. `.github/workflows/android.yml` builds the Android release bundle, and on
+vectors and builds, the Android unit tests, the encryption reference's tests and the
+production promote script's tests on every pull request. `.github/workflows/android.yml` builds the Android release bundle, and on
 `main` releases it to Play's internal testing track ([docs/android.md](docs/android.md#shipping-to-play)).
 The emulator suites run only in the deploy that follows a merge, and the Xcode builds not
 at all, so run them yourself when a change reaches the rules, the functions or the Apple
@@ -150,5 +153,7 @@ else is refused before it starts.
 A secret that signs or publishes lives on an Environment that accepts only `main`, never
 on the repository: a pull request runs its own copy of the workflow, so a repository
 secret is one any branch can read. The Android release job uses the `play` Environment
-([docs/android.md](docs/android.md#shipping-to-play)). A job that needs such a secret
+([docs/android.md](docs/android.md#shipping-to-play)), and the job that releases to
+production uses `play-production`, which also wants a reviewer's approval
+([docs/android.md](docs/android.md#promoting-to-production)). A job that needs such a secret
 declares the Environment, and a job that runs on pull requests holds none.
