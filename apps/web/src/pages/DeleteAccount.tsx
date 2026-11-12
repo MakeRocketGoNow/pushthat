@@ -5,7 +5,7 @@ import { Link } from 'react-router';
 import LegalContainer from '@/components/LegalContainer';
 import { LIMITS, REFUND_DAYS, SUPPORT_EMAIL } from '@/config/plan';
 import { useAuth } from '@/contexts/AuthContext';
-import { deleteAccount } from '@/services/account';
+import { OutcomeUnknownError, deleteAccount } from '@/services/account';
 import { errorText } from '@/services/plan';
 import { WrongPasswordError } from '@/services/signIn';
 
@@ -40,10 +40,11 @@ import styles from './DeleteAccount.module.css';
  */
 let deletedHere = false;
 
-/**
- * For a call that ended with no answer (`OutcomeUnknownError`, or anything unexpected).
- * The same words on every client.
- */
+/** For a failure before the function was called. The same words as the Android app. */
+const NOT_ASKED =
+  'Your account was not deleted: PushThat could not reach the server. Check your connection and try again.';
+
+/** For a call that ended with no answer (`OutcomeUnknownError`). The same words on every client. */
 const UNCONFIRMED =
   'We could not confirm that your account was deleted. It may still be finishing. Try again in a few minutes: if your password is then refused, the account is gone.';
 
@@ -77,10 +78,17 @@ export function DeleteAccount() {
       setDone(true);
     } catch (err) {
       setError(
-        // Neither says "nothing was deleted": only the function's own refusals can promise
-        // that, and they come with their own sentence. A wrong password on a second try
-        // may be the first try having worked.
-        err instanceof WrongPasswordError ? 'The email or password is not right.' : errorText(err, UNCONFIRMED)
+        // "Could not confirm" is for a call that was made and not answered. A failure
+        // before that (no network for the sign-in, too many attempts) asked nothing of
+        // the server, and saying the account "may still be finishing" would be untrue the
+        // other way. The function's own refusals come with their own sentence. A wrong
+        // password does not say "nothing was deleted": on a second try it may be the
+        // first try having worked.
+        err instanceof WrongPasswordError
+          ? 'The email or password is not right.'
+          : err instanceof OutcomeUnknownError
+            ? UNCONFIRMED
+            : errorText(err, NOT_ASKED)
       );
     } finally {
       setBusy(false);
