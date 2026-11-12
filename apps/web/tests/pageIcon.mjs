@@ -52,4 +52,15 @@ describe('iconOf', () => {
     assert.equal(iconOf(pngHeader(16, 16).slice(0, -1)), undefined);
     assert.equal(iconOf(pngHeader(16, 16) + 'A'.repeat(5464)), undefined);
   });
+
+  test('takes 4096 bytes and not one more', () => {
+    const icon = (bytes) => {
+      const png = Buffer.alloc(bytes);
+      Buffer.from(pngHeader(16, 16), 'base64').copy(png);
+      return png.toString('base64');
+    };
+    assert.equal(iconOf(icon(4096)), icon(4096));
+    assert.equal(iconOf(icon(4097)), undefined);
+    assert.equal(iconOf(icon(4098)), undefined);
+  });
 });

@@ -1,8 +1,8 @@
 // A URL push's page icon as the list may draw it (docs/e2ee.md, Icons). Apart from
 // `pushes.ts`, which needs Firebase, so that `npm run test:keys` checks it in plain Node.
 
-// 4096 bytes of PNG in padded base64, at most 64 pixels a side (docs/e2ee.md, Icons).
-const MAX_ICON_LENGTH = 5464;
+// 4096 bytes of PNG, at most 64 pixels a side (docs/e2ee.md, Icons).
+const MAX_ICON_BYTES = 4096;
 const MAX_ICON_SIDE = 64;
 const BASE64 = /^[A-Za-z0-9+/]+={0,2}$/;
 const PNG_SIGNATURE = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
@@ -16,9 +16,10 @@ const PNG_SIGNATURE = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
  * will not decode is the `img`'s `onError`.
  */
 export const iconOf = (value: unknown): string | undefined => {
-  if (typeof value !== 'string' || value.length > MAX_ICON_LENGTH || value.length % 4 !== 0 || !BASE64.test(value)) {
-    return undefined;
-  }
+  if (typeof value !== 'string' || value.length % 4 !== 0 || !BASE64.test(value)) return undefined;
+  // Counted in bytes, as the phones count it: 5464 characters without padding hold 4098.
+  const padding = value.endsWith('==') ? 2 : value.endsWith('=') ? 1 : 0;
+  if ((value.length / 4) * 3 - padding > MAX_ICON_BYTES) return undefined;
   // The signature, then IHDR's length and type, then its width and height: 24 bytes, which
   // are the first 32 characters of the base64.
   const header = Uint8Array.from(atob(value.slice(0, 32)), (c) => c.charCodeAt(0));
