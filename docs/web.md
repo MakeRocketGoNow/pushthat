@@ -58,8 +58,10 @@ Privacy, Terms, Support and Security are prerendered. `npm run build` ends with
 `npm run prerender`, which builds `src/prerender.tsx` for Node (`vite build --ssr`, into
 `node_modules/.prerender`) and runs `scripts/prerender.mjs`. That writes `dist/<page>.html`
 for each entry in `src/staticPages.tsx`: the built `index.html` with the page rendered into
-`#root`, the page's own title and its own `og:url`. So the pages read with JavaScript off,
-and crawlers and link previews see each page's title rather than the front page's.
+`#root`, the page's own title (as `<title>` and `og:title`) and its own `og:url`. So the
+pages read with JavaScript off, and crawlers and link previews see each page's title rather
+than the front page's. The descriptions stay the product's, since they say what the page
+belongs to.
 
 Hosting reaches each file through a rewrite of its own in the root `firebase.json`, ahead of
 the `**` catch-all, and the script fails the build when one is missing. `cleanUrls` would do

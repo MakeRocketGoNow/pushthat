@@ -2,8 +2,10 @@
 // with JavaScript off. Runs after `vite build` (the site) and `vite build --ssr` (the
 // renderer, into node_modules/.prerender), from `npm run prerender`.
 //
-// Each page is the built `index.html` with its body filled in and its title and og:url set,
-// so it loads the same bundle and stylesheet as every other page. The bundle then renders
+// Each page is the built `index.html` with its body filled in and its title, og:title and
+// og:url set, so it loads the same bundle and stylesheet as every other page, and a shared
+// link's card names the page. The descriptions stay the product's: they say what the page
+// belongs to, which is what a card for the terms needs. The bundle then renders
 // over it with `createRoot` (src/main.tsx), and a signed-in visitor's nav appears as it
 // does today.
 import { readFile, writeFile } from 'node:fs/promises';
@@ -27,12 +29,14 @@ const template = await readFile(web('dist/index.html'), 'utf8');
 const firebase = JSON.parse(await readFile(web('../../firebase.json'), 'utf8'));
 
 /**
- * `html` with `from` replaced once, failing the build when `from` is not there: a change
- * to index.html that moved it would otherwise ship pages with nothing filled in. A function
- * replacement, so a `$` in the page's text is not read as a pattern.
+ * `html` with `from` (a string or a pattern) replaced once, failing the build when `from` is
+ * not there: a change to index.html that moved it would otherwise ship pages with nothing
+ * filled in. A function replacement, so a `$` in the page's text is not read as a pattern.
  */
 function fill(html, from, to) {
-  if (!html.includes(from)) throw new Error(`prerender: ${JSON.stringify(from)} is not in dist/index.html`);
+  if (!(typeof from === 'string' ? html.includes(from) : from.test(html))) {
+    throw new Error(`prerender: ${from} is not in dist/index.html`);
+  }
   return html.replace(from, () => to);
 }
 
@@ -54,6 +58,13 @@ for (const { path } of STATIC_PAGES) {
   const { html, title } = render(path);
   let page = template;
   page = fill(page, '<title>PushThat</title>', title);
+  // Helmet's tag holds the text already escaped for HTML, so it goes into the attribute as is.
+  const titleText = title.replace(/^<title[^>]*>|<\/title>$/g, '');
+  page = fill(
+    page,
+    /<meta property="og:title" content="[^"]*" \/>/,
+    `<meta property="og:title" content="${titleText}" />`
+  );
   page = fill(
     page,
     '<meta property="og:url" content="https://pushthat.link/" />',
