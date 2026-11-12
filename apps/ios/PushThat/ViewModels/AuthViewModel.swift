@@ -473,33 +473,80 @@ class AuthViewModel: ObservableObject {
     /// is (`PlanService`), so no FirebaseFunctions SDK is needed.
     private static let deleteAccountURL = URL(string: "https://us-central1-push-that.cloudfunctions.net/deleteAccount")!
 
-    static let deleteAccountFailed = "Could not delete the account. Try again."
+    /// For a call that ended with no answer. The same words as the web page and the Android
+    /// app, and never "nothing was deleted": by then something may have been.
+    static let deleteAccountUnconfirmed = "We could not confirm that your account was deleted. It may still be finishing. Try again in a few minutes: if your password is then refused, the account is gone."
+
+    /// The call ended with no answer from the function: a timeout, a dropped connection, or
+    /// a failure that is not one of the function's own refusals. Nothing can be said about
+    /// how far the deletion got, so the account itself is asked (`isGone`).
+    private struct OutcomeUnknown: Error {}
 
     /// Deletes the account on the server, then everything this device keeps for it, and
     /// signs out. Throws with a sentence to show, and leaves the session as it was, when the
-    /// password is wrong or the server refuses.
+    /// password is wrong, the server refuses, or the outcome cannot be confirmed.
     ///
     /// The server deletes the Firebase user itself, so `user.delete()` is never called: by
     /// the time the callable answers there is no user left to delete.
+    ///
+    /// An account found to be gone already counts as deleted, whichever step finds it: an
+    /// earlier try whose answer was lost has finished on the server, and what is left to do
+    /// is on this device.
     func deleteAccount(password: String) async throws {
         guard let user = auth.currentUser, let email = user.email else { throw FileUploadError.notAuthenticated }
         guard !password.isEmpty else { throw Problem("Enter your password.") }
+        let uid = user.uid
 
-        try await reauthenticate(user: user, email: email, password: password)
+        do {
+            try await reauthenticate(user: user, email: email, password: password)
+        } catch let error where Self.isUserGone(error) {
+            forgetDeletedAccount(uid: uid)
+            return
+        }
         // The server refuses a sign-in older than five minutes. Re-authenticating does not
         // by itself replace the ID token the SDK holds, so one is minted now that carries
         // this sign-in's time.
         let token = try await user.getIDTokenResult(forcingRefresh: true).token
-        try await Self.callDeleteAccount(idToken: token)
+        do {
+            try await Self.callDeleteAccount(idToken: token)
+        } catch is OutcomeUnknown {
+            // The Auth user is the last thing the function deletes, so gone means done.
+            guard await Self.isGone(user) else { throw Problem(Self.deleteAccountUnconfirmed) }
+        }
+        forgetDeletedAccount(uid: uid)
+    }
 
-        let uid = user.uid
+    /// What this device held for an account the server has deleted, and then the sign-out.
+    private func forgetDeletedAccount(uid: String) {
         // Sign-out does not empty the retry queue, since a queued push waits for its own
         // account to sign in again. This account will not, and its rows would wait forever.
         PendingPush.deleteAll(for: uid)
         // A fresh analytics id for this install, so nothing collected from here on joins
         // what was collected while the deleted account was signed in.
         Analytics.resetAnalyticsData()
+        // The notification token too, so Firebase stops addressing this install as the
+        // deleted account's device. Not waited for: it asks the network, the account is
+        // already gone, and the copy the server used went with the user document.
+        Messaging.messaging().deleteToken { _ in }
         signOut()
+    }
+
+    /// Firebase saying the signed-in account no longer exists.
+    nonisolated static func isUserGone(_ error: Error) -> Bool {
+        let error = error as NSError
+        return error.domain == AuthErrorDomain
+            && (error.code == AuthErrorCode.userNotFound.rawValue || error.code == AuthErrorCode.userTokenExpired.rawValue)
+    }
+
+    /// Whether the account no longer exists, asked of Firebase. A failure to ask (no
+    /// network) is not an answer, and reads as "still there".
+    private static func isGone(_ user: User) async -> Bool {
+        do {
+            try await user.reload()
+            return false
+        } catch {
+            return isUserGone(error)
+        }
     }
 
     /// Re-authenticates as "Change password" does, with the Firebase password derived from
@@ -524,24 +571,31 @@ class AuthViewModel: ObservableObject {
         }
     }
 
-    /// POSTs the callable's empty request. Success is a 200 with `{"result":{"deleted":true}}`;
-    /// a failure carries `{"error":{"status","message"}}`, whose message the server writes
-    /// for people, so it is shown as it is.
+    /// The statuses the function refuses with before it has deleted anything, each with a
+    /// sentence it wrote for the person.
+    private static let refusals: Set<String> = ["FAILED_PRECONDITION", "UNAVAILABLE", "UNAUTHENTICATED"]
+
+    /// POSTs the callable's empty request. Success is a 200 with `{"result":{"deleted":true}}`.
+    /// A refusal carries `{"error":{"status","message"}}` and is thrown as its message;
+    /// anything else, a lost connection included, is `OutcomeUnknown`.
     private static func callDeleteAccount(idToken: String) async throws {
         var request = URLRequest(url: deleteAccountURL)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("Bearer \(idToken)", forHTTPHeaderField: "Authorization")
         request.httpBody = Data("{\"data\":{}}".utf8)
-        // Longer than the default: the server deletes every push and file before it answers.
-        request.timeoutInterval = 120
+        // A little more than the five minutes the function allows itself (`timeoutSeconds`
+        // in functions/src/account-deletion.ts), so the function always answers first. It
+        // deletes every push and file before it answers and sends nothing meanwhile; at two
+        // minutes this gave up on a large account that the server then went on to delete.
+        request.timeoutInterval = 310
 
         let data: Data
         let response: URLResponse
         do {
             (data, response) = try await URLSession.shared.data(for: request)
         } catch {
-            throw Problem(deleteAccountFailed)
+            throw OutcomeUnknown()
         }
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
 
@@ -550,23 +604,23 @@ class AuthViewModel: ObservableObject {
             let result: Result
         }
         struct Failure: Decodable {
-            struct Body: Decodable { let message: String? }
+            struct Body: Decodable {
+                let status: String?
+                let message: String?
+            }
             let error: Body
         }
         if status == 200, (try? JSONDecoder().decode(Success.self, from: data))?.result.deleted == true {
             return
         }
-        if let message = (try? JSONDecoder().decode(Failure.self, from: data))?.error.message,
-           !message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+        if let failure = (try? JSONDecoder().decode(Failure.self, from: data))?.error,
+           let message = failure.message, !message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+           let refusal = failure.status, refusals.contains(refusal) {
             throw Problem(message)
         }
-        throw Problem(deleteAccountFailed)
+        throw OutcomeUnknown()
     }
 
-    // MARK: - Sign out
-
-    /// Clears the account key and the last decrypted file first, so that a sign-out that
-    /// fails partway never leaves either behind for whoever signs in next. The device id stays: it is the install's.
     /// The in-memory favicon cache goes too, since it is a list of the hosts this account pushed.
     func signOut() {
         AccountKeyStore.clearAccountKey()
