@@ -72,6 +72,12 @@ immediate, and the second is what makes "nothing is left" true without depending
 the clients do. The marker is the only thing kept about a deleted account in our own
 database, for at most about two hours.
 
+The same hour is why `createCheckoutSession` refuses an account that has a marker, and why
+the sweep asks Stripe again before it purges: a subscription bought with the deleted
+account's last token would otherwise renew with nothing left that points at it. Outside
+the emulator the function also refuses, before deleting anything, when the account has a
+Stripe customer and billing is not configured, for the same reason.
+
 ## What cannot be deleted at once
 
 This is the list the public page and the Play Data safety form are written from. If one of
@@ -100,11 +106,36 @@ Three of these depend on settings outside the repository, which nothing here can
 
 ## Local data on each device
 
-After the function answers, the client that asked clears what it holds and signs out: the
-account key and any unconfirmed recovery key, the decrypted file cache, and the queue of
-pushes waiting to be retried. On Android and iOS it also resets the installation's
-Analytics id. The device id stays, as it does at sign-out: it belongs to the install, not
-the account.
+After the function answers, the client that asked clears what it holds and signs out. What
+"what it holds" is differs by client, because what each one keeps differs:
+
+| | Web and extension | Android | iOS | macOS |
+| --- | --- | --- | --- | --- |
+| The account key and any unconfirmed recovery key | yes | yes | yes | yes |
+| Decrypted files in the cache | none kept | yes | yes | yes |
+| Pushes queued for a retry | none kept | yes | yes | yes |
+| The site-icon lookups held in memory | none kept | yes | yes | yes |
+| The notification (FCM) token | not held by the page | yes | yes | no FCM |
+| The Analytics installation id | no Analytics | yes | yes | no Analytics |
+| Cached icon images on disk | the browser's cache | yes (Glide) | none kept | none kept |
+
+The device id stays everywhere, as it does at sign-out: it belongs to the install, not the
+account. The extension's worker keeps its own FCM token in `chrome.storage`; it stops being
+addressed when the user document goes, and is replaced at the next sign-in.
+
+## When the client hears nothing back
+
+The function may run for five minutes on a large account, so every client waits a little
+longer than that (310 seconds). If the call still ends with no answer (a dropped
+connection, a crash on the server), the client does not know how far the deletion got, and
+must not say "nothing was deleted": past Stripe the marker is written and the sweep will
+finish the job regardless. It asks Firebase whether the account still exists. The Auth user
+is the last thing deleted, so gone means done, and the client clears its local data and
+signs out; otherwise it says the outcome could not be confirmed and that a refused password
+on the next try means the account is gone. A retry that finds the account already gone is
+treated as the deletion having succeeded. Only the function's own refusals (an old
+sign-in, a subscription that would not cancel), which are made before anything is deleted,
+are shown as refusals.
 
 ## The public page
 
