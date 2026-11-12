@@ -76,14 +76,17 @@ export function DeleteAccount() {
       <p>In the app:</p>
       <ol>
         <li>
-          Open PushThat and open its menu: the three dots at the top of the list on Android, the account menu on iPhone
-          and Mac, and the menu at the top right on the website and in the Chrome extension.
+          Open PushThat and open its menu: the three dots at the top of the list on Android, the circled three dots at
+          the top of the list on iPhone and Mac, and the menu at the top right on the website and in the Chrome
+          extension.
         </li>
         <li>
-          Choose <strong>Delete account</strong>.
+          Choose <strong>Delete account</strong>. On the website and in the extension this opens this page: use the{' '}
+          <a href="#delete">form below</a>.
         </li>
         <li>
-          Enter your password to confirm, and press <strong>Delete account</strong>.
+          In the Android, iPhone and Mac apps, enter your password to confirm, and press <strong>Delete account</strong>
+          .
         </li>
       </ol>
 
