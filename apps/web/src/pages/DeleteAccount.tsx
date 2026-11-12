@@ -32,7 +32,16 @@ function FormWhenLoaded() {
       wanted = false;
     };
   }, []);
-  return Form ? <Form /> : <p>Loading the form… If it does not appear, reload the page.</p>;
+  // Read with JavaScript off too, where it is all there will ever be under the notice
+  // above it: so it must not only say to reload, which cannot help there.
+  return Form ? (
+    <Form />
+  ) : (
+    <p>
+      Loading the form… If it does not appear, reload the page, or write to {SUPPORT_EMAIL} from the email address on
+      the account.
+    </p>
+  );
 }
 
 /**
