@@ -615,6 +615,10 @@ class AuthViewModel: ObservableObject {
         throw OutcomeUnknown()
     }
 
+    // MARK: - Sign out
+
+    /// Clears the account key and the last decrypted file first, so that a sign-out that
+    /// fails partway never leaves either behind for whoever signs in next. The device id stays: it is the install's.
     /// The in-memory favicon cache goes too, since it is a list of the hosts this account pushed.
     func signOut() {
         AccountKeyStore.clearAccountKey()
