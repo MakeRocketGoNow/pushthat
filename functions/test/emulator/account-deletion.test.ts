@@ -292,6 +292,22 @@ describe('deleteAccountOf', () => {
     expect(await tracesOf(UID)).toEqual([`accountDeletions/${UID}`]);
   });
 
+  test('a retry after Stripe has already deleted the customer goes through', async () => {
+    await seedAccount(UID, CUSTOMER);
+    // What Stripe says of a customer it no longer has, for the lists and the delete alike.
+    const missing = () => ({
+      status: 404,
+      body: { error: { type: 'invalid_request_error', code: 'resource_missing', message: 'No such customer' } },
+    });
+    stripe.route('GET /v1/checkout/sessions', missing);
+    stripe.route('GET /v1/subscriptions', missing);
+    stripe.route(`DELETE /v1/customers/${CUSTOMER}`, missing);
+
+    await deleteAccountOf(UID, { stripe: config(), now: NOW });
+
+    expect(await tracesOf(UID)).toEqual([`accountDeletions/${UID}`]);
+  });
+
   test('every session is ended: the refresh tokens are revoked before the user is deleted', async () => {
     await seedAccount(UID, CUSTOMER);
     stripeHasCustomer(CUSTOMER, `sub_${UID}`);

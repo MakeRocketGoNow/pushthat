@@ -146,6 +146,9 @@ async function customersOf(db: Firestore, uid: string): Promise<string[]> {
   return [...new Set([...(typeof fromDoc === 'string' && fromDoc ? [fromDoc] : []), ...rows.docs.map((d) => d.id)])];
 }
 
+const isMissingAtStripe = (err: unknown) =>
+  err instanceof StripeError && (err.status === 404 || err.code === 'resource_missing');
+
 /**
  * Ends what the account has at Stripe. The subscription is what must not survive: an
  * account that no longer exists would be charged again at its renewal, with no page left
@@ -157,12 +160,22 @@ async function customersOf(db: Firestore, uid: string): Promise<string[]> {
  * account, and refusing to delete someone's data because a record at the payment
  * processor would not go is the worse failure. It is logged with the customer's id, to
  * be removed by hand in the dashboard.
+ *
+ * A customer Stripe no longer has is one an earlier call already deleted, before it
+ * failed at a later step: the rows that name it are only removed by the purge, so a
+ * retry meets it again. Stripe may answer a list filtered by a deleted customer with
+ * "no such customer" rather than an empty list, and that must read as nothing left to
+ * end, not as a subscription that could not be cancelled.
  */
 async function endBilling(stripe: StripeConfig, customerIds: string[], uid: string): Promise<void> {
   for (const customerId of customerIds) {
-    await expireOpenCheckouts(stripe, customerId);
-    for (const sub of await subscriptionsOf(stripe, customerId)) {
-      if (!ENDED_SUBSCRIPTION.has(sub.status)) await ensureSubscriptionCanceled(stripe, sub.id);
+    try {
+      await expireOpenCheckouts(stripe, customerId);
+      for (const sub of await subscriptionsOf(stripe, customerId)) {
+        if (!ENDED_SUBSCRIPTION.has(sub.status)) await ensureSubscriptionCanceled(stripe, sub.id);
+      }
+    } catch (err) {
+      if (!isMissingAtStripe(err)) throw err;
     }
     try {
       await deleteCustomer(stripe, customerId);
