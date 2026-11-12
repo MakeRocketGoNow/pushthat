@@ -105,6 +105,31 @@ async function deleteMatching(db: Firestore, query: FirebaseFirestore.Query): Pr
   }
 }
 
+/** How many stored objects are listed, and how many deleted at once, as the orphan sweep does. */
+const UPLOAD_PAGE = 1000;
+const UPLOAD_DELETE_CHUNK = 50;
+
+/**
+ * Deletes every object under `uploads/{uid}/`. Listed and deleted here rather than with
+ * the SDK's `deleteFiles`, which stops at the first object that is already gone.
+ */
+async function deleteUploads(uid: string): Promise<void> {
+  const bucket = getStorage().bucket();
+  let pageToken: string | undefined;
+  do {
+    const [files, next] = await bucket.getFiles({
+      prefix: `uploads/${uid}/`,
+      autoPaginate: false,
+      maxResults: UPLOAD_PAGE,
+      pageToken,
+    });
+    pageToken = (next as { pageToken?: string } | null)?.pageToken;
+    for (let i = 0; i < files.length; i += UPLOAD_DELETE_CHUNK) {
+      await Promise.all(files.slice(i, i + UPLOAD_DELETE_CHUNK).map((file) => file.delete({ ignoreNotFound: true })));
+    }
+  } while (pageToken);
+}
+
 export interface PurgeReport {
   pushes: number;
   billingRows: number;
@@ -117,17 +142,23 @@ export interface PurgeReport {
  * The stored files are deleted by prefix rather than left to `onPushRecordDeleted`, which
  * removes a file push's object as its document goes: that trigger only sees an object a
  * push names, and an upload whose push never came would wait for the orphan sweep's
- * seven days. The trigger still fires for each push and finds its object already gone.
+ * seven days.
+ *
+ * And they go first, before the push documents. Each document deleted starts that
+ * trigger, which looks for its object and deletes it. With the documents first, the
+ * trigger and this were deleting the same objects at the same moment, and whichever lost
+ * got "no such object": here that failed the whole deletion before the Auth user went,
+ * and the more files an account had the likelier it was. With the files first, every
+ * trigger finds its object already gone and stops. An object that vanishes anyway (the
+ * expiry sweep, a push deleted on another device) is what this wants, not an error.
  *
  * A push made in the moment before this ran may still be on its way through
  * `onNewPushCreated`, whose count makes the user document it does not find. No order of
  * the steps here closes that, which is one of the things the second purge is for.
  */
 export async function purgeAccountData(db: Firestore, uid: string): Promise<PurgeReport> {
+  await deleteUploads(uid);
   const pushes = await deleteMatching(db, db.collection('pushes').where('userId', '==', uid));
-  await getStorage()
-    .bucket()
-    .deleteFiles({ prefix: `uploads/${uid}/` });
   const billingRows =
     (await deleteMatching(db, db.collection('billingEvents').where('userId', '==', uid))) +
     (await deleteMatching(db, db.collection('stripeCustomers').where('userId', '==', uid)));
