@@ -15,7 +15,7 @@ export default function Privacy() {
 
       <h1>PushThat Privacy Policy</h1>
 
-      <p>Last updated: October 27, 2026</p>
+      <p>Last updated: November 12, 2026</p>
 
       <p>
         This Privacy Policy describes how your personal information is collected, used, and shared when you visit or
@@ -139,6 +139,12 @@ export default function Privacy() {
       </p>
 
       <p>
+        To show an icon beside a link in your list, the App asks the linked website itself for its icon, from your
+        device. That website sees the request, as it would if you opened the link; no one else is told which websites
+        your links are on, and the request does not pass through our servers.
+      </p>
+
+      <p>
         Finally, we may also share your Personal Information to comply with applicable laws and regulations, to respond
         to a subpoena, search warrant or other lawful request for information we receive, or to otherwise protect our
         rights. We can provide only what we hold: Push Content can be provided only in its encrypted form, which we
@@ -169,12 +175,19 @@ export default function Privacy() {
 
       <p>
         When you create a subscription through the App, we will maintain your Subscription Information for our records
-        unless and until you ask us to delete this information.
+        unless and until you delete your account or ask us to delete this information. Stripe keeps its own records of
+        your payments for as long as tax and accounting law requires.
       </p>
 
       <p>
-        A link push is kept until you delete it, or until you ask us to delete your account. A file push, with its
-        record, is deleted when the retention period of the plan your account was on when you pushed it ends (
+        You can delete your account, with everything stored under it, at any time: from the App’s menu, or at{' '}
+        <Link to="/delete-account">{'https://pushthat.link/delete-account'}</Link>, which also lists exactly what is
+        deleted, the little that is kept afterwards (server logs, backups and payment records), and for how long.
+      </p>
+
+      <p>
+        A link push is kept until you delete it, or until you delete your account. A file push, with its record, is
+        deleted when the retention period of the plan your account was on when you pushed it ends (
         {LIMITS.free.keepDays} days on the free plan, {LIMITS.pro.keepDays} days on Pro).
       </p>
 

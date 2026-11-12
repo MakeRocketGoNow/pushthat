@@ -7,6 +7,7 @@ import { AuthProvider } from './contexts/AuthContext';
 import { useAuth } from './contexts/AuthContext';
 import { KeysProvider } from './contexts/KeysContext';
 import { ThemeProvider } from './contexts/ThemeContext';
+import { DeleteAccount } from './pages/DeleteAccount';
 import { IndexPage } from './pages/Index';
 import Links from './pages/Links';
 import Login from './pages/Login';
@@ -76,6 +77,8 @@ function App() {
               <Route path="/support" element={<Support />} />
               <Route path="/security" element={<Security />} />
               <Route path="/reset" element={<ResetPassword />} />
+              {/* Public, like the legal pages: someone deleting may have no session, or no app. */}
+              <Route path="/delete-account" element={<DeleteAccount />} />
               <Route element={<ProtectedRoute />}>
                 <Route path="/links" element={<Links />} />
                 <Route path="/push" element={<Push />} />

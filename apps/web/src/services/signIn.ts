@@ -1,5 +1,11 @@
 import { FirebaseError } from 'firebase/app';
-import { type User, createUserWithEmailAndPassword, signInWithEmailAndPassword, updatePassword } from 'firebase/auth';
+import {
+  type Auth,
+  type User,
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  updatePassword,
+} from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 
 import { app, auth } from '@/config/firebase';
@@ -70,19 +76,31 @@ const isWrongPassword = (error: unknown) => error instanceof FirebaseError && WR
  * in this way and then moves the account back to `authKey`. It can go only once a reset
  * sets `authKey` itself, which needs the reset email's action URL unlocked.
  */
-async function signInEitherWay(email: string, password: string, keys: DerivedKeys) {
+async function signInEitherWay(email: string, password: string, keys: DerivedKeys, on: Auth = auth) {
   try {
-    const { user } = await signInWithEmailAndPassword(auth, email, keys.firebasePassword);
+    const { user } = await signInWithEmailAndPassword(on, email, keys.firebasePassword);
     return { user, legacy: false };
   } catch (error) {
     if (!isWrongPassword(error)) throw error;
   }
   try {
-    const { user } = await signInWithEmailAndPassword(auth, email, password);
+    const { user } = await signInWithEmailAndPassword(on, email, password);
     return { user, legacy: true };
   } catch (error) {
     throw isWrongPassword(error) ? new WrongPasswordError('wrong email or password') : error;
   }
+}
+
+/**
+ * Proves the password and nothing more: a sign-in on `on` that reads and writes no keys.
+ * For deleting the account (account.ts), which needs a fresh sign-in and must not make
+ * keys or a recovery key for an account that is about to go. The legacy fallback applies
+ * here as at any sign-in, so an account whose password was just reset can still be
+ * deleted. Throws `WrongPasswordError` for a wrong email or password.
+ */
+export async function proveByPassword(on: Auth, email: string, password: string): Promise<User> {
+  const keys = await deriveKeys(email, password);
+  return (await signInEitherWay(email, password, keys, on)).user;
 }
 
 /**

@@ -57,6 +57,9 @@ export default function Layout({ children }: LayoutProps) {
             {isMenuOpen && (
               <div className={styles.menuDropdown}>
                 <button onClick={handleLogout}>Logout</button>
+                {/* Last, under Logout, so the destructive item is not the first thing a thumb finds.
+                    It leads to the public page, which asks for the password before anything goes. */}
+                <button onClick={() => navigate('/delete-account')}>Delete account</button>
               </div>
             )}
           </div>
