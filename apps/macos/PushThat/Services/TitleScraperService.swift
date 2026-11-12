@@ -97,7 +97,7 @@ actor TitleScraperService {
             // Icons resolve against the URL the page came from after redirects, as a
             // browser resolves them, not against the one that was pushed.
             let icon = withIcon ? await fetchIcon(from: PushIcon.candidates(html: html, pageURL: httpResponse.url ?? url)) : nil
-            return (extractTitle(from: html), icon)
+            return (PushTitle.extract(from: html), icon)
         } catch {
             // The error's type only: a URLError carries the page's full URL.
             print("Failed to scrape title: \(type(of: error))")
@@ -148,63 +148,5 @@ actor TitleScraperService {
             print("Failed to fetch icon: \(type(of: error))")
             return nil
         }
-    }
-
-    /// Extract title from HTML using regex
-    /// Note: For production, consider using SwiftSoup for proper HTML parsing
-    private func extractTitle(from html: String) -> String? {
-        // Try to find <title> tag
-        let titlePattern = "<title[^>]*>([^<]+)</title>"
-
-        guard let regex = try? NSRegularExpression(pattern: titlePattern, options: .caseInsensitive),
-              let match = regex.firstMatch(in: html, range: NSRange(html.startIndex..., in: html)),
-              let titleRange = Range(match.range(at: 1), in: html) else {
-            return nil
-        }
-
-        let title = String(html[titleRange])
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
-
-        // Decode HTML entities
-        return title.decodingHTMLEntities()
-    }
-}
-
-// MARK: - String HTML Entity Decoding
-extension String {
-    func decodingHTMLEntities() -> String {
-        var result = self
-
-        let entities: [String: String] = [
-            "&amp;": "&",
-            "&lt;": "<",
-            "&gt;": ">",
-            "&quot;": "\"",
-            "&apos;": "'",
-            "&#39;": "'",
-            "&nbsp;": " ",
-            "&ndash;": "-",
-            "&mdash;": "-",
-            "&copy;": "(c)",
-            "&reg;": "(r)"
-        ]
-
-        for (entity, replacement) in entities {
-            result = result.replacingOccurrences(of: entity, with: replacement)
-        }
-
-        // Handle numeric entities like &#8217;
-        let numericPattern = "&#(\\d+);"
-        if let regex = try? NSRegularExpression(pattern: numericPattern) {
-            let range = NSRange(result.startIndex..., in: result)
-            result = regex.stringByReplacingMatches(
-                in: result,
-                range: range,
-                withTemplate: ""
-            )
-        }
-
-        return result
     }
 }

@@ -492,3 +492,124 @@ enum PushIcon {
         return cache
     }()
 }
+
+/// A page's title as every client stores it: the text of its first `<title>`, character
+/// references decoded, whitespace collapsed to single spaces and trimmed.
+///
+/// Here rather than in `TitleScraperService` for the reason `PushIcon` is: this file is
+/// compiled by both apps and by the tests, so the decoding is written once per app and
+/// checked. The title is stored in the envelope and read by every device, so the aim is
+/// the title Android's Jsoup gives for the same page (`doc.title()`): references decoded
+/// before the whitespace is collapsed, as a parser does, and numeric ones decoded as a
+/// browser decodes them.
+enum PushTitle {
+    static func extract(from html: String) -> String? {
+        guard let match = titlePattern.firstMatch(in: html, range: NSRange(html.startIndex..., in: html)),
+              let range = Range(match.range(at: 1), in: html)
+        else { return nil }
+        // Decoded first, so a `&nbsp;` or `&#10;` is collapsed with the rest of the
+        // whitespace, as Jsoup collapses the text it has already decoded.
+        return decodingEntities(String(html[range]))
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+    }
+
+    private static let titlePattern = try! NSRegularExpression(
+        pattern: "<title[^>]*>([^<]+)</title>", options: .caseInsensitive
+    )
+
+    /// Decodes the named references in `named` and every decimal (`&#8217;`) and hex
+    /// (`&#x2019;`) one, in a single pass from the left, so the text a reference decodes
+    /// to is never read again: `&amp;#39;` is the text `&#39;`, not an apostrophe. A
+    /// reference this does not know, or a numeric one that names no character (zero, a
+    /// surrogate, past U+10FFFF, or no digits at all), is left as it was written.
+    ///
+    /// Jsoup parts from this on those: it makes U+FFFD of a number past U+10FFFF and a lone
+    /// surrogate of one in that range (which a Swift `String` cannot hold), and it reads the
+    /// handful of legacy names that need no `;` (`&amp`). No page means any of them, so
+    /// the text as written was kept over copying each of Jsoup's answers.
+    ///
+    /// The numeric ones used to be deleted, so a title with a typographic apostrophe lost
+    /// it, and every device then read the title with the letter missing.
+    static func decodingEntities(_ text: String) -> String {
+        guard text.contains("&") else { return text }
+        let scalars = Array(text.unicodeScalars)
+        var out = String.UnicodeScalarView()
+        var index = 0
+        while index < scalars.count {
+            if scalars[index] == "&", let (decoded, length) = reference(in: scalars, at: index) {
+                out.append(contentsOf: decoded.unicodeScalars)
+                index += length
+            } else {
+                out.append(scalars[index])
+                index += 1
+            }
+        }
+        return String(out)
+    }
+
+    /// The references a title is decoded for by name. Each decodes to its own character,
+    /// as on Android: these once became ASCII stand-ins (`-` for both dashes, `(c)`),
+    /// which disagreed with Jsoup and with the same character written as a number.
+    private static let named: [String: String] = [
+        "amp": "&", "lt": "<", "gt": ">", "quot": "\"", "apos": "'",
+        "nbsp": "\u{00A0}", "ndash": "\u{2013}", "mdash": "\u{2014}", "copy": "\u{00A9}", "reg": "\u{00AE}",
+    ]
+
+    /// What the code points 0x80 to 0x9F mean in a numeric reference: HTML reads them as
+    /// Windows-1252, as Jsoup and every browser do, so the `&#146;` an old page wrote for an
+    /// apostrophe is one. Those that Windows-1252 leaves undefined stay as they are.
+    private static let windows1252: [UInt32] = [
+        0x20AC, 0x0081, 0x201A, 0x0192, 0x201E, 0x2026, 0x2020, 0x2021,
+        0x02C6, 0x2030, 0x0160, 0x2039, 0x0152, 0x008D, 0x017D, 0x008F,
+        0x0090, 0x2018, 0x2019, 0x201C, 0x201D, 0x2022, 0x2013, 0x2014,
+        0x02DC, 0x2122, 0x0161, 0x203A, 0x0153, 0x009D, 0x017E, 0x0178,
+    ]
+
+    /// The reference starting at the `&` at `start`: what it decodes to and how many
+    /// scalars it takes, or nil to leave the `&` as text.
+    private static func reference(in scalars: [Unicode.Scalar], at start: Int) -> (String, Int)? {
+        var index = start + 1
+        guard index < scalars.count else { return nil }
+        guard scalars[index] == "#" else {
+            // A named reference needs its `;`, as before; the longest name above is 5.
+            guard let semicolon = scalars[index...].prefix(8).firstIndex(of: ";"),
+                  let text = named[String(String.UnicodeScalarView(scalars[index..<semicolon]))]
+            else { return nil }
+            return (text, semicolon + 1 - start)
+        }
+        index += 1
+        var radix: UInt32 = 10
+        if index < scalars.count, scalars[index] == "x" || scalars[index] == "X" {
+            radix = 16
+            index += 1
+        }
+        let digitsStart = index
+        var value: UInt32 = 0
+        while index < scalars.count, let digit = digitValue(scalars[index], radix: radix) {
+            // Held just past the last code point, so a long run of digits cannot overflow
+            // and still reads as out of range.
+            value = min(value * radix + digit, 0x110000)
+            index += 1
+        }
+        guard index > digitsStart else { return nil }
+        // The `;` is optional, as it is for a browser and for Jsoup: `&#8217s` is an
+        // apostrophe and an s.
+        if index < scalars.count, scalars[index] == ";" { index += 1 }
+        if (0x80...0x9F).contains(value) { value = windows1252[Int(value - 0x80)] }
+        // `Unicode.Scalar` refuses surrogates and anything past U+10FFFF.
+        guard value != 0, let scalar = Unicode.Scalar(value) else { return nil }
+        return (String(Character(scalar)), index - start)
+    }
+
+    /// ASCII digits only: `Character.wholeNumberValue` would also take other scripts' digits,
+    /// which no parser reads in a reference.
+    private static func digitValue(_ scalar: Unicode.Scalar, radix: UInt32) -> UInt32? {
+        switch scalar {
+        case "0"..."9": return scalar.value - 0x30
+        case "a"..."f" where radix == 16: return scalar.value - 0x61 + 10
+        case "A"..."F" where radix == 16: return scalar.value - 0x41 + 10
+        default: return nil
+        }
+    }
+}
