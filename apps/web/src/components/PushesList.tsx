@@ -45,14 +45,25 @@ const ICONS = [
   'apk.svg',
 ];
 
-const faviconOf = (url: string | undefined): string => {
-  let host = '';
+/**
+ * The linked site's own icon, asked of the site itself: `/favicon.ico` at the link's origin.
+ * It used to come from Google's favicon service, which meant telling Google the domain of
+ * every link in the list, for pushes whose whole point is that nobody but their owner can
+ * read them. A proxy of our own would move the same list to our logs. So the only party
+ * asked is the site the link already points at, and when it has no icon there the row
+ * falls back to ours.
+ *
+ * `/favicon.ico` and not the page's `<link rel="icon">`, which the apps read: a browser
+ * will draw another origin's image but will not let a script read its HTML. Undefined for
+ * anything that is not a web address.
+ */
+const faviconOf = (url: string | undefined): string | undefined => {
   try {
-    host = url ? new URL(url).hostname : '';
-  } catch (error) {
-    console.error('Error parsing URL:', error);
+    const { protocol, origin } = new URL(url ?? '');
+    return protocol === 'https:' || protocol === 'http:' ? `${origin}/favicon.ico` : undefined;
+  } catch {
+    return undefined;
   }
-  return `https://www.google.com/s2/favicons?domain=${encodeURIComponent(host)}&sz=256`;
 };
 
 /**
@@ -86,7 +97,8 @@ export default function PushesList({
   selectedPushes,
   onSelectedPushesChange,
 }: PushesListProps) {
-  const [lowResImages, setLowResImages] = useState<Set<string>>(new Set());
+  // The pushes whose site gave no icon (none at `/favicon.ico`, or not an image).
+  const [failedIcons, setFailedIcons] = useState<Set<string>>(new Set());
   const [opening, setOpening] = useState<string | undefined>(undefined);
   // What opening a row has to say (a locked push, a file that did not decrypt), shown above
   // the list as the app shows its other errors, not in a browser dialog.
@@ -130,20 +142,7 @@ export default function PushesList({
     });
   };
 
-  const handleImageLoad = (event: React.SyntheticEvent<HTMLImageElement>, pushId: string) => {
-    const image = event.currentTarget;
-    if (image.naturalHeight === 16) {
-      setLowResImages((prev) => new Set(prev).add(pushId));
-    }
-  };
-
-  const getFallbackImageSrc = (push: Push, icon: string | undefined) => {
-    // If this push has a low-res image, use the PushThat logo as fallback
-    if (lowResImages.has(push.id)) {
-      return '/pushthat-mono.svg';
-    }
-    return null;
-  };
+  const handleIconError = (pushId: string) => setFailedIcons((prev) => new Set(prev).add(pushId));
 
   if (loading) {
     return <div className={styles.textContainer}>Loading...</div>;
@@ -168,10 +167,11 @@ export default function PushesList({
         {pushes.map((push) => {
           const icon = ICONS.find((icon) => push.ext === icon.split('.')[0]);
           const isSelected = selectedPushes.has(push.id);
-          // A locked push, or a file with no icon of its own, has no host to ask for a
-          // favicon (and an empty one would still ask Google).
+          // A locked push, or a file with no icon of its own, has no site to ask for one, and
+          // neither does a link whose site had none: those get ours.
+          const favicon = icon ? undefined : faviconOf(push.url);
           const fallbackSrc =
-            push.locked || (!icon && !push.url) ? '/pushthat-mono.svg' : getFallbackImageSrc(push, icon);
+            push.locked || (!icon && !favicon) || failedIcons.has(push.id) ? '/pushthat-mono.svg' : null;
           const content = (
             <>
               <div
@@ -183,18 +183,15 @@ export default function PushesList({
                 ) : fallbackSrc ? (
                   <img src={fallbackSrc} alt="" className={styles.favicon} />
                 ) : icon ? (
-                  <img
-                    src={`/files/${icon}`}
-                    alt=""
-                    className={styles.favicon}
-                    onLoad={(e) => handleImageLoad(e, push.id)}
-                  />
+                  <img src={`/files/${icon}`} alt="" className={styles.favicon} />
                 ) : (
+                  // No referrer: the site learns that its icon was asked for, not by which page.
                   <img
-                    src={faviconOf(push.url)}
+                    src={favicon}
                     alt=""
+                    referrerPolicy="no-referrer"
                     className={styles.favicon}
-                    onLoad={(e) => handleImageLoad(e, push.id)}
+                    onError={() => handleIconError(push.id)}
                   />
                 )}
               </div>
