@@ -24,6 +24,7 @@ import com.makerocketgonow.pushthat.e2ee.AccountKeyStore
 import com.makerocketgonow.pushthat.e2ee.PushContent
 import com.makerocketgonow.pushthat.e2ee.PushDocument
 import com.makerocketgonow.pushthat.e2ee.forgetSession
+import java.text.NumberFormat
 import java.util.concurrent.TimeUnit
 
 class PushThatMessagingService : FirebaseMessagingService() {
@@ -46,6 +47,13 @@ class PushThatMessagingService : FirebaseMessagingService() {
 
     override fun onMessageReceived(remoteMessage: RemoteMessage) {
         Log.d(TAG, "From: ${remoteMessage.from}")
+
+        // A push the server took back at the month's limit (functions/src/notifications.ts,
+        // removedMessageOf). It names no push, so it is checked before anything that reads one.
+        remoteMessage.data["refused"]?.let { type ->
+            receiveRemoved(type, remoteMessage.data["limit"])
+            return
+        }
 
         // An encrypted push carries only its id (docs/e2ee.md, Notifications): the content
         // is read and decrypted here. A plaintext push, from a client that has not updated,
@@ -102,6 +110,25 @@ class PushThatMessagingService : FirebaseMessagingService() {
             is PushContent.File -> sendAppNotification(content.name, getString(R.string.file_push_body), pushId.hashCode())
             null -> sendAppNotification(getString(R.string.new_push), null, pushId.hashCode())
         }
+        broadcastPushReceived()
+    }
+
+    /**
+     * The notice for a push the server took back because it landed past the month's limit:
+     * the rules let a burst through before any of it is counted, so the push was saved here
+     * and then left the list. Shown whichever device made it, since the server cannot tell
+     * which did and the limit is the account's. One notification a type, replaced by the
+     * next, so a burst taken back says it once. A type this version does not know is left
+     * alone. The list is told to read again, as for a push received.
+     */
+    private fun receiveRemoved(type: String, limit: String?) {
+        val count = limit?.toIntOrNull()?.let { NumberFormat.getIntegerInstance().format(it) } ?: return
+        val body = when (type) {
+            PushContent.TYPE_URL -> getString(R.string.push_removed_url, count)
+            PushContent.TYPE_FILE -> getString(R.string.push_removed_file, count)
+            else -> return
+        }
+        sendAppNotification(getString(R.string.push_removed_title), body, "refused-$type".hashCode())
         broadcastPushReceived()
     }
 
