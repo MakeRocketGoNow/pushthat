@@ -42,6 +42,23 @@ describe('titleOfTab', () => {
     assert.equal(titleOfTab('example.com/a', 'http://example.com/a'), '');
   });
 
+  test('drops the URL as Chrome formats it for a page without a title', () => {
+    // The slash after a bare host is not shown.
+    assert.equal(titleOfTab('example.com', 'http://example.com/'), '');
+    assert.equal(titleOfTab('https://example.com', 'https://example.com/'), '');
+    // Escapes are shown decoded.
+    assert.equal(titleOfTab('example.com/Report (final) v2', 'http://example.com/Report%20(final)%20v2'), '');
+  });
+
+  test('keeps a title that only looks like part of the URL', () => {
+    assert.equal(titleOfTab('example.com', 'https://example.com/a'), 'example.com');
+    assert.equal(titleOfTab('a', 'https://example.com/a'), 'a');
+  });
+
+  test('keeps the title of a URL whose escapes do not decode', () => {
+    assert.equal(titleOfTab('Results', 'https://example.com/%E0%A4%A'), 'Results');
+  });
+
   test('gives no title for none', () => {
     assert.equal(titleOfTab(undefined, 'https://example.com/a'), '');
     assert.equal(titleOfTab('   ', 'https://example.com/a'), '');
