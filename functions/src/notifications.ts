@@ -57,3 +57,47 @@ export function pushMessageOf(pushId: string, push: Record<string, unknown>): Ba
     apns: { payload: { aps: { alert: { title: 'New push' }, mutableContent: true, sound: 'default' } } },
   };
 }
+
+/** The title of the notice for a push taken back at the limit. Android words its own (push_removed_title). */
+export const REMOVED_TITLE = 'Push removed';
+
+/**
+ * The notice's sentence: the limit alone. The apps never sell the plan (store rules), so it
+ * names no upgrade. The web's `limitMessage` and Android's push_removed_url and
+ * push_removed_file say the same.
+ */
+export function removedBodyOf(type: 'url' | 'file', limit: number): string {
+  return `You have used this month's ${limit.toLocaleString('en-US')} ${type === 'url' ? 'link' : 'file'} pushes.`;
+}
+
+/**
+ * What `onNewPushCreated` sends the user's devices when it takes back a push that landed
+ * past the month's limit (usage.ts). The rules let a burst through before any of it is
+ * counted, so the device that made the push was told it was saved; without this the push
+ * only left its list. The likely burst is a queue of pushes made offline and sent together
+ * once the device is back, which happens in the background, where nobody watches the list.
+ *
+ * It goes to every device on the account: the server cannot tell which token made the push,
+ * and the limit is the account's. It carries no `pushId`, which is what every app takes
+ * for a push: an app from before this message finds none and shows nothing on Android or in
+ * Chrome, where it would otherwise read a deleted push and say "New push". iOS shows the
+ * APNs alert as written, old app or new, and with no `mutable-content` the notification
+ * service extension never sees it. Android and the Chrome extension word it themselves
+ * from `refused` and `limit`, so Android's text stays in its strings.xml.
+ *
+ * A burst can be taken back several pushes at once, so each type's notice replaces the
+ * last: the collapse id on APNs, a fixed notification id on Android, a tag in Chrome.
+ * Normal priority on Android: a high-priority message that an older app answers with no
+ * notification counts against the app's later high-priority pushes, and this can wait for
+ * the phone to wake.
+ */
+export function removedMessageOf(type: 'url' | 'file', limit: number): BaseMessage {
+  return {
+    data: { refused: type, limit: String(limit) },
+    android: { priority: 'normal' },
+    apns: {
+      headers: { 'apns-collapse-id': `refused-${type}` },
+      payload: { aps: { alert: { title: REMOVED_TITLE, body: removedBodyOf(type, limit) }, sound: 'default' } },
+    },
+  };
+}
