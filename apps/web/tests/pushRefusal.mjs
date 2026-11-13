@@ -77,7 +77,8 @@ describe('the limit', () => {
     assert.equal(limitMessage(plan(50), 'url'), "You have used this month's 50 link pushes. Pro allows 10,000."));
   test('without a plan, names no number', () =>
     assert.equal(limitMessage(undefined, 'file'), "You have used this month's file pushes."));
-  test('a push the server took back names the limit alone, as the server tells iOS', () =>
+  // functions/src/notifications.test.ts pins the server's sentence for the same file limit of 3.
+  test('a push the server took back names the limit alone', () =>
     assert.equal(usedMessage('file', 3), "You have used this month's 3 file pushes."));
 });
 
