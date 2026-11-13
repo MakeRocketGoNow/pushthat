@@ -677,3 +677,77 @@ final class PushIconTests: XCTestCase {
         return data as Data
     }
 }
+
+/// The title a scrape stores. Every device reads the one stored, so the expected strings
+/// are what Android's Jsoup 1.23.2 gives for the same `<title>`, checked against it, except
+/// for the numbers in `testInvalidReferencesStayAsText` (see `PushTitle.decodingEntities`).
+final class PushTitleTests: XCTestCase {
+    func testDecimalReferences() {
+        XCTAssertEqual(PushTitle.decodingEntities("Tea&#8217;s ready &#8212; at 4&#58;30"), "Tea\u{2019}s ready \u{2014} at 4:30")
+        XCTAssertEqual(PushTitle.decodingEntities("&#128512; smile"), "\u{1F600} smile")
+    }
+
+    func testHexReferences() {
+        XCTAssertEqual(PushTitle.decodingEntities("Tea&#x2019;s &#X2014; &#x1f600;"), "Tea\u{2019}s \u{2014} \u{1F600}")
+    }
+
+    func testTheSemicolonIsOptionalOnANumber() {
+        XCTAssertEqual(PushTitle.decodingEntities("Tea&#8217s ready"), "Tea\u{2019}s ready")
+        XCTAssertEqual(PushTitle.decodingEntities("&#x41BC"), "\u{41BC}")
+    }
+
+    func testWindows1252Range() {
+        XCTAssertEqual(PushTitle.decodingEntities("Tea&#146;s &#150; &#128;5"), "Tea\u{2019}s \u{2013} \u{20AC}5")
+        XCTAssertEqual(PushTitle.decodingEntities("&#129;"), "\u{0081}")
+    }
+
+    func testInvalidReferencesStayAsText() {
+        for text in ["&#;", "&#x;", "&#xZZ;", "&#0;", "&#xD800;", "&#55296;", "&#x110000;", "&#1114112;",
+                     "&#99999999999999999999;", "&#-5;", "&#\u{0663};", "&bogus;", "&", "a & b", "&;"] {
+            XCTAssertEqual(PushTitle.decodingEntities(text), text, text)
+        }
+    }
+
+    func testNamedReferences() {
+        XCTAssertEqual(PushTitle.decodingEntities("&lt;b&gt; &quot;Q&quot; &apos;A&apos; &copy; &reg; &ndash; &mdash; &amp;"),
+                       "<b> \"Q\" 'A' \u{00A9} \u{00AE} \u{2013} \u{2014} &")
+    }
+
+    func testHTML4Names() {
+        XCTAssertEqual(PushTitle.decodingEntities("&lsquo;Caf&eacute;&rsquo; &ldquo;menu&rdquo;&hellip; &laquo;&euro;5&raquo; &middot; &bull; Brand&trade;"),
+                       "\u{2018}Caf\u{00E9}\u{2019} \u{201C}menu\u{201D}\u{2026} \u{00AB}\u{20AC}5\u{00BB} \u{00B7} \u{2022} Brand\u{2122}")
+        // The longest name, case kept apart, and the two HTML5 moved.
+        XCTAssertEqual(PushTitle.decodingEntities("&thetasym; &Eacute;&eacute; &lang;x&rang;"), "\u{03D1} \u{00C9}\u{00E9} \u{27E8}x\u{27E9}")
+        XCTAssertEqual(PushTitle.decodingEntities("&EACUTE; &thetasymx;"), "&EACUTE; &thetasymx;")
+    }
+
+    func testLegacyNamesNeedNoSemicolon() {
+        XCTAssertEqual(PushTitle.decodingEntities("&copy 2024 Example &amp Co &AMP; &COPY &Eacute"),
+                       "\u{00A9} 2024 Example & Co & \u{00A9} \u{00C9}")
+        // The longest legacy name the run starts with, the rest left as text.
+        XCTAssertEqual(PushTitle.decodingEntities("&notin; &notit; &notin &copy2024 &frac12x &sup2x &ampx &lt5 &gt="),
+                       "\u{2209} \u{00AC}it; \u{00AC}in \u{00A9}2024 \u{00BD}x \u{00B2}x &x <5 >=")
+        // Not legacy: these need their `;`.
+        for text in ["&hellip", "&rsquo", "&thetasym", "&sup", "&supx", "&frac1", "&Copy", "&a", "&am"] {
+            XCTAssertEqual(PushTitle.decodingEntities(text), text, text)
+        }
+    }
+
+    func testMixedAndDecodedOnce() {
+        XCTAssertEqual(PushTitle.decodingEntities("Fish &amp; Chips&#8482; &#x2014 It&#39;s &amp;#39; &#38;amp;"),
+                       "Fish & Chips\u{2122} \u{2014} It's &#39; &amp;")
+    }
+
+    func testExtractDecodesThenCollapsesWhitespace() {
+        let html = "<html><head><TITLE lang=\"en\">\n  &nbsp;Tea&#8217;s&#10;ready&#x20;&#x20;now &#160;</TITLE></head></html>"
+        XCTAssertEqual(PushTitle.extract(from: html), "Tea\u{2019}s ready now")
+        XCTAssertEqual(PushTitle.extract(from: "<title>Re&shy;use&#x200B;d\u{00AD} it</title>"), "Reused it")
+        // Only Jsoup's six are collapsed: a thin, narrow or ideographic space, a line
+        // separator or a vertical tab stays as it is.
+        XCTAssertEqual(PushTitle.extract(from: "<title>&#x2028;10&thinsp;km &#8239;! x\u{3000}y&#11;z</title>"),
+                       "\u{2028}10\u{2009}km \u{202F}! x\u{3000}y\u{000B}z")
+        XCTAssertEqual(PushTitle.extract(from: "<title>\u{0001} a &#9; </title>"), "a")
+        XCTAssertEqual(PushTitle.extract(from: "<title>\u{0000}a\u{0000}b</title>"), "\u{FFFD}a\u{FFFD}b")
+        XCTAssertNil(PushTitle.extract(from: "<html><head></head></html>"))
+    }
+}
