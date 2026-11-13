@@ -343,6 +343,10 @@ chrome.runtime.onConnect.addListener((port) => {
     debug('Push from the popup');
     const page = isWebPage(request.page?.url) ? request.page : undefined;
     void pushFromWorker(page, {
+      // `open` can trail the popup's closing by one message between processes: a reply in
+      // that window goes to a port nobody reads, and the worker shows nothing. Accepted, not
+      // closed with an acknowledgement and a timeout, since the window is milliseconds against
+      // the seconds of a push, and the push itself is made either way.
       reply: (reply) => {
         if (!open) return false;
         port.postMessage(reply);
