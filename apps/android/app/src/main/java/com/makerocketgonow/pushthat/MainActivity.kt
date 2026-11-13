@@ -505,6 +505,10 @@ class MainActivity : AppCompatActivity() {
     override fun onCreateOptionsMenu(menu: Menu): Boolean {
         menuInflater.inflate(R.menu.main_menu, menu)
         menuInflater.inflate(R.menu.overflow_menu, menu)
+        // Read from the installed package rather than BuildConfig, which this app does not
+        // generate: the name build.gradle.kts assembled, code included.
+        menu.findItem(R.id.nav_version)?.title =
+            getString(R.string.version, packageManager.getPackageInfo(packageName, 0).versionName)
         this.menu = menu
         return true
     }

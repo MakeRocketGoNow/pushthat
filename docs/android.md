@@ -85,9 +85,13 @@ displaces it: start it again. Pull requests and other branches run only the `bui
 the tests and an unsigned bundle, which proves the release path compiles, with no secrets
 and nothing published.
 
-Don't build a bundle by hand for Play. A local build keeps `versionCode = 8`, which Play has
-already seen; CI passes the workflow's run number plus 100, which only rises. Never lower
-that offset: a code Play has seen is refused for good.
+Don't build a bundle by hand for Play. A local build falls back to `versionCode = 117`,
+which CI has already passed; CI passes the workflow's run number plus 100, which only rises.
+Never lower that offset: a code Play has seen is refused for good.
+
+`versionName` is assembled from `baseVersionName` and the code, as "1.2.0 (142)", so every
+build says which one it is: on the phone under the menu's last line, and in Play Console
+beside the bundle. A new release bumps `baseVersionName` only.
 
 The `release` job reads five secrets from the repository's `play` Environment, and skips
 publishing when either the keystore or the service account is missing:
@@ -170,8 +174,8 @@ Write it for someone holding the phone: what is different for them, in their wor
 subjects are addressed to whoever changes the code next and make poor release notes, so
 the note is written by hand rather than generated from them.
 
-The note covers everything since `versionName` last changed. A change someone would notice
-adds to it, in the same pull request; bumping `versionName` starts it over. Play's limit is
+The note covers everything since `baseVersionName` last changed. A change someone would notice
+adds to it, in the same pull request; bumping `baseVersionName` starts it over. Play's limit is
 500 characters per locale, so when it is full, cut the least noticeable line rather than
 squeezing. Another language is another file beside it, named `whatsnew-<BCP 47 tag>`
 (`whatsnew-de-DE`).

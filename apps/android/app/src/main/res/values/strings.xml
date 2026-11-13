@@ -9,6 +9,7 @@
     <string name="navigation_drawer_open">Open navigation drawer</string>
     <string name="navigation_drawer_close">Close navigation drawer</string>
     <string name="logout">Logout</string>
+    <string name="version">Version %1$s</string>
     <string name="select_all">SELECT ALL</string>
     <string name="sign_in_to_pushthat">Sign in to PushThat</string>
     <string name="email">Email</string>
