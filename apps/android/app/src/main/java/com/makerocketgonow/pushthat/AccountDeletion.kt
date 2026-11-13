@@ -101,10 +101,16 @@ object AccountDeletion {
             return
         }
         // From here on, not cancelled with the screen. The call can take five minutes, and
-        // someone who swipes the app away meanwhile ends the view model's scope: the
-        // request still finished on its thread and the server still deleted the account,
-        // but the cancellation was rethrown on the way back and `forget` never ran, leaving
-        // an install signed in to nothing with the deleted account's queue and token.
+        // leaving the screen meanwhile (back, or the activity finishing) clears the view
+        // model's scope: the request still finished on its thread and the server still
+        // deleted the account, but the cancellation was rethrown on the way back and
+        // `forget` never ran, leaving an install signed in to nothing with the deleted
+        // account's queue and token.
+        //
+        // Swiping the app out of Recents is not that: it kills the process, which nothing
+        // here survives. The session then ends on its own once the revoked token is
+        // refused, and `forgetSession` drops the key, but the queued pushes and the
+        // notification token stay until this install is next signed out.
         withContext(NonCancellable) { deleteAndForget(app, user, token) }
     }
 
