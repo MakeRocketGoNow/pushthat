@@ -1,6 +1,12 @@
 // A URL push's page icon as the list may draw it (docs/e2ee.md, Icons). Apart from
 // `pushes.ts`, which needs Firebase, so that `npm run test:keys` checks it in plain Node.
 
+/**
+ * What the list draws for a push with no icon of its own, and for a locked one; the popup
+ * draws it for a page it has no icon for. In one place so the two cannot drift.
+ */
+export const PLACEHOLDER_ICON = '/pushthat-mono.svg';
+
 // 4096 bytes of PNG, at most 64 pixels a side (docs/e2ee.md, Icons).
 const MAX_ICON_BYTES = 4096;
 const MAX_ICON_SIDE = 64;

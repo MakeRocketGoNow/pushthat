@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 
 import Button from '@/components/Button';
 import { auth } from '@/config/firebase';
+import { PLACEHOLDER_ICON } from '@/services/pageIcon';
 import {
   NOT_A_WEB_PAGE_MESSAGE,
   PUSH_PORT,
@@ -15,9 +16,6 @@ import {
 import { UNCONFIRMED_MESSAGE } from '@/services/pushRefusal';
 
 import styles from './PushPopup.module.css';
-
-/** The list's placeholder, drawn here for a page without an icon, as the list will draw it. */
-const PLACEHOLDER = '/pushthat-mono.svg';
 
 // Long enough to read "Pushed", short enough not to be in the way of the page.
 const CLOSE_AFTER_PUSH_MS = 900;
@@ -106,7 +104,7 @@ export function PushPopup() {
   return (
     <div className={styles.popup}>
       <div className={styles.page}>
-        <img className={styles.icon} src={page.icon ? `data:image/png;base64,${page.icon}` : PLACEHOLDER} alt="" />
+        <img className={styles.icon} src={page.icon ? `data:image/png;base64,${page.icon}` : PLACEHOLDER_ICON} alt="" />
         <div className={styles.text}>
           <div className={styles.title}>{page.title || new URL(page.url).host}</div>
           <div className={styles.url}>{page.url}</div>
