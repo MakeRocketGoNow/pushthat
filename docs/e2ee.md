@@ -170,16 +170,6 @@ android: { priority: "high" }
 apns:    { payload: { aps: { alert: { title: "New push" }, "mutable-content": 1, sound: "default" } } }
 ```
 
-A push `recordPush` takes back at the month's limit ([billing.md](billing.md)) is not announced as a push; its devices are sent a notice instead, with no `pushId`, which every app reads as "this is a push":
-
-```
-data:    { refused: "url" | "file", limit }
-android: { priority: "normal" }
-apns:    { headers: { "apns-collapse-id": "refused-<type>" }, payload: { aps: { alert: { title: "Push removed", body: "You have used this month's 50 link pushes." } } } }
-```
-
-Android and the Chrome extension word it from `refused` and `limit`; iOS shows the alert as sent, so its notification service extension never runs for it.
-
 `title`, `url` and `deviceName` leave the payload, and the domain fallback in the function goes with them; receivers compute the domain from the decrypted URL.
 
 - **Android.** `PushThatMessagingService` skips the push if `deviceId` is its own, reads the document, decrypts and posts the notification it posts today, deep-linking to the URL. Offline, it posts "New push" and the list decrypts when opened.
@@ -190,6 +180,16 @@ Android and the Chrome extension word it from `refused` and `limit`; iOS shows t
 Echo suppression compares `deviceId` instead of the device's model name, which also stops two phones of the same model hiding each other's pushes.
 
 One case it does not cover: a link pushed from pushthat.link in a Chrome that also has the extension opens in a new tab there. The site and the extension are two origins with two IndexedDBs, so two device ids, where the old comparison of user agents happened to match them (and also hid every push between two machines on the same Chrome version). Closing it needs the site to ask the extension for its id, through `externally_connectable` and the extension's published id, which the repository does not have yet; until then the duplicate tab is the cost.
+
+A push `recordPush` takes back at the month's limit ([billing.md](billing.md)) is not announced as a push. Its devices are sent a notice instead, which carries no `pushId`, since every app takes a `pushId` to mean a push to read:
+
+```
+data:    { refused: "url" | "file", limit }
+android: { priority: "normal" }
+apns:    { headers: { "apns-collapse-id": "refused-<type>" }, payload: { aps: { alert: { title: "Push removed", body: "You have used this month's 50 link pushes." } } } }
+```
+
+Android and the Chrome extension word it from `refused` and `limit`; iOS shows the alert as sent, so its notification service extension never runs for it.
 
 ## Titles
 
