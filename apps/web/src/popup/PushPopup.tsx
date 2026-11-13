@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 
 import Button from '@/components/Button';
+import { auth } from '@/config/firebase';
 import {
   NOT_A_WEB_PAGE_MESSAGE,
   PUSH_PORT,
@@ -8,6 +9,7 @@ import {
   type PagePushFailure,
   type PushReply,
   type PushRequest,
+  SIGNED_OUT_MESSAGE,
   pageOfTab,
 } from '@/services/pagePush';
 import { UNCONFIRMED_MESSAGE } from '@/services/pushRefusal';
@@ -63,7 +65,15 @@ export function PushPopup() {
     void (async () => {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
       const page = tab ? await pageOfTab(tab) : undefined;
-      if (!cancelled) setState(page ? { kind: 'ready', page } : { kind: 'unpushable' });
+      // Signed out is known here at once, from the session Firebase keeps in this browser,
+      // so the popup offers "Sign in" from the start rather than a push that is bound to be
+      // refused. A missing key is left to the push: telling needs the key store and
+      // possibly Firestore, a wait on every open for a case that is rare.
+      await auth.authStateReady();
+      if (cancelled) return;
+      if (!page) setState({ kind: 'unpushable' });
+      else if (!auth.currentUser) setState({ kind: 'failed', page, message: SIGNED_OUT_MESSAGE, reason: 'signIn' });
+      else setState({ kind: 'ready', page });
     })();
     return () => {
       cancelled = true;
