@@ -52,8 +52,8 @@ export function PushPopup() {
       setState({ kind: 'pushed', page });
       setTimeout(() => window.close(), CLOSE_AFTER_PUSH_MS);
     } catch (error) {
-      const failure =
-        error instanceof PagePushError ? error : new PagePushError('Could not push this page. Try again.');
+      // `pushPage` throws nothing but a `PagePushError`.
+      const failure = error as PagePushError;
       setState({ kind: 'failed', page, message: failure.message, needsSignIn: failure.needsSignIn });
     }
   };

@@ -5,7 +5,7 @@ import { app, auth } from '@/config/firebase';
 import { base64 } from './e2ee';
 import { iconOf } from './pageIcon';
 import { planApi } from './plan';
-import { UNCONFIRMED_MESSAGE, isRulesRefusal, refusalMessage } from './pushRefusal';
+import { TOO_LONG_LINK_MESSAGE, UNCONFIRMED_MESSAGE, isRulesRefusal, refusalMessage } from './pushRefusal';
 import { PushTooLongError, PushUnconfirmedError, createUrlPush, keyIsStale, loadPushKeys } from './pushes';
 
 /**
@@ -43,6 +43,8 @@ export const SIGNED_OUT_MESSAGE = 'Sign in to PushThat to push from this browser
 // before encryption, or a browser that refused IndexedDB) cannot seal a push.
 const NO_KEYS_MESSAGE = 'Your encryption key is not on this browser. Open PushThat and sign in again.';
 export const NOT_A_WEB_PAGE_MESSAGE = 'Only web pages can be pushed.';
+// Anything else: offline, usually, or Firestore failing to answer.
+const PUSH_FAILED_MESSAGE = 'Could not push this page. Check your connection and try again.';
 
 /**
  * Whether `url` is worth pushing: a web page another device can open. Not `chrome://`,
@@ -117,22 +119,24 @@ async function pngWithin(bitmap: ImageBitmap, side: number): Promise<string | un
 }
 
 /**
- * Pushes `page` for whoever is signed in to the extension. Throws a `PagePushError` whose
- * message is the sentence to show: the reasons are the Push page's, read the same way
- * (pushRefusal.ts), without the plan check before sending, which would be a round trip on
- * every push to save one on the rare refused one.
+ * Pushes `page` for whoever is signed in to the extension. Throws a `PagePushError` and
+ * nothing else, whose message is the sentence to show, so no caller words a failure of its
+ * own: the reasons are the Push page's, read the same way (pushRefusal.ts), without the
+ * plan check before sending, which would be a round trip on every push to save one on the
+ * rare refused one.
  */
 export async function pushPage(page: Page): Promise<void> {
-  await auth.authStateReady();
-  const uid = auth.currentUser?.uid;
-  if (!uid) throw new PagePushError(SIGNED_OUT_MESSAGE, true);
-  const db = getFirestore(app);
-  const keys = await loadPushKeys(db, uid);
-  if (!keys) throw new PagePushError(NO_KEYS_MESSAGE, true);
   try {
-    await createUrlPush(db, keys, page.url, page.title, page.icon);
-  } catch (error) {
-    if (isRulesRefusal(error)) {
+    await auth.authStateReady();
+    const uid = auth.currentUser?.uid;
+    if (!uid) throw new PagePushError(SIGNED_OUT_MESSAGE, true);
+    const db = getFirestore(app);
+    const keys = await loadPushKeys(db, uid);
+    if (!keys) throw new PagePushError(NO_KEYS_MESSAGE, true);
+    try {
+      await createUrlPush(db, keys, page.url, page.title, page.icon);
+    } catch (error) {
+      if (!isRulesRefusal(error)) throw error;
       throw new PagePushError(
         await refusalMessage(
           undefined,
@@ -142,9 +146,11 @@ export async function pushPage(page: Page): Promise<void> {
         )
       );
     }
+  } catch (error) {
+    if (error instanceof PagePushError) throw error;
     if (error instanceof PushUnconfirmedError) throw new PagePushError(UNCONFIRMED_MESSAGE);
-    if (error instanceof PushTooLongError) throw new PagePushError('That link is too long to push.');
+    if (error instanceof PushTooLongError) throw new PagePushError(TOO_LONG_LINK_MESSAGE);
     console.error('Could not push a page:', error);
-    throw new PagePushError('Could not push this page. Check your connection and try again.');
+    throw new PagePushError(PUSH_FAILED_MESSAGE);
   }
 }

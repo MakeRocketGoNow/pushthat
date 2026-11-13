@@ -6,7 +6,14 @@ import Button from '@/components/Button';
 import { LIMITS, formatMb } from '@/config/plan';
 import { usePlan } from '@/hooks/usePlan';
 import { KEYS_UNAVAILABLE, usePushKeys } from '@/hooks/usePushKeys';
-import { UNCONFIRMED_MESSAGE, atLimit, isRulesRefusal, limitMessage, refusalMessage } from '@/services/pushRefusal';
+import {
+  TOO_LONG_LINK_MESSAGE,
+  UNCONFIRMED_MESSAGE,
+  atLimit,
+  isRulesRefusal,
+  limitMessage,
+  refusalMessage,
+} from '@/services/pushRefusal';
 import {
   PushTooLongError,
   PushUnconfirmedError,
@@ -78,7 +85,7 @@ export default function Push() {
           : error instanceof PushUnconfirmedError
             ? UNCONFIRMED_MESSAGE
             : error instanceof PushTooLongError
-              ? 'That link is too long to push.'
+              ? TOO_LONG_LINK_MESSAGE
               : 'Failed to save link. Please try again.'
       );
     } finally {

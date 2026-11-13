@@ -288,10 +288,9 @@ async function pushFromWorker(page: Page | undefined) {
     await chrome.action.setBadgeText({ text: '✓' });
     setTimeout(() => void chrome.action.setBadgeText({ text: '' }), PUSHED_BADGE_MS);
   } catch (error) {
-    const message = error instanceof PagePushError ? error.message : 'Could not push this page. Try again.';
-    if (!(error instanceof PagePushError)) logError('Could not push from the worker:', { error: String(error) });
+    // `pushPage` throws nothing but a `PagePushError`, and logs what it could not word.
     await self.registration.showNotification('Not pushed', {
-      body: message,
+      body: (error as PagePushError).message,
       icon: '/icons/icon128.png',
       data: { url: chrome.runtime.getURL('index.html') },
     });
