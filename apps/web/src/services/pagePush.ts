@@ -79,9 +79,11 @@ export async function pageOfTab(tab: chrome.tabs.Tab): Promise<Page | undefined>
   const url = tab.url;
   if (!isWebPage(url)) return undefined;
   const title = titleOfTab(tab.title, url);
-  // `favIconUrl` is empty while the page has no icon of its own, and Chrome's icon store
-  // would answer then with its generic globe, which is worse than no icon: the list's own
-  // placeholder says "no icon", the globe says this site's icon is a globe.
+  // `favIconUrl` is empty while the page has no icon of its own (or has not loaded it yet),
+  // and Chrome's icon store would answer then with its generic globe, which is worse than no
+  // icon: the list's own placeholder says "no icon", the globe says this site's icon is a
+  // globe. A push without one keeps its placeholder: it has a title, and phones scrape only
+  // pushes without one. Kept that way on purpose (docs/e2ee.md, Titles).
   const icon = tab.favIconUrl ? await storedIcon(url).catch(() => undefined) : undefined;
   return { url, title, icon };
 }
