@@ -157,8 +157,9 @@ export const onNewPushCreated = onDocumentCreated('pushes/{pushId}', async (even
       new Date()
     );
     if (result.outcome === 'refused') {
-      // recordPush refuses only a URL or file push; anything else it throws on.
-      await sendToDevices(userRef, removedMessageOf(pushData.type as 'url' | 'file', result.limit));
+      // recordPush refuses only a URL or file push; anything else it throws on. One its user
+      // deleted before this ran was not taken back by anyone but them, so nothing is said.
+      if (result.removed) await sendToDevices(userRef, removedMessageOf(pushData.type as 'url' | 'file', result.limit));
       return;
     }
 

@@ -30,8 +30,7 @@ async function makePush(type: NewPush['type'] = 'url') {
   return { ref, push: { userId: UID, type } as NewPush };
 }
 
-const record = (made: Awaited<ReturnType<typeof makePush>>) =>
-  recordPush(db(), made.ref, made.push, NOW, { emailOf });
+const record = (made: Awaited<ReturnType<typeof makePush>>) => recordPush(db(), made.ref, made.push, NOW, { emailOf });
 
 afterAll(() => closeFirestore());
 beforeEach(() => clearFirestore());
@@ -97,7 +96,7 @@ describe('the limit, applied again where the count is exact', () => {
     await seedUser({ createdAt: CREATED, usageRecords: { [periodKey]: { url: LIMITS.free.url } } });
     const made = await makePush();
 
-    expect(await record(made)).toEqual({ outcome: 'refused', limit: LIMITS.free.url });
+    expect(await record(made)).toEqual({ outcome: 'refused', limit: LIMITS.free.url, removed: true });
 
     expect((await made.ref.get()).exists).toBe(false);
     expect((await userDoc(UID)).usageRecords).toEqual({ [periodKey]: { url: LIMITS.free.url } });
@@ -107,8 +106,17 @@ describe('the limit, applied again where the count is exact', () => {
     await seedUser({ createdAt: CREATED, usageRecords: { [periodKey]: { file: LIMITS.free.file } } });
     const made = await makePush('file');
 
-    expect(await record(made)).toEqual({ outcome: 'refused', limit: LIMITS.free.file });
+    expect(await record(made)).toEqual({ outcome: 'refused', limit: LIMITS.free.file, removed: true });
     expect((await made.ref.get()).exists).toBe(false);
+  });
+
+  test('a push its user deleted before the count is refused without saying it was taken back', async () => {
+    await seedUser({ createdAt: CREATED, usageRecords: { [periodKey]: { url: LIMITS.free.url } } });
+    const made = await makePush();
+    await made.ref.delete();
+
+    expect(await record(made)).toEqual({ outcome: 'refused', limit: LIMITS.free.url, removed: false });
+    expect((await userDoc(UID)).usageRecords).toEqual({ [periodKey]: { url: LIMITS.free.url } });
   });
 
   test('a burst past it keeps only as many as the month had left', async () => {
@@ -139,12 +147,12 @@ describe('the limit, applied again where the count is exact', () => {
       usageRecords: { [periodKey]: { url: LIMITS.free.url } },
     });
 
-    expect(await record(await makePush())).toEqual({ outcome: 'refused', limit: LIMITS.free.url });
+    expect(await record(await makePush())).toEqual({ outcome: 'refused', limit: LIMITS.free.url, removed: true });
   });
 
   test('Pro is refused at its own limit, which the refusal names', async () => {
     await seedUser({ createdAt: CREATED, subscription: PRO, usageRecords: { [periodKey]: { url: LIMITS.pro.url } } });
 
-    expect(await record(await makePush())).toEqual({ outcome: 'refused', limit: LIMITS.pro.url });
+    expect(await record(await makePush())).toEqual({ outcome: 'refused', limit: LIMITS.pro.url, removed: true });
   });
 });
