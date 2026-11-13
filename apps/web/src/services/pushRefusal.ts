@@ -47,6 +47,15 @@ export const atLimit = (plan: PlanReport, type: 'url' | 'file') => plan.usage[ty
 export const STALE_KEY_MESSAGE =
   'Your encryption keys were changed on another device. Sign out and sign in again to use them here.';
 
+/**
+ * The sentence for a push whose landing could not be checked (`PushUnconfirmedError`). Word
+ * for word what the iOS and macOS apps say: trying again could push it twice.
+ */
+export const UNCONFIRMED_MESSAGE = 'Could not confirm that this push was saved. Check your pushes before trying again.';
+
+/** The sentence for a link whose push would not fit `enc.ct`'s bound (`PushTooLongError`). */
+export const TOO_LONG_LINK_MESSAGE = 'That link is too long to push.';
+
 /** The sentence for a refusal that is neither: this copy of PushThat may be out of date. */
 export const outdatedMessage = () =>
   isExtensionPage()

@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <!--
+      The Chrome extension's toolbar popup (manifest.json, action.default_popup), built only
+      by `npm run build:chrome`. The site never serves it: it needs the `chrome` APIs.
+    -->
+    <title>PushThat</title>
+  </head>
+  <body>
+    <div id="popup"></div>
+    <script type="module" src="/src/popup/main.tsx"></script>
+  </body>
+</html>

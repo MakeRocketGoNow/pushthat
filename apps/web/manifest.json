@@ -2,13 +2,21 @@
   "manifest_version": 3,
   "name": "PushThat",
   "version": "2.1.0",
-  "action": {},
+  "action": {
+    "default_popup": "popup.html"
+  },
+  "commands": {
+    "push-page": {
+      "suggested_key": { "default": "Alt+Shift+P" },
+      "description": "Push the current page"
+    }
+  },
 
   "background": {
     "service_worker": "chrome/background.ts",
     "type": "module"
   },
-  "permissions": ["tabs", "storage", "notifications"],
+  "permissions": ["tabs", "storage", "notifications", "favicon", "contextMenus"],
   "host_permissions": ["https://fcm.googleapis.com/*"],
   "web_accessible_resources": [
     {

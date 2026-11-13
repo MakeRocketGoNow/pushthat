@@ -19,7 +19,18 @@ import { getMessaging } from 'firebase/messaging/sw';
 
 import { app, auth } from '../src/config/firebase';
 import { deviceId } from '../src/services/keyStore';
+import {
+  NOT_A_WEB_PAGE_MESSAGE,
+  PUSH_PORT,
+  type Page,
+  PagePushError,
+  type PushReply,
+  type PushRequest,
+  pageOfTab,
+  pushPage,
+} from '../src/services/pagePush';
 import { type Push, loadPushKeys, readPush, viewableType, viewerPath } from '../src/services/pushes';
+import { isWebPage } from '../src/services/tabPage';
 
 declare const self: ServiceWorkerGlobalScope & typeof globalThis;
 
@@ -238,13 +249,136 @@ self.addEventListener('activate', async (event) => {
   }
 });
 
-chrome.action.onClicked.addListener(async () => {
-  debug('Extension clicked');
-  await chrome.tabs.create({ url: chrome.runtime.getURL('index.html') });
+// The toolbar button opens the popup (manifest.json, `action.default_popup`), which pushes
+// the tab or opens the app; with a popup set, Chrome no longer sends `action.onClicked`.
+
+// Pushing from the extension (docs/web.md): the popup, the keyboard shortcut and the
+// right-click menu, all made here. A notification's click opens the app.
+const PUSH_PAGE = 'push-page';
+const PUSH_LINK = 'push-link';
+const WEB_PAGES = ['http://*/*', 'https://*/*'];
+const PUSHED_BADGE_MS = 2000;
+
+// The check on the toolbar button after a push, cleared by a timer (`clearPushed`). Badge text is the
+// browser's and outlives the worker, which Chrome may stop before the timer fires, so a
+// check left that way is cleared when the worker next starts. The timer is kept so that a
+// second push within the two seconds gets its full two.
+let badgeTimer: ReturnType<typeof setTimeout> | undefined;
+
+/**
+ * Takes the check off the toolbar button, and the button's name back to the extension's.
+ * The name says "Pushed" while the check shows, so that a push is said in words too, where
+ * a screen reader reads the button, and not only by a mark someone has to see.
+ */
+const clearPushed = () =>
+  Promise.all([
+    chrome.action.setBadgeText({ text: '' }),
+    chrome.action.setTitle({ title: chrome.runtime.getManifest().name }),
+  ]);
+void clearPushed();
+
+/**
+ * The right-click items, made again on every install and update: Chrome keeps them across
+ * restarts of the worker but not across an update that changes them, and creating one that
+ * exists is an error, so the old ones go first.
+ */
+async function createMenus() {
+  await chrome.contextMenus.removeAll();
+  chrome.contextMenus.create({
+    id: PUSH_PAGE,
+    title: 'Push this page',
+    contexts: ['page'],
+    documentUrlPatterns: WEB_PAGES,
+  });
+  chrome.contextMenus.create({
+    id: PUSH_LINK,
+    title: 'Push this link',
+    contexts: ['link'],
+    targetUrlPatterns: WEB_PAGES,
+  });
+}
+
+/**
+ * Pushes `page` and says how it went. `popup` is the popup that asked, while it is open:
+ * it is told, and shows the result itself. Otherwise, after a shortcut, a menu item or a
+ * popup closed mid-push, the worker says it: a check on the toolbar button for a push, a
+ * notification for a failure.
+ */
+async function pushFromWorker(page: Page | undefined, popup?: { reply: (reply: PushReply) => boolean }) {
+  let reply: PushReply;
+  try {
+    if (!page) throw new PagePushError(NOT_A_WEB_PAGE_MESSAGE);
+    await pushPage(page);
+    reply = { ok: true };
+  } catch (error) {
+    // `pushPage` throws nothing but a `PagePushError`, and logs what it could not word.
+    const failure = error as PagePushError;
+    reply = { ok: false, message: failure.message, reason: failure.reason };
+  }
+  if (popup?.reply(reply)) return;
+  if (reply.ok) {
+    clearTimeout(badgeTimer);
+    await chrome.action.setBadgeBackgroundColor({ color: '#2e7d32' });
+    await chrome.action.setBadgeText({ text: '✓' });
+    await chrome.action.setTitle({ title: 'Pushed' });
+    badgeTimer = setTimeout(() => void clearPushed(), PUSHED_BADGE_MS);
+  } else {
+    // An unconfirmed push may have landed, so it is not called "not pushed".
+    await self.registration.showNotification(reply.reason === 'unconfirmed' ? 'Push not confirmed' : 'Not pushed', {
+      body: reply.message,
+      icon: '/icons/icon128.png',
+      data: { url: chrome.runtime.getURL('index.html') },
+    });
+  }
+}
+
+// The popup's push (`PUSH_PORT`): made here so that it survives the popup closing.
+chrome.runtime.onConnect.addListener((port) => {
+  if (port.name !== PUSH_PORT) return;
+  let open = true;
+  port.onDisconnect.addListener(() => {
+    open = false;
+  });
+  port.onMessage.addListener((request: PushRequest) => {
+    debug('Push from the popup');
+    const page = isWebPage(request.page?.url) ? request.page : undefined;
+    void pushFromWorker(page, {
+      // `open` can trail the popup's closing by one message between processes: a reply in
+      // that window goes to a port nobody reads, and the worker shows nothing. Accepted, not
+      // closed with an acknowledgement and a timeout, since the window is milliseconds against
+      // the seconds of a push, and the push itself is made either way.
+      reply: (reply) => {
+        if (!open) return false;
+        port.postMessage(reply);
+        return true;
+      },
+    });
+  });
 });
 
-// Add installation handler
+chrome.commands.onCommand.addListener(async (command, tab) => {
+  if (command !== PUSH_PAGE) return;
+  // Chrome passes the active tab; older versions passed nothing, so it is asked for then.
+  const active = tab ?? (await chrome.tabs.query({ active: true, lastFocusedWindow: true }))[0];
+  debug('Push shortcut');
+  await pushFromWorker(active ? await pageOfTab(active) : undefined);
+});
+
+chrome.contextMenus.onClicked.addListener(async (info, tab) => {
+  if (info.menuItemId === PUSH_PAGE) {
+    debug('Push this page, from the menu');
+    await pushFromWorker(tab ? await pageOfTab(tab) : undefined);
+  } else if (info.menuItemId === PUSH_LINK) {
+    debug('Push this link, from the menu');
+    // A link is a page this browser has usually not loaded, so there is no title and no
+    // icon to give: it goes as a push from the site's Push page does, and the first phone
+    // or Mac to receive it fills in both (docs/e2ee.md, Titles).
+    await pushFromWorker(isWebPage(info.linkUrl) ? { url: info.linkUrl, title: '' } : undefined);
+  }
+});
+
 chrome.runtime.onInstalled.addListener(async (details) => {
+  await createMenus();
   if (details.reason === 'install') {
     await chrome.tabs.create({ url: chrome.runtime.getURL('index.html') });
   }

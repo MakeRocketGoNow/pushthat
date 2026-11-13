@@ -3,6 +3,7 @@ import { getStorage } from 'firebase/storage';
 import { Dispatch, SetStateAction, useState } from 'react';
 
 import { CheckIcon } from '@/components/icons/CheckIcon';
+import { PLACEHOLDER_ICON } from '@/services/pageIcon';
 import { LOCKED_MESSAGE, type Push, type PushFile, downloadFile, viewableType, viewerPath } from '@/services/pushes';
 
 import styles from './PushesList.module.css';
@@ -30,9 +31,6 @@ const FILE_ICONS = new Map<string, string>(
   ).map(([path, src]) => [path.slice(path.lastIndexOf('/') + 1, -'.svg'.length), src])
 );
 
-/** The placeholder for a push with no icon of its own, and for a locked one. */
-const PLACEHOLDER = '/pushthat-mono.svg';
-
 /**
  * What a row's icon shows: a URL push's page icon, else the icon for its type (a link to a
  * PDF has no page to take an icon from), else the placeholder. Never the network: the page
@@ -40,9 +38,9 @@ const PLACEHOLDER = '/pushthat-mono.svg';
  * every pushed host from every list (docs/e2ee.md, Icons).
  */
 const iconSrc = (push: Push, broken: boolean): string => {
-  if (push.locked) return PLACEHOLDER;
+  if (push.locked) return PLACEHOLDER_ICON;
   if (push.icon && !broken) return `data:image/png;base64,${push.icon}`;
-  return (push.ext && FILE_ICONS.get(push.ext.toLowerCase())) || PLACEHOLDER;
+  return (push.ext && FILE_ICONS.get(push.ext.toLowerCase())) || PLACEHOLDER_ICON;
 };
 
 /**
