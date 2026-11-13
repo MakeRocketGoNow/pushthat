@@ -54,14 +54,14 @@ A push to `main` runs this deploy from CI when it changes `apps/web/`; see
 
 ## Pages that read without JavaScript
 
-Privacy, Terms, Support and Security are prerendered. `npm run build` ends with
-`npm run prerender`, which builds `src/prerender.tsx` for Node (`vite build --ssr`, into
-`node_modules/.prerender`) and runs `scripts/prerender.mjs`. That writes `dist/<page>.html`
-for each entry in `src/staticPages.tsx`: the built `index.html` with the page rendered into
-`#root`, the page's own title (as `<title>` and `og:title`) and its own `og:url`. So the
-pages read with JavaScript off, and crawlers and link previews see each page's title rather
-than the front page's. The descriptions stay the product's, since they say what the page
-belongs to.
+Privacy, Terms, Support, Security and the account deletion page are prerendered. `npm run
+build` ends with `npm run prerender`, which builds `src/prerender.tsx` for Node (`vite build
+--ssr`, into `node_modules/.prerender`) and runs `scripts/prerender.mjs`. That writes
+`dist/<page>.html` for each entry in `src/staticPages.tsx`: the built `index.html` with the
+page rendered into `#root`, the page's own title (as `<title>` and `og:title`) and its own
+`og:url`. So the pages read with JavaScript off, and crawlers and link previews see each
+page's title rather than the front page's. The descriptions stay the product's, since they
+say what the page belongs to.
 
 Hosting reaches each file through a rewrite of its own in the root `firebase.json`, ahead of
 the `**` catch-all, and the script fails the build when one is missing. `cleanUrls` would do
@@ -71,10 +71,14 @@ page is `/index.html?view=…`.
 A page belongs on the list only if it renders the same signed in or out, holds no state and
 imports nothing from Firebase. Firebase Auth started in Node keeps the script from exiting,
 so the script refuses a bundle that imports Firebase rather than hang the build. That is why
-`useAuth` lives apart from its provider (`src/contexts/AuthContext.tsx`,
-`AuthProvider.tsx`) and the password rule is in `src/config/password.ts`. The front page is
-not on the list: every unknown path is answered with `index.html`, so filling that file
-would show the front page on `/links` and the rest until the bundle loaded.
+`useAuth` lives apart from its provider (`src/contexts/AuthContext.tsx`, `AuthProvider.tsx`)
+and the password rule is in `src/config/password.ts`. A page that needs either for part of
+itself keeps that part in a component it imports from an effect, as the deletion page does
+its form (`src/components/DeleteAccountForm.tsx`): effects do not run in the build's render,
+so the chunk is never loaded there. Not `lazy`, which starts its import wherever it is
+rendered, the build included. The front page is not on the list: every unknown path is
+answered with `index.html`, so filling that file would show the front page on `/links` and
+the rest until the bundle loaded.
 
 With JavaScript on, `src/main.tsx` waits for Firebase to say who is signed in, then mounts
 with `createRoot`, which replaces the prerendered markup with the same page (and the nav,

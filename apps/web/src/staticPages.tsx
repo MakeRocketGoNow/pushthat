@@ -1,5 +1,6 @@
 import { ComponentType } from 'react';
 
+import { DeleteAccount } from './pages/DeleteAccount';
 import Privacy from './pages/Privacy';
 import { Security } from './pages/Security';
 import Support from './pages/Support';
@@ -26,4 +27,7 @@ export const STATIC_PAGES: { path: string; Page: ComponentType }[] = [
   { path: '/terms', Page: Terms },
   { path: '/support', Page: Support },
   { path: '/security', Page: Security },
+  // The account deletion page Google Play is given (docs/account-deletion.md). Its text is
+  // the same for everyone; its form is loaded apart (pages/DeleteAccount.tsx).
+  { path: '/delete-account', Page: DeleteAccount },
 ];

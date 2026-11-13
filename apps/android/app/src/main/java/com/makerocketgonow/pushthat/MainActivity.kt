@@ -535,6 +535,10 @@ class MainActivity : AppCompatActivity() {
                     .show()
                 true
             }
+            R.id.nav_delete_account -> {
+                showDeleteAccount()
+                true
+            }
             R.id.action_delete -> {
                 showDeleteConfirmation()
                 true
@@ -631,6 +635,36 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
+     * What deleting does, said before anything is asked, and the password that confirms it.
+     * One dialog rather than a warning and then a prompt: the password is the confirmation,
+     * and the function refuses without a sign-in made in the last five minutes. As with the
+     * password change, the button is wired after `show()` so an empty field keeps it open.
+     */
+    private fun showDeleteAccount() {
+        val view = layoutInflater.inflate(R.layout.dialog_delete_account, null)
+        val password = view.findViewById<EditText>(R.id.deleteAccountPasswordInput)
+        val dialog = AlertDialog.Builder(this, R.style.DeleteDialogStyle)
+            .setTitle(R.string.delete_account_title)
+            .setView(view)
+            .setPositiveButton(R.string.delete_account, null)
+            .setNegativeButton(R.string.cancel, null)
+            .show()
+        dialog.getButton(AlertDialog.BUTTON_POSITIVE).apply {
+            setTextColor(ContextCompat.getColor(this@MainActivity, R.color.color_error))
+            setOnClickListener {
+                // Not trimmed: the keys are derived from the password exactly as typed.
+                val typed = password.text.toString()
+                if (typed.isEmpty()) {
+                    password.error = getString(R.string.password_required)
+                } else {
+                    dialog.dismiss()
+                    keySettings.deleteAccount(typed)
+                }
+            }
+        }
+    }
+
+    /**
      * The settings' progress, result and recovery key, one dialog at a time, shown again
      * from the view model's state after a rotation. The recovery key cannot be dismissed
      * but by "I saved it", as at sign-up.
@@ -640,6 +674,13 @@ class MainActivity : AppCompatActivity() {
         val builder = AlertDialog.Builder(this, R.style.DeleteDialogStyle)
         keySettingsDialog = when (state) {
             KeySettingsViewModel.State.Idle -> null
+            KeySettingsViewModel.State.AccountDeleted -> {
+                // The view model has signed this install out; there is no list to go back to.
+                Toast.makeText(this, R.string.account_deleted, Toast.LENGTH_LONG).show()
+                startActivity(Intent(this, LoginActivity::class.java))
+                finish()
+                null
+            }
             is KeySettingsViewModel.State.Working -> builder
                 .setMessage(state.message)
                 .setCancelable(false)

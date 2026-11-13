@@ -11,7 +11,7 @@
     "logs": "firebase functions:log",
     "test": "jest",
     "pretest:emulator": "node test/emulator/check-ports.mjs",
-    "test:emulator": "firebase emulators:exec --only firestore,storage --project demo-pushthat 'jest --config jest.emulator.config.js --silent'",
+    "test:emulator": "firebase emulators:exec --only auth,firestore,storage --project demo-pushthat 'jest --config jest.emulator.config.js --silent'",
     "test:watch": "jest --watch"
   },
   "engines": {

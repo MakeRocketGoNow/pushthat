@@ -31,6 +31,7 @@ export {
   refreshSubscription,
   stripeWebhook,
 } from './stripe-functions';
+export { deleteAccount, finishAccountDeletions } from './account-deletion';
 export { expireFilePushes } from './expiry';
 export { deleteOrphanedUploads } from './orphans';
 
@@ -64,21 +65,12 @@ export const onPushRecordDeleted = onDocumentDeleted('pushes/{pushId}', async (e
     }
     storagePath = path;
 
-    // Get storage reference
-    const storage = getStorage();
-    const bucket = storage.bucket();
-    const file = bucket.file(storagePath);
-
-    // Check if file exists before attempting to delete
-    const [exists] = await file.exists();
-    if (!exists) {
-      logger.info(`File ${storagePath} does not exist in storage`);
-      return;
-    }
-
-    // Delete the file
-    await file.delete();
-    logger.info(`Successfully deleted file: ${storagePath}`);
+    // `ignoreNotFound`, and no look first to see whether it is there: the account purge
+    // (account-deletion.ts) and the orphan sweep delete these objects too, and one that
+    // went between a look and the delete made this throw and log an error for a file that
+    // was exactly where it should be, gone.
+    await getStorage().bucket().file(storagePath).delete({ ignoreNotFound: true });
+    logger.info(`Deleted stored file, or found it already gone: ${storagePath}`);
   } catch (error) {
     logger.error(`Error deleting ${storagePath} from storage:`, error);
     throw error;

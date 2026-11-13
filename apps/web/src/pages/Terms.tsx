@@ -20,7 +20,7 @@ export default function Terms() {
         SERVICES, YOU HEREBY AGREE TO BE BOUND BY THE TERMS AND ALL TERMS INCORPORATED HEREIN BY REFERENCE. IT IS THE
         RESPONSIBILITY OF YOU, THE USER, CUSTOMER, OR PROSPECTIVE CUSTOMER TO READ THE TERMS AND CONDITIONS BEFORE
         PROCEEDING TO USE THIS SITE. IF YOU DO NOT EXPRESSLY AGREE TO ALL OF THE TERMS AND CONDITIONS, THEN PLEASE DO
-        NOT ACCESS OR USE OUR SITES OR OUR SERVICES. THIS TERMS OF SERVICE AGREEMENT IS EFFECTIVE AS OF 10/27/2026
+        NOT ACCESS OR USE OUR SITES OR OUR SERVICES. THIS TERMS OF SERVICE AGREEMENT IS EFFECTIVE AS OF 11/12/2026
       </p>
 
       <h4>ACCEPTANCE OF TERMS</h4>
@@ -358,7 +358,9 @@ export default function Terms() {
 
       <p>
         As a member of {'https://pushthat.link'}, you may cancel or terminate your account, associated email address
-        and/or access to our Services by submitting a cancellation or termination request to terminate@pushthat.link.
+        and/or access to our Services by submitting a cancellation or termination request to terminate@pushthat.link, or
+        by deleting your account yourself at {'https://pushthat.link/delete-account'} or from the menu of our
+        applications.
       </p>
 
       <p>

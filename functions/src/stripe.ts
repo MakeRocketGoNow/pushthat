@@ -181,6 +181,26 @@ export async function createCustomer(
 
 const CUSTOMER_KEY_WINDOW_MS = 10 * 60 * 1000;
 
+/** Stripe saying the thing asked about does not exist (any more). */
+export const isMissingAtStripe = (err: unknown): boolean =>
+  err instanceof StripeError && (err.status === 404 || err.code === 'resource_missing');
+
+/**
+ * Deletes the customer, for an account being deleted (account-deletion.ts): Stripe drops
+ * the customer and the email it was made with from the account's customer list, and ends
+ * any subscription still running. The payments already made stay with Stripe, which is
+ * the seller of record and keeps them for its own books. A customer already gone is what
+ * this wants, so a second call for the same account is not a refusal.
+ */
+export async function deleteCustomer(stripe: StripeConfig, customerId: string): Promise<void> {
+  try {
+    await stripeCall(stripe, 'DELETE', `/v1/customers/${encodeURIComponent(customerId)}`);
+  } catch (err) {
+    if (isMissingAtStripe(err)) return;
+    throw err;
+  }
+}
+
 export interface StripeCheckoutSession {
   id: string;
   /** Where to send the person: Stripe's hosted page. Null once the session is complete or expired. */

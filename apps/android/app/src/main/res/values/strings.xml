@@ -97,6 +97,21 @@
     <string name="making_recovery_key">Making a new recovery key…</string>
     <string name="key_settings_failed">That did not work. Please try again.</string>
     <string name="keys_changed_here">Your encryption keys were changed on another device. Sign out and sign in again to use them here.</string>
+    <!-- Deleting the account (docs/account-deletion.md). The warning says what the public page
+         at pushthat.link/delete-account says, shorter: it is the last thing read before the
+         password, so it names what goes and that none of it comes back. -->
+    <string name="delete_account">Delete account</string>
+    <string name="delete_account_title">Delete your account?</string>
+    <string name="delete_account_warning">This is permanent. Your account, your email address, every link and file you have pushed, and your encryption keys and recovery key are deleted, and every device is signed out.\n\nYour pushes are encrypted with those keys, so once they are gone nobody can recover them, including us. A Pro subscription is cancelled.\n\nEnter your password to delete your account.</string>
+    <string name="deleting_account">Deleting your account…</string>
+    <string name="account_deleted">Your account is deleted.</string>
+    <!-- The call ended without an answer: the same words as the web page and the Apple apps.
+         It must not say that nothing was deleted, because by then something may have been.
+         Nor that a refused password means the account is gone: it says "the right password",
+         because a mistyped one is refused too, and that is not a deletion. -->
+    <string name="delete_account_unconfirmed">We could not confirm that your account was deleted. It may still be finishing. Try again in a few minutes. If signing in with the right password no longer works, the account is gone.</string>
+    <string name="delete_account_offline">Your account was not deleted: PushThat could not reach the server. Check your connection and try again.</string>
+    <string name="wrong_password">That is not your password.</string>
     <string name="password_again_to_finish">Enter your password again to finish.</string>
     <!-- Pushes encrypted under the account key (docs/e2ee.md, phase 4), word for word with
          the other apps. -->

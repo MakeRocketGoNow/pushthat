@@ -69,7 +69,11 @@ export default function Support() {
         largest file is {formatMb(LIMITS.free.fileBytes)} on the free plan and {formatMb(LIMITS.pro.fileBytes)} on Pro.
       </p>
 
-      <p>To close your account, write to us from its address and we will delete it, with everything pushed from it.</p>
+      <p>
+        To close your account, use <Link to="/delete-account">Delete account</Link>, here or in the app’s menu: it
+        deletes the account at once, with everything pushed from it. If you cannot sign in, write to us from the
+        account’s address and we will delete it for you.
+      </p>
 
       <h5>BUGS AND IDEAS</h5>
 

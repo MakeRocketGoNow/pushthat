@@ -191,6 +191,13 @@ describe('refreshSubscription', () => {
 });
 
 describe('createCheckoutSession', () => {
+  test('an account that has been deleted cannot open one, though its token still works', async () => {
+    await db().collection('accountDeletions').doc(UID).set({ deletedAt: new Date(), settleAt: new Date() });
+
+    expect(await refusal(call(createCheckoutSession, UID))).toBe('failed-precondition: This account has been deleted.');
+    expect(stripe.requests).toHaveLength(0);
+  });
+
   const checkout = (uid: string | null = UID) => call(createCheckoutSession, uid) as Promise<{ url: string }>;
 
   /** Stripe as a new customer finds it: no subscriptions, and a session made on asking. */

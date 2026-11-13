@@ -463,6 +463,169 @@ class AuthViewModel: ObservableObject {
         }
     }
 
+    // MARK: - Delete account
+
+    /// The `deleteAccount` callable (functions/), called over plain HTTPS the way `getPlan`
+    /// is (`PlanService`), so no FirebaseFunctions SDK is needed.
+    private static let deleteAccountURL = URL(string: "https://us-central1-push-that.cloudfunctions.net/deleteAccount")!
+
+    /// For a call that ended with no answer. The same words as the web page and the Android
+    /// app, and never "nothing was deleted": by then something may have been.
+    static let deleteAccountUnconfirmed = "We could not confirm that your account was deleted. It may still be finishing. Try again in a few minutes. If signing in with the right password no longer works, the account is gone."
+
+    /// The call ended with no answer from the function: a timeout, a dropped connection, or
+    /// a failure that is not one of the function's own refusals. Nothing can be said about
+    /// how far the deletion got, so the account itself is asked (`isGone`).
+    private struct OutcomeUnknown: Error {}
+
+    /// Deletes the account on the server, then everything this device keeps for it, and
+    /// signs out. Throws with a sentence to show, and leaves the session as it was, when the
+    /// password is wrong, the server refuses, or the outcome cannot be confirmed.
+    ///
+    /// The server deletes the Firebase user itself, so `user.delete()` is never called: by
+    /// the time the callable answers there is no user left to delete.
+    ///
+    /// An account found to be gone already counts as deleted, whichever step finds it: an
+    /// earlier try whose answer was lost has finished on the server, and what is left to do
+    /// is on this device.
+    func deleteAccount(password: String) async throws {
+        guard let user = auth.currentUser, let email = user.email else { throw FileUploadError.notAuthenticated }
+        guard !password.isEmpty else { throw Problem("Enter your password.") }
+        let uid = user.uid
+
+        do {
+            try await reauthenticate(user: user, email: email, password: password)
+        } catch {
+            // With email enumeration protection on, which `isWrongPassword` assumes,
+            // Firebase says "wrong password" for an account that no longer exists, never
+            // "no such user". So any refusal is checked against the account itself, which
+            // `reload` answers truthfully whatever that setting is.
+            // Only "no such user" counts here, not a revoked session: see `isUserGone`.
+            guard await Self.isGone(user, revokedMeansGone: false) else { throw error }
+            forgetDeletedAccount(uid: uid)
+            return
+        }
+        // The server refuses a sign-in older than five minutes. Re-authenticating does not
+        // by itself replace the ID token the SDK holds, so one is minted now that carries
+        // this sign-in's time.
+        let token = try await user.getIDTokenResult(forcingRefresh: true).token
+        do {
+            try await Self.callDeleteAccount(idToken: token)
+        } catch is OutcomeUnknown {
+            // The Auth user is the last thing the function deletes, so gone means done. The
+            // session was re-authenticated a moment ago, so only the function can have
+            // revoked it since, after leaving the marker that gets the deletion finished.
+            guard await Self.isGone(user, revokedMeansGone: true) else { throw Problem(Self.deleteAccountUnconfirmed) }
+        }
+        forgetDeletedAccount(uid: uid)
+    }
+
+    /// What this device held for an account the server has deleted, and then the sign-out.
+    private func forgetDeletedAccount(uid: String) {
+        // Sign-out does not empty the retry queue, since a queued push waits for its own
+        // account to sign in again. This account will not, and its rows would wait forever.
+        PendingPush.deleteAll(for: uid)
+        // No `Analytics.resetAnalyticsData()` and no notification token to delete here,
+        // unlike iOS: neither FirebaseAnalytics nor FirebaseMessaging is linked into the
+        // macOS app.
+        signOut()
+    }
+
+    /// Firebase saying the signed-in account no longer exists. `revokedMeansGone` says
+    /// whether a revoked session counts: it does straight after this deletion's own
+    /// sign-in, and it must not for a session of unknown age, which a password change or
+    /// reset on another device also revokes. Read as "gone" there, a mistyped password
+    /// signed the app out and said the account was deleted when the server had not been asked.
+    nonisolated static func isUserGone(_ error: Error, revokedMeansGone: Bool) -> Bool {
+        let error = error as NSError
+        guard error.domain == AuthErrorDomain else { return false }
+        return error.code == AuthErrorCode.userNotFound.rawValue
+            || (revokedMeansGone && error.code == AuthErrorCode.userTokenExpired.rawValue)
+    }
+
+    /// Whether the account no longer exists, asked of Firebase. A failure to ask (no
+    /// network) is not an answer, and reads as "still there".
+    private static func isGone(_ user: User, revokedMeansGone: Bool) async -> Bool {
+        do {
+            try await user.reload()
+            return false
+        } catch {
+            return isUserGone(error, revokedMeansGone: revokedMeansGone)
+        }
+    }
+
+    /// Re-authenticates as "Change password" does, with the Firebase password derived from
+    /// the password (the same `derive` every sign-in uses), and then, only on a wrong
+    /// password, with the raw password for an account that has not moved yet, as
+    /// `signInWithKeys` does. Change password never meets such an account (it needs the
+    /// key, which the move writes first), but deleting one should not be refused.
+    private func reauthenticate(user: User, email: String, password: String) async throws {
+        let keys = try await Self.derive(email: email, password: password)
+        do {
+            _ = try await user.reauthenticate(with: EmailAuthProvider.credential(withEmail: email, password: keys.firebasePassword))
+        } catch let first where Self.isWrongPassword(first) {
+            do {
+                _ = try await user.reauthenticate(with: EmailAuthProvider.credential(withEmail: email, password: password))
+            } catch let second where Self.isWrongPassword(second) {
+                throw Problem("That is not your password.")
+            } catch {
+                // Any other failure says nothing about the raw password: the first is the
+                // one that describes what went wrong.
+                throw first
+            }
+        }
+    }
+
+    /// The statuses the function refuses with before it has deleted anything, each with a
+    /// sentence it wrote for the person.
+    private static let refusals: Set<String> = ["FAILED_PRECONDITION", "UNAVAILABLE", "UNAUTHENTICATED"]
+
+    /// POSTs the callable's empty request. Success is a 200 with `{"result":{"deleted":true}}`.
+    /// A refusal carries `{"error":{"status","message"}}` and is thrown as its message;
+    /// anything else, a lost connection included, is `OutcomeUnknown`.
+    private static func callDeleteAccount(idToken: String) async throws {
+        var request = URLRequest(url: deleteAccountURL)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("Bearer \(idToken)", forHTTPHeaderField: "Authorization")
+        request.httpBody = Data("{\"data\":{}}".utf8)
+        // A little more than the five minutes the function allows itself (`timeoutSeconds`
+        // in functions/src/account-deletion.ts), so the function always answers first. It
+        // deletes every push and file before it answers and sends nothing meanwhile; at two
+        // minutes this gave up on a large account that the server then went on to delete.
+        request.timeoutInterval = 310
+
+        let data: Data
+        let response: URLResponse
+        do {
+            (data, response) = try await URLSession.shared.data(for: request)
+        } catch {
+            throw OutcomeUnknown()
+        }
+        let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+
+        struct Success: Decodable {
+            struct Result: Decodable { let deleted: Bool }
+            let result: Result
+        }
+        struct Failure: Decodable {
+            struct Body: Decodable {
+                let status: String?
+                let message: String?
+            }
+            let error: Body
+        }
+        if status == 200, (try? JSONDecoder().decode(Success.self, from: data))?.result.deleted == true {
+            return
+        }
+        if let failure = (try? JSONDecoder().decode(Failure.self, from: data))?.error,
+           let message = failure.message, !message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+           let refusal = failure.status, refusals.contains(refusal) {
+            throw Problem(message)
+        }
+        throw OutcomeUnknown()
+    }
+
     // MARK: - Sign out
 
     /// Clears the account key and the last decrypted file first, so that a sign-out that

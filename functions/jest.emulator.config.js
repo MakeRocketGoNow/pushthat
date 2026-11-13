@@ -1,4 +1,4 @@
-// The suites that run against the Firestore and Storage emulators (test/emulator): `npm run test:emulator`.
+// The suites that run against the Auth, Firestore and Storage emulators (test/emulator): `npm run test:emulator`.
 module.exports = {
   preset: 'ts-jest',
   testEnvironment: 'node',

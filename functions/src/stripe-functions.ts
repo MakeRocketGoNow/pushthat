@@ -4,6 +4,7 @@ import * as logger from 'firebase-functions/logger';
 import { defineSecret } from 'firebase-functions/params';
 import { CallableRequest, HttpsError, onCall, onRequest } from 'firebase-functions/v2/https';
 
+import { deletionRef } from './deletion-marker';
 import { PlanUser, canSubscribe, compRunning, planReportOf } from './plan';
 import {
   ENDED_SUBSCRIPTION,
@@ -63,7 +64,8 @@ import {
 const STRIPE_SECRET_KEY = defineSecret('STRIPE_SECRET_KEY');
 const STRIPE_WEBHOOK_SECRET = defineSecret('STRIPE_WEBHOOK_SECRET');
 const STRIPE_PRO_PRICE_ID = defineSecret('STRIPE_PRO_PRICE_ID');
-const secrets = [STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET, STRIPE_PRO_PRICE_ID];
+/** Exported for `deleteAccount` (account-deletion.ts), which ends the account's subscription. */
+export const secrets = [STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET, STRIPE_PRO_PRICE_ID];
 
 /** Where the checkout and the portal come back to. The emulator may point it elsewhere. */
 const APP_URL = (process.env.APP_URL || 'https://pushthat.link').replace(/\/$/, '');
@@ -72,7 +74,7 @@ function planPageUrl(query?: string): string {
   return `${APP_URL}/plan${query ? `?${query}` : ''}`;
 }
 
-function stripeConfig(): StripeConfig | undefined {
+export function stripeConfig(): StripeConfig | undefined {
   return stripeOf({
     STRIPE_SECRET_KEY: STRIPE_SECRET_KEY.value(),
     STRIPE_WEBHOOK_SECRET: STRIPE_WEBHOOK_SECRET.value(),
@@ -82,7 +84,7 @@ function stripeConfig(): StripeConfig | undefined {
 }
 
 /** The signed-in account, or the refusal a callable gives without one. */
-function uidOf(request: CallableRequest): string {
+export function uidOf(request: CallableRequest): string {
   if (!request.auth) throw new HttpsError('unauthenticated', 'Sign in first.');
   return request.auth.uid;
 }
@@ -222,6 +224,12 @@ export const createCheckoutSession = onCall({ cors: true, secrets }, async (requ
   const uid = uidOf(request);
   const db = getFirestore();
   const now = new Date();
+  // A deleted account's last ID token still gets here for up to an hour (docs/account-deletion.md),
+  // and a checkout made with it would be a customer and a subscription for an account
+  // that is gone.
+  if ((await deletionRef(db, uid).get()).exists) {
+    throw new HttpsError('failed-precondition', 'This account has been deleted.');
+  }
   const user = await readUser(db, uid);
   const billing = user?.billing;
   // The comp first, so it gets its own sentence; then the one test the report's

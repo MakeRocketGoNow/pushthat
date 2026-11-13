@@ -1,0 +1,10 @@
+.root {
+  ol {
+    margin: 0 0 1em;
+    padding-left: 1em;
+  }
+}
+
+.noscript {
+  color: var(--color-error);
+}

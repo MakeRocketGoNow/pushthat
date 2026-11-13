@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- "Delete account": what goes, then the password that confirms it (MainActivity.showDeleteAccount).
+     In a ScrollView because the warning is long and the keyboard takes half a small screen. -->
+<ScrollView
+  xmlns:android="http://schemas.android.com/apk/res/android"
+  android:layout_width="match_parent"
+  android:layout_height="wrap_content">
+
+  <LinearLayout
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:paddingStart="24dp"
+    android:paddingTop="8dp"
+    android:paddingEnd="24dp">
+
+    <TextView
+      style="@style/Widget.LinkShare.Body"
+      android:layout_width="match_parent"
+      android:layout_height="wrap_content"
+      android:text="@string/delete_account_warning"
+      android:textSize="14sp" />
+
+    <EditText
+      android:id="@+id/deleteAccountPasswordInput"
+      style="@style/Widget.LinkShare.Input"
+      android:layout_width="match_parent"
+      android:layout_height="wrap_content"
+      android:layout_marginTop="16dp"
+      android:autofillHints="password"
+      android:hint="@string/password"
+      android:inputType="textPassword" />
+
+  </LinearLayout>
+</ScrollView>

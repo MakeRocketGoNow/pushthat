@@ -56,6 +56,9 @@ export default function Layout({ children }: LayoutProps) {
             </button>
             {isMenuOpen && (
               <div className={styles.menuDropdown}>
+                {/* Above Logout, where the Android, iOS and macOS menus have it. It leads to the
+                    public page, which asks for the password before anything goes. */}
+                <button onClick={() => navigate('/delete-account')}>Delete account</button>
                 <button onClick={handleLogout}>Logout</button>
               </div>
             )}
