@@ -3,12 +3,14 @@ import { useEffect, useState } from 'react';
 import Button from '@/components/Button';
 import {
   NOT_A_WEB_PAGE_MESSAGE,
+  PUSH_PORT,
   type Page,
-  PagePushError,
   type PagePushFailure,
+  type PushReply,
+  type PushRequest,
   pageOfTab,
-  pushPage,
 } from '@/services/pagePush';
+import { UNCONFIRMED_MESSAGE } from '@/services/pushRefusal';
 
 import styles from './PushPopup.module.css';
 
@@ -25,6 +27,22 @@ type State =
   | { kind: 'pushing'; page: Page }
   | { kind: 'pushed'; page: Page }
   | { kind: 'failed'; page: Page; message: string; reason: PagePushFailure };
+
+/**
+ * Hands `page` to the service worker to push (`PUSH_PORT`) and waits for its answer. A port
+ * that closes with no answer means the worker stopped mid-push, after which nobody can say
+ * whether it landed.
+ */
+const pushThroughWorker = (page: Page) =>
+  new Promise<PushReply>((resolve) => {
+    const port = chrome.runtime.connect({ name: PUSH_PORT });
+    port.onMessage.addListener((reply: PushReply) => {
+      resolve(reply);
+      port.disconnect();
+    });
+    port.onDisconnect.addListener(() => resolve({ ok: false, message: UNCONFIRMED_MESSAGE, reason: 'unconfirmed' }));
+    port.postMessage({ page } satisfies PushRequest);
+  });
 
 const openApp = async () => {
   await chrome.tabs.create({ url: chrome.runtime.getURL('index.html') });
@@ -54,14 +72,12 @@ export function PushPopup() {
 
   const push = async (page: Page) => {
     setState({ kind: 'pushing', page });
-    try {
-      await pushPage(page);
+    const reply = await pushThroughWorker(page);
+    if (reply.ok) {
       setState({ kind: 'pushed', page });
       setTimeout(() => window.close(), CLOSE_AFTER_PUSH_MS);
-    } catch (error) {
-      // `pushPage` throws nothing but a `PagePushError`.
-      const failure = error as PagePushError;
-      setState({ kind: 'failed', page, message: failure.message, reason: failure.reason });
+    } else {
+      setState({ kind: 'failed', page, message: reply.message, reason: reply.reason });
     }
   };
 

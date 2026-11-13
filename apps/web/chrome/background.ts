@@ -21,8 +21,11 @@ import { app, auth } from '../src/config/firebase';
 import { deviceId } from '../src/services/keyStore';
 import {
   NOT_A_WEB_PAGE_MESSAGE,
+  PUSH_PORT,
   type Page,
   PagePushError,
+  type PushReply,
+  type PushRequest,
   isWebPage,
   pageOfTab,
   pushPage,
@@ -249,9 +252,8 @@ self.addEventListener('activate', async (event) => {
 // The toolbar button opens the popup (manifest.json, `action.default_popup`), which pushes
 // the tab or opens the app; with a popup set, Chrome no longer sends `action.onClicked`.
 
-// Pushing without the popup: the keyboard shortcut and the right-click menu (docs/web.md,
-// Pushing from the extension). Each says how it went without a page of its own: a check on
-// the toolbar button for a push, a notification for a failure, whose click opens the app.
+// Pushing from the extension (docs/web.md): the popup, the keyboard shortcut and the
+// right-click menu, all made here. A notification's click opens the app.
 const PUSH_PAGE = 'push-page';
 const PUSH_LINK = 'push-link';
 const WEB_PAGES = ['http://*/*', 'https://*/*'];
@@ -278,26 +280,59 @@ async function createMenus() {
   });
 }
 
-async function pushFromWorker(page: Page | undefined) {
+/**
+ * Pushes `page` and says how it went. `popup` is the popup that asked, while it is open:
+ * it is told, and shows the result itself. Otherwise, after a shortcut, a menu item or a
+ * popup closed mid-push, the worker says it: a check on the toolbar button for a push, a
+ * notification for a failure.
+ */
+async function pushFromWorker(page: Page | undefined, popup?: { reply: (reply: PushReply) => boolean }) {
+  let reply: PushReply;
   try {
     if (!page) throw new PagePushError(NOT_A_WEB_PAGE_MESSAGE);
     await pushPage(page);
+    reply = { ok: true };
+  } catch (error) {
+    // `pushPage` throws nothing but a `PagePushError`, and logs what it could not word.
+    const failure = error as PagePushError;
+    reply = { ok: false, message: failure.message, reason: failure.reason };
+  }
+  if (popup?.reply(reply)) return;
+  if (reply.ok) {
     // The worker can be stopped before the timer clears the check; the next push or the
     // next start of the worker leaves it as it was, and a stale check says nothing wrong.
     await chrome.action.setBadgeBackgroundColor({ color: '#2e7d32' });
     await chrome.action.setBadgeText({ text: '✓' });
     setTimeout(() => void chrome.action.setBadgeText({ text: '' }), PUSHED_BADGE_MS);
-  } catch (error) {
-    // `pushPage` throws nothing but a `PagePushError`, and logs what it could not word. An
-    // unconfirmed push may have landed, so it is not called "not pushed".
-    const failure = error as PagePushError;
-    await self.registration.showNotification(failure.reason === 'unconfirmed' ? 'Push not confirmed' : 'Not pushed', {
-      body: failure.message,
+  } else {
+    // An unconfirmed push may have landed, so it is not called "not pushed".
+    await self.registration.showNotification(reply.reason === 'unconfirmed' ? 'Push not confirmed' : 'Not pushed', {
+      body: reply.message,
       icon: '/icons/icon128.png',
       data: { url: chrome.runtime.getURL('index.html') },
     });
   }
 }
+
+// The popup's push (`PUSH_PORT`): made here so that it survives the popup closing.
+chrome.runtime.onConnect.addListener((port) => {
+  if (port.name !== PUSH_PORT) return;
+  let open = true;
+  port.onDisconnect.addListener(() => {
+    open = false;
+  });
+  port.onMessage.addListener((request: PushRequest) => {
+    debug('Push from the popup');
+    const page = isWebPage(request.page?.url) ? request.page : undefined;
+    void pushFromWorker(page, {
+      reply: (reply) => {
+        if (!open) return false;
+        port.postMessage(reply);
+        return true;
+      },
+    });
+  });
+});
 
 chrome.commands.onCommand.addListener(async (command, tab) => {
   if (command !== PUSH_PAGE) return;

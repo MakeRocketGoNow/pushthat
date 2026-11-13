@@ -44,6 +44,24 @@ export class PagePushError extends Error {
   }
 }
 
+/**
+ * The popup's push goes to the service worker over a port of this name, and the worker
+ * answers with a `PushReply` while the popup is still open to show it. Made in the worker
+ * because Chrome destroys a popup the moment it loses focus: a push made in the popup itself
+ * was lost, or landed unannounced, when someone pressed Enter and clicked back into the page
+ * before Firestore had answered. The worker outlives the popup, and when the popup has gone
+ * it says how the push went as it does for the shortcut.
+ */
+export const PUSH_PORT = 'push-page';
+
+/** What the popup sends over `PUSH_PORT`. */
+export interface PushRequest {
+  page: Page;
+}
+
+/** What the worker answers. */
+export type PushReply = { ok: true } | { ok: false; message: string; reason: PagePushFailure };
+
 export const SIGNED_OUT_MESSAGE = 'Sign in to PushThat to push from this browser.';
 // The account key is stored per browser at sign-in, so a session without it (one from
 // before encryption, or a browser that refused IndexedDB) cannot seal a push.
