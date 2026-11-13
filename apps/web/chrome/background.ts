@@ -259,12 +259,23 @@ const PUSH_LINK = 'push-link';
 const WEB_PAGES = ['http://*/*', 'https://*/*'];
 const PUSHED_BADGE_MS = 2000;
 
-// The check on the toolbar button after a push, cleared by a timer. Badge text is the
+// The check on the toolbar button after a push, cleared by a timer (`clearPushed`). Badge text is the
 // browser's and outlives the worker, which Chrome may stop before the timer fires, so a
 // check left that way is cleared when the worker next starts. The timer is kept so that a
 // second push within the two seconds gets its full two.
 let badgeTimer: ReturnType<typeof setTimeout> | undefined;
-void chrome.action.setBadgeText({ text: '' });
+
+/**
+ * Takes the check off the toolbar button, and the button's name back to the extension's.
+ * The name says "Pushed" while the check shows, so that a push is said in words too, where
+ * a screen reader reads the button, and not only by a mark someone has to see.
+ */
+const clearPushed = () =>
+  Promise.all([
+    chrome.action.setBadgeText({ text: '' }),
+    chrome.action.setTitle({ title: chrome.runtime.getManifest().name }),
+  ]);
+void clearPushed();
 
 /**
  * The right-click items, made again on every install and update: Chrome keeps them across
@@ -309,7 +320,8 @@ async function pushFromWorker(page: Page | undefined, popup?: { reply: (reply: P
     clearTimeout(badgeTimer);
     await chrome.action.setBadgeBackgroundColor({ color: '#2e7d32' });
     await chrome.action.setBadgeText({ text: '✓' });
-    badgeTimer = setTimeout(() => void chrome.action.setBadgeText({ text: '' }), PUSHED_BADGE_MS);
+    await chrome.action.setTitle({ title: 'Pushed' });
+    badgeTimer = setTimeout(() => void clearPushed(), PUSHED_BADGE_MS);
   } else {
     // An unconfirmed push may have landed, so it is not called "not pushed".
     await self.registration.showNotification(reply.reason === 'unconfirmed' ? 'Push not confirmed' : 'Not pushed', {
