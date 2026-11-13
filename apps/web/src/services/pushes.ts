@@ -47,6 +47,7 @@ import {
 } from './e2ee';
 import { deviceId, loadAccountKey, rememberKeyVersion } from './keyStore';
 import { iconOf } from './pageIcon';
+import { MAX_CT_LENGTH, sealUrlEnvelope } from './urlEnvelope';
 
 /**
  * Pushes as docs/e2ee.md has them since phase 4 of that plan: written with their content in
@@ -213,9 +214,6 @@ export async function searchTokenFor(keys: PushKeys, term: string): Promise<stri
 // ---------------------------------------------------------------------------------------
 // Writing
 
-// `enc.ct`'s bound in the rules: about 12 KB of JSON, which only an absurd URL reaches. Said
-// here, where the reason can be given, rather than as a refusal nobody can explain.
-const MAX_CT_LENGTH = 16384;
 // A title that long is not a title; cut so that the URL is what decides whether a push fits.
 const MAX_TITLE = 1000;
 
@@ -263,10 +261,7 @@ const urlSearchText = (envelope: UrlEnvelope) => `${envelope.title} ${envelope.u
  * and writes the title back (docs/e2ee.md, Titles). `icon` is the page's icon as the
  * envelope carries it, already checked by `iconOf`; only the Chrome extension has one to
  * give, from Chrome's own copy of the tab's icon.
- *
- * The icon is written only when there is one, so a push without it seals the same bytes
- * as before, and it is dropped when the envelope with it would not fit: the link matters
- * more than its picture, as when the phones write one back.
+ * `sealUrlEnvelope` says when the icon is written and when it is dropped.
  */
 export async function createUrlPush(
   db: Firestore,
@@ -277,9 +272,8 @@ export async function createUrlPush(
 ): Promise<string> {
   const pushRef = doc(collection(db, 'pushes'));
   const envelope: UrlEnvelope = { url, title: cut(title, MAX_TITLE), ext: '' };
-  let enc = await sealPush(keys.metaKey, keys.uid, pushRef.id, icon ? { ...envelope, icon } : envelope);
-  if (enc.ct.length > MAX_CT_LENGTH && icon) enc = await sealPush(keys.metaKey, keys.uid, pushRef.id, envelope);
-  if (enc.ct.length > MAX_CT_LENGTH) throw new PushTooLongError('the URL is too long to push');
+  const enc = await sealUrlEnvelope((e) => sealPush(keys.metaKey, keys.uid, pushRef.id, e), envelope, icon);
+  if (!enc) throw new PushTooLongError('the URL is too long to push');
   await createPush(pushRef, {
     userId: keys.uid,
     type: 'url',

@@ -26,11 +26,11 @@ import {
   PagePushError,
   type PushReply,
   type PushRequest,
-  isWebPage,
   pageOfTab,
   pushPage,
 } from '../src/services/pagePush';
 import { type Push, loadPushKeys, readPush, viewableType, viewerPath } from '../src/services/pushes';
+import { isWebPage } from '../src/services/tabPage';
 
 declare const self: ServiceWorkerGlobalScope & typeof globalThis;
 

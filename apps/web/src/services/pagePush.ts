@@ -7,6 +7,7 @@ import { iconOf } from './pageIcon';
 import { planApi } from './plan';
 import { TOO_LONG_LINK_MESSAGE, UNCONFIRMED_MESSAGE, isRulesRefusal, refusalMessage } from './pushRefusal';
 import { PushTooLongError, PushUnconfirmedError, createUrlPush, keyIsStale, loadPushKeys } from './pushes';
+import { isWebPage, titleOfTab } from './tabPage';
 
 /**
  * Pushing from the Chrome extension itself: the popup's button, the keyboard shortcut and
@@ -71,29 +72,13 @@ export const NOT_A_WEB_PAGE_MESSAGE = 'Only web pages can be pushed.';
 const PUSH_FAILED_MESSAGE = 'Could not push this page. Check your connection and try again.';
 
 /**
- * Whether `url` is worth pushing: a web page another device can open. Not `chrome://`,
- * `file://`, the extension's own pages or the like, which mean nothing anywhere else.
- */
-export const isWebPage = (url: string | undefined): url is string => {
-  if (!url) return false;
-  try {
-    const { protocol } = new URL(url);
-    return protocol === 'https:' || protocol === 'http:';
-  } catch {
-    return false;
-  }
-};
-
-/**
- * The page a tab shows, ready to push, or undefined when it is not a web page. The title is
- * Chrome's, which is the page's `<title>`; for a page without one Chrome shows its URL, and
- * that is not a title, so the push goes without one and a phone may still find one.
+ * The page a tab shows, ready to push, or undefined when it is not a web page, with its
+ * title as `titleOfTab` reads it.
  */
 export async function pageOfTab(tab: chrome.tabs.Tab): Promise<Page | undefined> {
   const url = tab.url;
   if (!isWebPage(url)) return undefined;
-  const raw = tab.title?.trim() ?? '';
-  const title = raw === url || raw === url.replace(/^https?:\/\//, '') ? '' : raw;
+  const title = titleOfTab(tab.title, url);
   // `favIconUrl` is empty while the page has no icon of its own, and Chrome's icon store
   // would answer then with its generic globe, which is worse than no icon: the list's own
   // placeholder says "no icon", the globe says this site's icon is a globe.
