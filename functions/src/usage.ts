@@ -32,7 +32,12 @@ export interface NewPush {
   type: PushType;
 }
 
-export type RecordOutcome = 'counted' | 'refused';
+/**
+ * What became of the push. A refusal carries the limit it was refused at, read in the same
+ * transaction, so the notice that announces it (notifications.ts, `removedMessageOf`) names
+ * the number that was enforced and not one read again after a subscription might have moved.
+ */
+export type RecordOutcome = { outcome: 'counted' } | { outcome: 'refused'; limit: number };
 
 /** The email a user document made here is given: the Auth record's. A test supplies its own. */
 async function authEmailOf(uid: string): Promise<string | undefined> {
@@ -73,7 +78,7 @@ export async function recordPush(
     if (current >= limit) {
       if (pushDoc.exists) transaction.delete(pushRef);
       logger.warn(`recordPush: ${push.type} push ${pushRef.id} landed over the limit of ${limit}; deleted`);
-      return 'refused';
+      return { outcome: 'refused', limit };
     }
 
     // A file push is kept for the tier's retention and then deleted by the sweep
@@ -106,6 +111,6 @@ export async function recordPush(
       },
       { merge: true }
     );
-    return 'counted';
+    return { outcome: 'counted' };
   });
 }

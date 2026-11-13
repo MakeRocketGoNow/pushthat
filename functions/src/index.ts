@@ -7,7 +7,7 @@
  * See a full list of supported triggers at https://firebase.google.com/docs/functions
  */
 import { initializeApp } from 'firebase-admin/app';
-import { DocumentData, DocumentReference } from 'firebase-admin/firestore';
+import { DocumentReference } from 'firebase-admin/firestore';
 import { BaseMessage, SendResponse, getMessaging } from 'firebase-admin/messaging';
 import { getStorage } from 'firebase-admin/storage';
 import * as logger from 'firebase-functions/logger';
@@ -17,7 +17,6 @@ import 'whatwg-fetch';
 
 import { deadTokens, pushMessageOf, removedMessageOf } from './notifications';
 import { storagePathOf } from './orphans';
-import { limitsOf } from './plan';
 import { recordPush } from './usage';
 
 // The user document's plan fields are described in plan.ts (`PlanUser`); the count a
@@ -80,14 +79,10 @@ export const onPushRecordDeleted = onDocumentDeleted('pushes/{pushId}', async (e
 });
 
 /**
- * Sends `messageOf(user)` to every device on the user's account, by the FCM tokens on the
- * user document, and takes off it the tokens FCM says are dead (notifications.ts). The
- * message is made from the document because the refusal notice names the account's limit.
+ * Sends `message` to every device on the user's account, by the FCM tokens on the user
+ * document, and takes off it the tokens FCM says are dead (notifications.ts).
  */
-async function sendToDevices(
-  userRef: DocumentReference,
-  messageOf: (user: DocumentData) => BaseMessage
-): Promise<void> {
+async function sendToDevices(userRef: DocumentReference, message: BaseMessage): Promise<void> {
   const recipientTokensSnapshot = await userRef.get();
 
   if (!recipientTokensSnapshot.exists) {
@@ -108,7 +103,7 @@ async function sendToDevices(
 
   // Send messages in batches (FCM allows up to 500 tokens per request)
   const batchResponse = await getMessaging().sendEachForMulticast({
-    ...messageOf(userData),
+    ...message,
     tokens: tokens,
   });
 
@@ -155,22 +150,20 @@ export const onNewPushCreated = onDocumentCreated('pushes/{pushId}', async (even
     // is counted, and the count here is the exact one (usage.ts). A push taken back is
     // announced as removed, naming the limit, since the device that made it was told it
     // was saved (notifications.ts, `removedMessageOf`).
-    const now = new Date();
-    const outcome = await recordPush(
+    const result = await recordPush(
       snapshot.ref.firestore,
       snapshot.ref,
       { userId: pushData.userId, type: pushData.type },
-      now
+      new Date()
     );
-    if (outcome === 'refused') {
+    if (result.outcome === 'refused') {
       // recordPush refuses only a URL or file push; anything else it throws on.
-      const type = pushData.type as 'url' | 'file';
-      await sendToDevices(userRef, (user) => removedMessageOf(type, limitsOf(user, now)[type]));
+      await sendToDevices(userRef, removedMessageOf(pushData.type as 'url' | 'file', result.limit));
       return;
     }
 
     // The push's id and what a device needs to fetch it, nothing it holds (notifications.ts).
-    await sendToDevices(userRef, () => pushMessageOf(event.params.pushId, pushData));
+    await sendToDevices(userRef, pushMessageOf(event.params.pushId, pushData));
   } catch (error) {
     logger.error('Error sending push notification:', error);
     throw error;
