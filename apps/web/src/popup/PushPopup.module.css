@@ -1,0 +1,73 @@
+/* Chrome sizes a popup to its content, up to 800 by 600; a fixed width keeps it from
+   jumping as the tab is read and the title arrives. */
+.popup {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 340px;
+  min-height: 48px;
+  padding: 16px;
+  background-color: var(--color-background);
+}
+
+.page {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.icon {
+  flex: none;
+  width: 32px;
+  height: 32px;
+  object-fit: contain;
+}
+
+.text {
+  min-width: 0;
+}
+
+.title,
+.url {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.title {
+  font-weight: 600;
+}
+
+.url {
+  font-size: 0.85em;
+  opacity: 0.7;
+}
+
+.note,
+.error,
+.done {
+  margin: 0;
+}
+
+.error {
+  color: var(--color-error);
+}
+
+.done {
+  padding: 12px 0;
+  text-align: center;
+  color: var(--color-primary);
+  font-weight: 600;
+}
+
+/* A link in look, a button in kind: it opens a tab through the `chrome` API, not by
+   navigating the popup. */
+.openApp {
+  align-self: center;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--color-primary);
+  text-decoration: underline;
+}

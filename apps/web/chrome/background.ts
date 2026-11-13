@@ -19,6 +19,14 @@ import { getMessaging } from 'firebase/messaging/sw';
 
 import { app, auth } from '../src/config/firebase';
 import { deviceId } from '../src/services/keyStore';
+import {
+  NOT_A_WEB_PAGE_MESSAGE,
+  type Page,
+  PagePushError,
+  isWebPage,
+  pageOfTab,
+  pushPage,
+} from '../src/services/pagePush';
 import { type Push, loadPushKeys, readPush, viewableType, viewerPath } from '../src/services/pushes';
 
 declare const self: ServiceWorkerGlobalScope & typeof globalThis;
@@ -238,13 +246,81 @@ self.addEventListener('activate', async (event) => {
   }
 });
 
-chrome.action.onClicked.addListener(async () => {
-  debug('Extension clicked');
-  await chrome.tabs.create({ url: chrome.runtime.getURL('index.html') });
+// The toolbar button opens the popup (manifest.json, `action.default_popup`), which pushes
+// the tab or opens the app; with a popup set, Chrome no longer sends `action.onClicked`.
+
+// Pushing without the popup: the keyboard shortcut and the right-click menu (docs/web.md,
+// Pushing from the extension). Each says how it went without a page of its own: a check on
+// the toolbar button for a push, a notification for a failure, whose click opens the app.
+const PUSH_PAGE = 'push-page';
+const PUSH_LINK = 'push-link';
+const WEB_PAGES = ['http://*/*', 'https://*/*'];
+const PUSHED_BADGE_MS = 2000;
+
+/**
+ * The right-click items, made again on every install and update: Chrome keeps them across
+ * restarts of the worker but not across an update that changes them, and creating one that
+ * exists is an error, so the old ones go first.
+ */
+async function createMenus() {
+  await chrome.contextMenus.removeAll();
+  chrome.contextMenus.create({
+    id: PUSH_PAGE,
+    title: 'Push this page',
+    contexts: ['page'],
+    documentUrlPatterns: WEB_PAGES,
+  });
+  chrome.contextMenus.create({
+    id: PUSH_LINK,
+    title: 'Push this link',
+    contexts: ['link'],
+    targetUrlPatterns: WEB_PAGES,
+  });
+}
+
+async function pushFromWorker(page: Page | undefined) {
+  try {
+    if (!page) throw new PagePushError(NOT_A_WEB_PAGE_MESSAGE);
+    await pushPage(page);
+    // The worker can be stopped before the timer clears the check; the next push or the
+    // next start of the worker leaves it as it was, and a stale check says nothing wrong.
+    await chrome.action.setBadgeBackgroundColor({ color: '#2e7d32' });
+    await chrome.action.setBadgeText({ text: '✓' });
+    setTimeout(() => void chrome.action.setBadgeText({ text: '' }), PUSHED_BADGE_MS);
+  } catch (error) {
+    const message = error instanceof PagePushError ? error.message : 'Could not push this page. Try again.';
+    if (!(error instanceof PagePushError)) logError('Could not push from the worker:', { error: String(error) });
+    await self.registration.showNotification('Not pushed', {
+      body: message,
+      icon: '/icons/icon128.png',
+      data: { url: chrome.runtime.getURL('index.html') },
+    });
+  }
+}
+
+chrome.commands.onCommand.addListener(async (command, tab) => {
+  if (command !== PUSH_PAGE) return;
+  // Chrome passes the active tab; older versions passed nothing, so it is asked for then.
+  const active = tab ?? (await chrome.tabs.query({ active: true, lastFocusedWindow: true }))[0];
+  debug('Push shortcut');
+  await pushFromWorker(active ? await pageOfTab(active) : undefined);
 });
 
-// Add installation handler
+chrome.contextMenus.onClicked.addListener(async (info, tab) => {
+  if (info.menuItemId === PUSH_PAGE) {
+    debug('Push this page, from the menu');
+    await pushFromWorker(tab ? await pageOfTab(tab) : undefined);
+  } else if (info.menuItemId === PUSH_LINK) {
+    debug('Push this link, from the menu');
+    // A link is a page this browser has usually not loaded, so there is no title and no
+    // icon to give: it goes as a push from the site's Push page does, and the first phone
+    // or Mac to receive it fills in both (docs/e2ee.md, Titles).
+    await pushFromWorker(isWebPage(info.linkUrl) ? { url: info.linkUrl, title: '' } : undefined);
+  }
+});
+
 chrome.runtime.onInstalled.addListener(async (details) => {
+  await createMenus();
   if (details.reason === 'install') {
     await chrome.tabs.create({ url: chrome.runtime.getURL('index.html') });
   }
