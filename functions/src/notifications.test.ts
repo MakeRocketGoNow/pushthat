@@ -100,7 +100,6 @@ describe('the notice for a push taken back at the limit', () => {
         payload: {
           aps: {
             alert: { title: 'Push removed', body: "You have used this month's 50 link pushes." },
-            sound: 'default',
           },
         },
       },
@@ -112,13 +111,12 @@ describe('the notice for a push taken back at the limit', () => {
       title: 'Push removed',
       body: "You have used this month's 10,000 file pushes.",
     }));
-  test('which APNs receives as a plain alert, collapsed by type, that the extension never sees', () => {
+  test('which APNs receives as a plain, silent alert, collapsed by type, that the extension never sees', () => {
     const message = { ...removedMessageOf('file', 3), token: 't' } as Message;
     validateMessage(message);
     expect(message.apns?.headers).toEqual({ 'apns-collapse-id': 'refused-file' });
     expect(message.apns?.payload?.aps).toEqual({
       alert: { title: 'Push removed', body: "You have used this month's 3 file pushes." },
-      sound: 'default',
     });
   });
 });

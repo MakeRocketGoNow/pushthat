@@ -118,8 +118,11 @@ class PushThatMessagingService : FirebaseMessagingService() {
      * the rules let a burst through before any of it is counted, so the push was saved here
      * and then left the list. Shown whichever device made it, since the server cannot tell
      * which did and the limit is the account's. One notification a type, replaced by the
-     * next, so a burst taken back says it once. A type this version does not know is left
-     * alone. The list is told to read again, as for a push received.
+     * next and alerting only once while it is in the tray, so a queue of offline shares taken
+     * back together sounds once rather than once a push. A later notice of the type, while an
+     * earlier one is still showing, is silent too: the tray already says it. A type this
+     * version does not know is left alone. The list is told to read again, as for a push
+     * received.
      */
     private fun receiveRemoved(type: String, limit: String?) {
         val count = limit?.toIntOrNull()?.let { NumberFormat.getIntegerInstance().format(it) } ?: return
@@ -128,7 +131,7 @@ class PushThatMessagingService : FirebaseMessagingService() {
             PushContent.TYPE_FILE -> getString(R.string.push_removed_file, count)
             else -> return
         }
-        sendAppNotification(getString(R.string.push_removed_title), body, "refused-$type".hashCode())
+        sendAppNotification(getString(R.string.push_removed_title), body, "refused-$type".hashCode(), alertOnce = true)
         broadcastPushReceived()
     }
 
@@ -157,7 +160,7 @@ class PushThatMessagingService : FirebaseMessagingService() {
     }
 
     /** A notification whose tap opens the app's list: a file push, or one not yet read. */
-    private fun sendAppNotification(title: String, body: String?, notificationId: Int) {
+    private fun sendAppNotification(title: String, body: String?, notificationId: Int, alertOnce: Boolean = false) {
         val appIntent = Intent(this, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
         }
@@ -171,6 +174,7 @@ class PushThatMessagingService : FirebaseMessagingService() {
             .setAutoCancel(true)
             .setSound(RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION))
             .setContentIntent(pendingIntent)
+            .setOnlyAlertOnce(alertOnce)
         body?.let { builder.setContentText(it) }
         (getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager).notify(notificationId, builder.build())
     }

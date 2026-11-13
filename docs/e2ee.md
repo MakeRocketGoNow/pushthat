@@ -175,7 +175,7 @@ A push `recordPush` takes back at the month's limit ([billing.md](billing.md)) i
 ```
 data:    { refused: "url" | "file", limit }
 android: { priority: "normal" }
-apns:    { headers: { "apns-collapse-id": "refused-<type>" }, payload: { aps: { alert: { title: "Push removed", body: "You have used this month's 50 link pushes." }, sound: "default" } } }
+apns:    { headers: { "apns-collapse-id": "refused-<type>" }, payload: { aps: { alert: { title: "Push removed", body: "You have used this month's 50 link pushes." } } } }
 ```
 
 Android and the Chrome extension word it from `refused` and `limit`; iOS shows the alert as sent, so its notification service extension never runs for it.
