@@ -29,6 +29,3 @@ export const planApi = {
   createPortalSession: (flow?: 'payment') =>
     call<{ flow?: 'payment' }, { url: string }>('createPortalSession')({ flow }).then((r) => r.data),
 };
-
-// Lives in callable.ts, since it is not about plans; exported from here too for the plan pages that always took it from here.
-export { errorText } from './callable';

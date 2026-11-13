@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { useAuth } from '@/contexts/AuthContext';
-import { PlanReport, errorText, planApi } from '@/services/plan';
+import { errorText } from '@/services/callable';
+import { PlanReport, planApi } from '@/services/plan';
 
 /**
  * The signed-in account's plan, read once per mount and again on demand. `plan` is

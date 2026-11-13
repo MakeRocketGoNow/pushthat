@@ -5,8 +5,9 @@ import { Link, useNavigate, useSearchParams } from 'react-router';
 import Button from '@/components/Button';
 import { LIMITS, formatMb } from '@/config/plan';
 import { usePlan } from '@/hooks/usePlan';
+import { errorText } from '@/services/callable';
 import { deviceId } from '@/services/keyStore';
-import { PlanReport, errorText, planApi } from '@/services/plan';
+import { PlanReport, planApi } from '@/services/plan';
 
 import styles from './Plan.module.css';
 
