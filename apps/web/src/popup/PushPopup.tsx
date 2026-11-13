@@ -122,7 +122,7 @@ export function PushPopup() {
       {state.kind === 'failed' && state.reason !== 'other' ? (
         // Both are the app: to sign in, or to see whether the push landed. Never a retry for
         // an unconfirmed push, which could make it twice.
-        <Button solid onClick={() => void openApp()}>
+        <Button autoFocus solid onClick={() => void openApp()}>
           {state.reason === 'signIn' ? 'Sign in' : 'Check your pushes'}
         </Button>
       ) : state.kind === 'pushed' ? (
@@ -131,8 +131,15 @@ export function PushPopup() {
         </p>
       ) : (
         // `autoFocus`, which React applies when the button mounts, after the tab is read, so
-        // Enter pushes. The same button stays through pushing and a retry.
-        <Button autoFocus solid isSubmitting={state.kind === 'pushing'} onClick={() => void push(page)}>
+        // Enter pushes. Disabled while pushing, the button loses focus, so a failure mounts it
+        // again (`key`) and Enter tries again.
+        <Button
+          key={state.kind === 'failed' ? 'retry' : 'push'}
+          autoFocus
+          solid
+          isSubmitting={state.kind === 'pushing'}
+          onClick={() => void push(page)}
+        >
           {state.kind === 'pushing' ? 'Pushing…' : state.kind === 'failed' ? 'Try again' : 'Push this page'}
         </Button>
       )}
