@@ -288,9 +288,11 @@ async function pushFromWorker(page: Page | undefined) {
     await chrome.action.setBadgeText({ text: '✓' });
     setTimeout(() => void chrome.action.setBadgeText({ text: '' }), PUSHED_BADGE_MS);
   } catch (error) {
-    // `pushPage` throws nothing but a `PagePushError`, and logs what it could not word.
-    await self.registration.showNotification('Not pushed', {
-      body: (error as PagePushError).message,
+    // `pushPage` throws nothing but a `PagePushError`, and logs what it could not word. An
+    // unconfirmed push may have landed, so it is not called "not pushed".
+    const failure = error as PagePushError;
+    await self.registration.showNotification(failure.reason === 'unconfirmed' ? 'Push not confirmed' : 'Not pushed', {
+      body: failure.message,
       icon: '/icons/icon128.png',
       data: { url: chrome.runtime.getURL('index.html') },
     });

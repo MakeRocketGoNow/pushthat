@@ -28,13 +28,19 @@ export interface Page {
   icon?: string;
 }
 
+/**
+ * What to offer after a failed push: signing in on the extension's page (`signIn`), a look
+ * at the list before anything else, since the push may have landed and trying again could
+ * make it twice (`unconfirmed`), or trying again (`other`).
+ */
+export type PagePushFailure = 'signIn' | 'unconfirmed' | 'other';
+
 /** A push that could not be made, said in a sentence for the person who asked for it. */
 export class PagePushError extends Error {
-  /** Whether signing in on the extension's page is what would fix it. */
-  readonly needsSignIn: boolean;
-  constructor(message: string, needsSignIn = false) {
+  readonly reason: PagePushFailure;
+  constructor(message: string, reason: PagePushFailure = 'other') {
     super(message);
-    this.needsSignIn = needsSignIn;
+    this.reason = reason;
   }
 }
 
@@ -129,10 +135,10 @@ export async function pushPage(page: Page): Promise<void> {
   try {
     await auth.authStateReady();
     const uid = auth.currentUser?.uid;
-    if (!uid) throw new PagePushError(SIGNED_OUT_MESSAGE, true);
+    if (!uid) throw new PagePushError(SIGNED_OUT_MESSAGE, 'signIn');
     const db = getFirestore(app);
     const keys = await loadPushKeys(db, uid);
-    if (!keys) throw new PagePushError(NO_KEYS_MESSAGE, true);
+    if (!keys) throw new PagePushError(NO_KEYS_MESSAGE, 'signIn');
     try {
       await createUrlPush(db, keys, page.url, page.title, page.icon);
     } catch (error) {
@@ -148,7 +154,7 @@ export async function pushPage(page: Page): Promise<void> {
     }
   } catch (error) {
     if (error instanceof PagePushError) throw error;
-    if (error instanceof PushUnconfirmedError) throw new PagePushError(UNCONFIRMED_MESSAGE);
+    if (error instanceof PushUnconfirmedError) throw new PagePushError(UNCONFIRMED_MESSAGE, 'unconfirmed');
     if (error instanceof PushTooLongError) throw new PagePushError(TOO_LONG_LINK_MESSAGE);
     console.error('Could not push a page:', error);
     throw new PagePushError(PUSH_FAILED_MESSAGE);

@@ -1,7 +1,14 @@
 import { useEffect, useState } from 'react';
 
 import Button from '@/components/Button';
-import { NOT_A_WEB_PAGE_MESSAGE, type Page, PagePushError, pageOfTab, pushPage } from '@/services/pagePush';
+import {
+  NOT_A_WEB_PAGE_MESSAGE,
+  type Page,
+  PagePushError,
+  type PagePushFailure,
+  pageOfTab,
+  pushPage,
+} from '@/services/pagePush';
 
 import styles from './PushPopup.module.css';
 
@@ -17,7 +24,7 @@ type State =
   | { kind: 'ready'; page: Page }
   | { kind: 'pushing'; page: Page }
   | { kind: 'pushed'; page: Page }
-  | { kind: 'failed'; page: Page; message: string; needsSignIn: boolean };
+  | { kind: 'failed'; page: Page; message: string; reason: PagePushFailure };
 
 const openApp = async () => {
   await chrome.tabs.create({ url: chrome.runtime.getURL('index.html') });
@@ -54,7 +61,7 @@ export function PushPopup() {
     } catch (error) {
       // `pushPage` throws nothing but a `PagePushError`.
       const failure = error as PagePushError;
-      setState({ kind: 'failed', page, message: failure.message, needsSignIn: failure.needsSignIn });
+      setState({ kind: 'failed', page, message: failure.message, reason: failure.reason });
     }
   };
 
@@ -86,9 +93,11 @@ export function PushPopup() {
         </p>
       )}
 
-      {state.kind === 'failed' && state.needsSignIn ? (
+      {state.kind === 'failed' && state.reason !== 'other' ? (
+        // Both are the app: to sign in, or to see whether the push landed. Never a retry for
+        // an unconfirmed push, which could make it twice.
         <Button solid onClick={() => void openApp()}>
-          Sign in
+          {state.reason === 'signIn' ? 'Sign in' : 'Check your pushes'}
         </Button>
       ) : state.kind === 'pushed' ? (
         <p className={styles.done} role="status">
@@ -102,8 +111,8 @@ export function PushPopup() {
         </Button>
       )}
 
-      {/* Signing in is opening the app, which the button above already does. */}
-      {!(state.kind === 'failed' && state.needsSignIn) && <OpenApp />}
+      {/* Opening the app is what the button above already does. */}
+      {!(state.kind === 'failed' && state.reason !== 'other') && <OpenApp />}
     </div>
   );
 }
