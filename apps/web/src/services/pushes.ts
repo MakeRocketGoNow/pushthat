@@ -260,12 +260,25 @@ const urlSearchText = (envelope: UrlEnvelope) => `${envelope.title} ${envelope.u
 /**
  * Makes a URL push. The id is chosen before anything is sealed, since the envelope's AAD
  * names it. `title` may be empty: a native device that receives the push scrapes the page
- * and writes the title back (docs/e2ee.md, Titles).
+ * and writes the title back (docs/e2ee.md, Titles). `icon` is the page's icon as the
+ * envelope carries it, already checked by `iconOf`; only the Chrome extension has one to
+ * give, from Chrome's own copy of the tab's icon.
+ *
+ * The icon is written only when there is one, so a push without it seals the same bytes
+ * as before, and it is dropped when the envelope with it would not fit: the link matters
+ * more than its picture, as when the phones write one back.
  */
-export async function createUrlPush(db: Firestore, keys: PushKeys, url: string, title: string): Promise<string> {
+export async function createUrlPush(
+  db: Firestore,
+  keys: PushKeys,
+  url: string,
+  title: string,
+  icon?: string
+): Promise<string> {
   const pushRef = doc(collection(db, 'pushes'));
   const envelope: UrlEnvelope = { url, title: cut(title, MAX_TITLE), ext: '' };
-  const enc = await sealPush(keys.metaKey, keys.uid, pushRef.id, envelope);
+  let enc = await sealPush(keys.metaKey, keys.uid, pushRef.id, icon ? { ...envelope, icon } : envelope);
+  if (enc.ct.length > MAX_CT_LENGTH && icon) enc = await sealPush(keys.metaKey, keys.uid, pushRef.id, envelope);
   if (enc.ct.length > MAX_CT_LENGTH) throw new PushTooLongError('the URL is too long to push');
   await createPush(pushRef, {
     userId: keys.uid,
