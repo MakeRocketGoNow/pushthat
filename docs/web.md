@@ -35,9 +35,14 @@ will be pushed, its title and icon, with **Push this page** focused, so Enter pu
 link to open the full app, which is what the button did before it had a popup. It does not
 push on open: a click meant only to reach the list would send a push nobody wanted. The same
 push is on a keyboard shortcut (`Alt+Shift+P` by default, changed at
-`chrome://extensions/shortcuts`) and on the page's right-click menu, which the service worker
-handles; it shows a check on the toolbar button when a push lands and a notification when one
-does not. `src/services/pagePush.ts` is the one path all three take.
+`chrome://extensions/shortcuts`) and on the page's right-click menu. All three are made in the
+service worker, through `src/services/pagePush.ts`. The popup hands its page over a port
+(`PUSH_PORT`) because Chrome destroys a popup the moment it loses focus: a push made in the
+popup itself was lost, or landed unannounced, when someone clicked back into the page before
+Firestore answered. While the popup is open it shows the result; otherwise the worker shows a
+check on the toolbar button when a push lands and a notification when one does not. Opened
+signed out, the popup offers **Sign in** at once, and a push that may have landed without
+being confirmed offers **Check your pushes**, never a retry that could make it twice.
 
 Pushing from here is how a browser push gets its title and icon at once. The site's Push page
 has neither to give, since a page cannot read another site, so its pushes wait for a phone or
