@@ -63,8 +63,9 @@ export const REMOVED_TITLE = 'Push removed';
 
 /**
  * The notice's sentence: the limit alone. The apps never sell the plan (store rules), so it
- * names no upgrade. The web's `limitMessage` and Android's push_removed_url and
- * push_removed_file say the same.
+ * names no upgrade. The web's `usedMessage` (apps/web/src/services/pushRefusal.ts) and
+ * Android's push_removed_url and push_removed_file say the same; the web's `limitMessage`
+ * adds what Pro allows, which this must not.
  */
 export function removedBodyOf(type: 'url' | 'file', limit: number): string {
   return `You have used this month's ${limit.toLocaleString('en-US')} ${type === 'url' ? 'link' : 'file'} pushes.`;
