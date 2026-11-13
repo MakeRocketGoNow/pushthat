@@ -148,14 +148,16 @@ jobs:
 
       # Play names a release after `versionName` alone when nothing is supplied, so every
       # release of one version would read the same and the list would give no way to tell
-      # builds apart. This mirrors what Play shows beside the bundle, "142 (1.2.0)".
-      # `versionName` is read out of the build file rather than repeated here, because a
-      # second copy is one nobody updates when the first one changes.
+      # builds apart. This keeps the "142 (1.2.0)" form the earlier releases have.
+      # `baseVersionName` is read out of the build file rather than repeated here, because a
+      # second copy is one nobody updates when the first one changes. Not `versionName`:
+      # that carries the code too, as "1.2.0 (142)", and is assembled there, not written out.
       - name: Name the release
         id: release_name
         if: steps.publishable.outputs.ready == 'true'
         run: |
-          name=$(grep -m1 'versionName = ' app/build.gradle.kts | sed 's/.*versionName = "\(.*\)".*/\1/')
+          name=$(grep -m1 'val baseVersionName = ' app/build.gradle.kts | sed 's/.*baseVersionName = "\(.*\)".*/\1/')
+          [ -n "$name" ] || { echo "No baseVersionName in app/build.gradle.kts" >&2; exit 1; }
           echo "name=${PUSHTHAT_VERSION_CODE} (${name})" >> "$GITHUB_OUTPUT"
 
       # A merge goes to internal testing, and closed testing only when the run was started by

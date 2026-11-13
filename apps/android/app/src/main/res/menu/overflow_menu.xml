@@ -32,6 +32,13 @@
         android:icon="@drawable/ic_logout"
         android:title="@string/logout"
         android:theme="@style/PopupMenuTextStyle" />
+      <!-- Which build this is, "1.2.0 (117)", filled in by MainActivity. Last and
+           disabled: it is something to read, not to tap. -->
+      <item
+        android:id="@+id/nav_version"
+        android:enabled="false"
+        android:title=""
+        android:theme="@style/PopupMenuTextStyle" />
     </menu>
   </item>
 </menu>

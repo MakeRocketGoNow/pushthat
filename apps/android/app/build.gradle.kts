@@ -39,16 +39,24 @@ android {
         targetSdk = 36
         /*
          * Every bundle Play accepts needs a version code it has not seen, so CI passes one
-         * that only rises (the workflow says how it is derived). A local build keeps 8,
-         * the code this file carried before CI took over, which Play will not take
-         * again: bundles for Play come from CI now. A value that is set but not a number
-         * fails the build here, rather than quietly becoming 8 and surfacing later as Play
-         * refusing the upload.
+         * that only rises (the workflow says how it is derived). A local build falls back
+         * to 117, the first code after the 116 Play had when this was written; CI has
+         * moved past it since, so a local bundle is for a phone, not for Play. A value
+         * that is set but not a number fails the build here, rather than quietly becoming
+         * the fallback and surfacing later as Play refusing the upload.
          */
-        versionCode = System.getenv("PUSHTHAT_VERSION_CODE")?.let {
+        val code = System.getenv("PUSHTHAT_VERSION_CODE")?.let {
             it.toIntOrNull() ?: error("PUSHTHAT_VERSION_CODE is not a number: $it")
-        } ?: 8
-        versionName = "1.2.0"
+        } ?: 117
+        versionCode = code
+        /*
+         * The code is part of the name, "1.2.0 (117)", so two builds of one release can be
+         * told apart on a phone and in Play Console. It is joined here rather than typed
+         * in, so it cannot fall out of step with `versionCode`. Bump `baseVersionName` for
+         * a new release; the workflow reads it from this line to name the Play release.
+         */
+        val baseVersionName = "1.2.0"
+        versionName = "$baseVersionName ($code)"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

@@ -1,5 +1,5 @@
 Your pushes are now end-to-end encrypted: only devices you sign in on can read them. Signing in shows a recovery key. Save it: it is the only way back to your pushes if you forget your password.
 
-New in the menu: Delete account, beside Change password and Show a new recovery key.
+New in the menu: Delete account, and the app's version on the last line.
 
 A link's icon now comes from its page, so your list never asks Google. Older links show a plain icon. Notifications and search work on encrypted pushes, and an unconfirmed share is retried, not dropped.
