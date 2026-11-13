@@ -1,7 +1,7 @@
 import { Message, SendResponse } from 'firebase-admin/messaging';
 import { dirname, join } from 'node:path';
 
-import { deadTokens, pushMessageOf, removedMessageOf } from './notifications';
+import { REMOVED_TITLE, deadTokens, pushMessageOf, removedMessageOf } from './notifications';
 
 // The SDK's own check and rewrite of a message before it sends it, to see the wire form
 // APNs gets. It is internal, and the package's exports map hides it from an import, so it
@@ -91,6 +91,8 @@ describe('the message for a new push', () => {
 });
 
 describe('the notice for a push taken back at the limit', () => {
+  // Android words its own title (push_removed_title), and Chrome its own in background.ts.
+  test('is titled as Android and Chrome title it', () => expect(REMOVED_TITLE).toBe('Push removed'));
   test('names the type and the limit, and no push', () =>
     expect(removedMessageOf('url', 50)).toEqual({
       data: { refused: 'url', limit: '50' },
@@ -99,7 +101,7 @@ describe('the notice for a push taken back at the limit', () => {
         headers: { 'apns-collapse-id': 'refused-url' },
         payload: {
           aps: {
-            alert: { title: 'Push removed', body: "You have used this month's 50 link pushes." },
+            alert: { title: REMOVED_TITLE, body: "You have used this month's 50 link pushes." },
           },
         },
       },
@@ -108,7 +110,7 @@ describe('the notice for a push taken back at the limit', () => {
     expect(removedMessageOf('file', 3).data).not.toHaveProperty('pushId'));
   test('says a file and writes a large limit with its comma', () =>
     expect(removedMessageOf('file', 10_000).apns?.payload?.aps.alert).toEqual({
-      title: 'Push removed',
+      title: REMOVED_TITLE,
       body: "You have used this month's 10,000 file pushes.",
     }));
   test('which APNs receives as a plain, silent alert, collapsed by type, that the extension never sees', () => {
@@ -116,7 +118,7 @@ describe('the notice for a push taken back at the limit', () => {
     validateMessage(message);
     expect(message.apns?.headers).toEqual({ 'apns-collapse-id': 'refused-file' });
     expect(message.apns?.payload?.aps).toEqual({
-      alert: { title: 'Push removed', body: "You have used this month's 3 file pushes." },
+      alert: { title: REMOVED_TITLE, body: "You have used this month's 3 file pushes." },
     });
   });
 });
