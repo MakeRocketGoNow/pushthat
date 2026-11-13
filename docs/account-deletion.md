@@ -124,6 +124,11 @@ each client holds differs, because each keeps different things:
 | The notification (FCM) token | not held by the page | yes | yes | no FCM |
 | The Analytics installation id | no Analytics | yes | yes | no Analytics |
 
+On Android, a process killed during the call (the app swiped out of Recents) never gets to
+this cleanup: the session ends on its own once its revoked token is refused and the key
+goes with it, but the queued pushes and the notification token stay until that install is
+next signed out.
+
 The decoded icons are the one thing here that outlives the sign-out: each app keeps a
 bounded cache of the icons it has drawn, in memory only, which neither sign-out nor deletion
 empties. They go with the process.
@@ -150,7 +155,8 @@ revokes every session too, and reading that as "deleted" told someone who had mi
 their account was gone when the server had not been asked. It counts only straight after the
 deletion's own sign-in, when nothing but the function can have revoked it. The web cannot
 tell the two apart (Firebase answers both with "token expired" there), so a retry on the web
-reads "The email or password is not right", and the unconfirmed message says what that
+reports a refused password ("That is not your password." when the browser is signed in, "The
+email or password is not right." when it is not), and the unconfirmed message says what that
 means. Only the function's own refusals (an old sign-in, a subscription that would not
 cancel), which are made before anything is deleted, are shown as refusals.
 
