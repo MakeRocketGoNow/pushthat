@@ -259,6 +259,13 @@ const PUSH_LINK = 'push-link';
 const WEB_PAGES = ['http://*/*', 'https://*/*'];
 const PUSHED_BADGE_MS = 2000;
 
+// The check on the toolbar button after a push, cleared by a timer. Badge text is the
+// browser's and outlives the worker, which Chrome may stop before the timer fires, so a
+// check left that way is cleared when the worker next starts. The timer is kept so that a
+// second push within the two seconds gets its full two.
+let badgeTimer: ReturnType<typeof setTimeout> | undefined;
+void chrome.action.setBadgeText({ text: '' });
+
 /**
  * The right-click items, made again on every install and update: Chrome keeps them across
  * restarts of the worker but not across an update that changes them, and creating one that
@@ -299,11 +306,10 @@ async function pushFromWorker(page: Page | undefined, popup?: { reply: (reply: P
   }
   if (popup?.reply(reply)) return;
   if (reply.ok) {
-    // The worker can be stopped before the timer clears the check; the next push or the
-    // next start of the worker leaves it as it was, and a stale check says nothing wrong.
+    clearTimeout(badgeTimer);
     await chrome.action.setBadgeBackgroundColor({ color: '#2e7d32' });
     await chrome.action.setBadgeText({ text: '✓' });
-    setTimeout(() => void chrome.action.setBadgeText({ text: '' }), PUSHED_BADGE_MS);
+    badgeTimer = setTimeout(() => void chrome.action.setBadgeText({ text: '' }), PUSHED_BADGE_MS);
   } else {
     // An unconfirmed push may have landed, so it is not called "not pushed".
     await self.registration.showNotification(reply.reason === 'unconfirmed' ? 'Push not confirmed' : 'Not pushed', {
