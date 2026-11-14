@@ -181,6 +181,16 @@ Echo suppression compares `deviceId` instead of the device's model name, which a
 
 One case it does not cover: a link pushed from pushthat.link in a Chrome that also has the extension opens in a new tab there. The site and the extension are two origins with two IndexedDBs, so two device ids, where the old comparison of user agents happened to match them (and also hid every push between two machines on the same Chrome version). Closing it needs the site to ask the extension for its id, through `externally_connectable` and the extension's published id, which the repository does not have yet; until then the duplicate tab is the cost.
 
+A push `recordPush` takes back at the month's limit ([billing.md](billing.md)) is not announced as a push. Its devices are sent a notice instead, which carries no `pushId`, since every app takes a `pushId` to mean a push to read:
+
+```
+data:    { refused: "url" | "file", limit }
+android: { priority: "normal" }
+apns:    { headers: { "apns-collapse-id": "refused-<type>" }, payload: { aps: { alert: { title: "Push removed", body: "You have used this month's 50 link pushes." }, sound: "default" } } }
+```
+
+Android and the Chrome extension word it from `refused` and `limit`; iOS shows the alert as sent, so its notification service extension never runs for it. A collapse id replaces the banner but plays each delivery's sound, so only the first notice of a type in ten minutes carries `sound`; the server keeps when one last did in `users/{uid}.limitNoticeAt` (`QUIET_NOTICE_MS` in `usage.ts`). Android alerts once on its own while the notice is in the tray, and Chrome's tag replaces it quietly.
+
 ## Titles
 
 The web app asks a Cloud Function, `getPageTitle`, to fetch a page's title, because a browser cannot read a cross-origin page. That function is removed: a server that fetched the URL would know it. A web push goes out with an empty title and the first native device to receive it scrapes the page and writes the title back, which the Android, iOS and macOS scrapers already do for their own pushes and now also do for a received `url` push whose title is empty. Two receivers scraping the same push both write the same title; last write wins. The Chrome extension does not scrape: it holds host permissions only for FCM, and asking for every site is a worse trade than a late title. It has no need to for the page you are on, though: pushed from the extension (its popup, shortcut or page menu, see [web.md](web.md#pushing-from-the-extension)), a push carries the title Chrome already shows for the tab, and usually its icon, so a phone has nothing to fill in. That cuts both ways: a phone scrapes a received push only while it has no title, so an extension push that went without an icon (a tab still loading, whose icon Chrome had not got yet, or an icon Chrome could not hand over) keeps the placeholder for good, where the same link from the site would have had both from a phone. A title the tab already has was judged worth more than that: it is the page as you saw it, signed in, where a phone scraping it sees what a stranger does. A link pushed from its right-click menu goes without one, as from the site.

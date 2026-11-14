@@ -39,6 +39,11 @@
     <!-- Error dialog strings -->
     <string name="push_failed_title">Unable to Save</string>
     <string name="push_failed_message_limit">You have reached this month’s push limit.</string>
+    <!-- A push the server took back past the month's limit, after it was saved: the limit
+         alone, as push_failed_message_limit, and the web and iOS say the same. -->
+    <string name="push_removed_title">Push removed</string>
+    <string name="push_removed_url">You have used this month’s %1$s link pushes.</string>
+    <string name="push_removed_file">You have used this month’s %1$s file pushes.</string>
     <string name="push_failed_message_generic">Failed to save push. Please try again later.</string>
     <!-- The envelope would pass the rules' bound on its size: the same words as the web. -->
     <string name="push_failed_link_too_long">That link is too long to push.</string>

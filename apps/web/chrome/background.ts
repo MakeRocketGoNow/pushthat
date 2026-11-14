@@ -30,6 +30,7 @@ import {
   pushPage,
 } from '../src/services/pagePush';
 import { type Push, loadPushKeys, readPush, viewableType, viewerPath } from '../src/services/pushes';
+import { usedMessage } from '../src/services/pushRefusal';
 import { isWebPage } from '../src/services/tabPage';
 
 declare const self: ServiceWorkerGlobalScope & typeof globalThis;
@@ -194,10 +195,36 @@ async function handleEncryptedPush(data: { pushId?: string; deviceId?: string })
   });
 }
 
+/**
+ * A push the server took back because it landed past the month's limit
+ * (functions/src/notifications.ts, `removedMessageOf`): the rules let a burst through before
+ * any of it is counted, so a push this browser was told was saved left the list. Shown
+ * whichever device made it, since the server cannot tell which did. The tag makes the next
+ * notice of the type replace this one, so a burst taken back says it once. A type this
+ * version does not know is left alone.
+ */
+async function handleRemovedPush(data: { refused?: string; limit?: string }) {
+  const type = data.refused;
+  const limit = Number(data.limit);
+  if ((type !== 'url' && type !== 'file') || !Number.isInteger(limit)) return;
+  await self.registration.showNotification('Push removed', {
+    body: usedMessage(type, limit),
+    icon: '/icons/icon128.png',
+    tag: `refused-${type}`,
+    data: { url: chrome.runtime.getURL('index.html') },
+  });
+}
+
 async function handlePush(event: PushEvent) {
   const data = event.data?.json()?.data;
   // The data says which push, never what is in it; the URL is not logged once decrypted.
-  debug('Received push notification ', { pushId: data?.pushId, type: data?.type });
+  debug('Received push notification ', { pushId: data?.pushId, type: data?.type, refused: data?.refused });
+
+  // It names no push, so it is checked before anything that reads one.
+  if (data?.refused) {
+    await handleRemovedPush(data);
+    return;
+  }
 
   // Every push is announced by its id alone (functions/src/notifications.ts): the rules
   // refuse a plaintext push, so the message that carried a URL and a device name to open
