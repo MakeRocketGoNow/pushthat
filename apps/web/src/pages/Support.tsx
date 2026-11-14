@@ -70,9 +70,9 @@ export default function Support() {
       </p>
 
       <p>
-        To close your account, use <Link to="/delete-account">Delete account</Link>, here or in the app’s menu: it
-        deletes the account at once, with everything pushed from it. If you cannot sign in, write to us from the
-        account’s address and we will delete it for you.
+        To close your account, use <Link to="/delete-account">Delete account</Link>, here, from Account in the website’s
+        menu, or in the app’s menu: it deletes the account at once, with everything pushed from it. If you cannot sign
+        in, write to us from the account’s address and we will delete it for you.
       </p>
 
       <h5>BUGS AND IDEAS</h5>
