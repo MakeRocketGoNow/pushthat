@@ -186,10 +186,10 @@ A push `recordPush` takes back at the month's limit ([billing.md](billing.md)) i
 ```
 data:    { refused: "url" | "file", limit }
 android: { priority: "normal" }
-apns:    { headers: { "apns-collapse-id": "refused-<type>" }, payload: { aps: { alert: { title: "Push removed", body: "You have used this month's 50 link pushes." } } } }
+apns:    { headers: { "apns-collapse-id": "refused-<type>" }, payload: { aps: { alert: { title: "Push removed", body: "You have used this month's 50 link pushes." }, sound: "default" } } }
 ```
 
-Android and the Chrome extension word it from `refused` and `limit`; iOS shows the alert as sent, so its notification service extension never runs for it.
+Android and the Chrome extension word it from `refused` and `limit`; iOS shows the alert as sent, so its notification service extension never runs for it. A collapse id replaces the banner but plays each delivery's sound, so only the first notice of a type in ten minutes carries `sound`; the server keeps when one last did in `users/{uid}.limitNoticeAt` (`QUIET_NOTICE_MS` in `usage.ts`). Android alerts once on its own while the notice is in the tray, and Chrome's tag replaces it quietly.
 
 ## Titles
 

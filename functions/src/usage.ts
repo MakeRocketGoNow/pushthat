@@ -37,9 +37,28 @@ export interface NewPush {
  * transaction, so the notice that announces it (notifications.ts, `removedMessageOf`) names
  * the number that was enforced and not one read again after a subscription might have moved.
  * `removed` says whether this took the push back, or found it already deleted by its user,
- * who has nothing to be told about a push they removed themselves.
+ * who has nothing to be told about a push they removed themselves. `sound` says whether
+ * the notice should alert: see `QUIET_NOTICE_MS`.
  */
-export type RecordOutcome = { outcome: 'counted' } | { outcome: 'refused'; limit: number; removed: boolean };
+export type RecordOutcome =
+  | { outcome: 'counted' }
+  | { outcome: 'refused'; limit: number; removed: boolean; sound: boolean };
+
+/**
+ * How long after a notice that sounded the next notice of its type stays quiet.
+ *
+ * A burst taken back sends one notice a push. Android alerts once while the notice is in
+ * its tray and Chrome replaces it by tag without renotifying, but an APNs collapse id only
+ * replaces the banner: every delivery with a sound plays it, so a queue of twenty offline
+ * pushes would sound twenty times. Only the server sees the burst whole, so it decides:
+ * `users/{uid}.limitNoticeAt.<type>` holds when a notice of the type last sounded, written
+ * in the transaction that refuses the push, which the burst's refusals take one at a time
+ * since each also reads the count. Ten minutes covers a queue of large files uploading one
+ * after another; a refusal after that sounds again, since by then it is news. The rules
+ * check only the keys a client changes on the user document, so a field the server keeps
+ * there costs the clients nothing.
+ */
+export const QUIET_NOTICE_MS = 10 * 60 * 1000;
 
 /** The email a user document made here is given: the Auth record's. A test supplies its own. */
 async function authEmailOf(uid: string): Promise<string | undefined> {
@@ -78,11 +97,18 @@ export async function recordPush(
     const current = usage[push.type];
     const limit = limitsOf(user, now)[push.type];
     if (current >= limit) {
-      if (pushDoc.exists) transaction.delete(pushRef);
       logger.warn(
         `recordPush: ${push.type} push ${pushRef.id} landed over the limit of ${limit}; ${pushDoc.exists ? 'deleted' : 'already gone'}`
       );
-      return { outcome: 'refused', limit, removed: pushDoc.exists };
+      if (!pushDoc.exists) return { outcome: 'refused', limit, removed: false, sound: false };
+      transaction.delete(pushRef);
+      const last = (stored as { limitNoticeAt?: Record<string, unknown> } | undefined)?.limitNoticeAt?.[push.type];
+      const sound = !(last instanceof Timestamp) || now.getTime() - last.toMillis() >= QUIET_NOTICE_MS;
+      // Over the limit means a count, so the document exists and this adds to it.
+      if (sound && userDoc.exists) {
+        transaction.set(userRef, { limitNoticeAt: { [push.type]: nowTimestamp } }, { merge: true });
+      }
+      return { outcome: 'refused', limit, removed: true, sound };
     }
 
     // A file push is kept for the tier's retention and then deleted by the sweep

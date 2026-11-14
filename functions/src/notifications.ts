@@ -89,20 +89,23 @@ export function removedBodyOf(type: 'url' | 'file', limit: number): string {
  * A burst can be taken back several pushes at once, so each type's notice replaces the
  * last: the collapse id on APNs, a fixed notification id on Android, a tag in Chrome. Each
  * replacement would sound again, so it is quiet: Android alerts once while the notice is in
- * the tray, Chrome's tag replaces without renotifying, and the APNs alert has no sound,
- * since a collapse id replaces the banner but cannot stop a sound for each delivery. A
- * queue of twenty offline pushes taken back would otherwise sound twenty times.
+ * the tray, and Chrome's tag replaces without renotifying. A collapse id cannot stop a
+ * sound for each delivery, so the APNs alert has one only when `sound`, which `recordPush`
+ * gives the first notice of a burst (usage.ts, `QUIET_NOTICE_MS`). A queue of twenty
+ * offline pushes taken back would otherwise sound twenty times.
  * Normal priority on Android: a high-priority message that an older app answers with no
  * notification counts against the app's later high-priority pushes, and this can wait for
  * the phone to wake.
  */
-export function removedMessageOf(type: 'url' | 'file', limit: number): BaseMessage {
+export function removedMessageOf(type: 'url' | 'file', limit: number, sound = false): BaseMessage {
   return {
     data: { refused: type, limit: String(limit) },
     android: { priority: 'normal' },
     apns: {
       headers: { 'apns-collapse-id': `refused-${type}` },
-      payload: { aps: { alert: { title: REMOVED_TITLE, body: removedBodyOf(type, limit) } } },
+      payload: {
+        aps: { alert: { title: REMOVED_TITLE, body: removedBodyOf(type, limit) }, ...(sound && { sound: 'default' }) },
+      },
     },
   };
 }

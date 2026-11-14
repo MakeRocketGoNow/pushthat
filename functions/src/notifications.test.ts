@@ -113,6 +113,8 @@ describe('the notice for a push taken back at the limit', () => {
       title: REMOVED_TITLE,
       body: "You have used this month's 10,000 file pushes.",
     }));
+  test('sounds on APNs only when asked, for the first notice of a burst', () =>
+    expect(removedMessageOf('url', 50, true).apns?.payload?.aps.sound).toBe('default'));
   test('which APNs receives as a plain, silent alert, collapsed by type, that the extension never sees', () => {
     const message = { ...removedMessageOf('file', 3), token: 't' } as Message;
     validateMessage(message);
