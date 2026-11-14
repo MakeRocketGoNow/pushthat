@@ -9,7 +9,7 @@ import { LIMITS, SUPPORT_EMAIL } from '@/config/plan';
  * Security, `/security`: the gist of docs/e2ee.md for the people it protects. What is
  * encrypted, what is not, what a lost password costs, and the recovery key. Public, like
  * Support, since the front page and Support link here and the reader may not have an
- * account yet; the Plan page links here too.
+ * account yet; the Account page links here too.
  *
  * It says what is not protected as plainly as what is: the reason for a key made from the
  * password is that the user can see what it does, and a page that only listed the
@@ -134,10 +134,10 @@ export function Security() {
       <h5>YOUR DEVICE ID</h5>
 
       <p>
-        Each install of PushThat makes a random device ID, which the web app shows on the <Link to="/plan">Plan</Link>{' '}
-        page. It goes with every push so that the device that sent one does not notify itself, and it says nothing about
-        the device: it replaced the device&rsquo;s name (the one you gave it, its model name, or the browser&rsquo;s
-        user agent), which pushes used to carry.
+        Each install of PushThat makes a random device ID, which the web app shows on the{' '}
+        <Link to="/account">Account</Link> page. It goes with every push so that the device that sent one does not
+        notify itself, and it says nothing about the device: it replaced the device&rsquo;s name (the one you gave it,
+        its model name, or the browser&rsquo;s user agent), which pushes used to carry.
       </p>
 
       <h5>QUESTIONS</h5>

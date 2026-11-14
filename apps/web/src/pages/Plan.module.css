@@ -2,6 +2,12 @@
   max-width: 560px;
 }
 
+.back {
+  display: inline-block;
+  margin-top: 1rem;
+  font-size: 0.9rem;
+}
+
 .section {
   margin: 2rem 0;
   display: flex;
@@ -74,9 +80,4 @@
 
 .meterFillFull {
   background: var(--color-error);
-}
-
-/* A device id is 22 characters with no spaces, which would otherwise push a narrow screen sideways */
-.deviceId {
-  overflow-wrap: anywhere;
 }

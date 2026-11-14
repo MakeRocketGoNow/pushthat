@@ -173,5 +173,5 @@ the call (`services/account.ts` says why), so it works the same signed in or out
 who has forgotten their password resets it first; someone who cannot sign in at all writes
 to support.
 
-The website's and the extension's menu item leads to this page. The Android, iOS and macOS
+The website's and the extension's Account page (from the menu) links to this page. The Android, iOS and macOS
 apps ask for the password in a dialog of their own and call the function directly.

@@ -7,6 +7,7 @@ import { useAuth } from './contexts/AuthContext';
 import { AuthProvider } from './contexts/AuthProvider';
 import { KeysProvider } from './contexts/KeysContext';
 import { ThemeProvider } from './contexts/ThemeContext';
+import { Account } from './pages/Account';
 import { IndexPage } from './pages/Index';
 import Links from './pages/Links';
 import Login from './pages/Login';
@@ -75,6 +76,7 @@ function App() {
               <Route element={<ProtectedRoute />}>
                 <Route path="/links" element={<Links />} />
                 <Route path="/push" element={<Push />} />
+                <Route path="/account" element={<Account />} />
                 <Route path="/plan" element={<Plan />} />
               </Route>
               <Route path="*" element={<NotFound />} />

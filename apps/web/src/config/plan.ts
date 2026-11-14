@@ -24,7 +24,7 @@ export const LIMITS: Record<'free' | 'pro', TierLimits> = {
 };
 
 /**
- * Whether the Plan page is reachable from the navigation. On since launch (2026-10-25),
+ * Whether the Account page shows the plan and links to the Plan page. On since launch (2026-10-25),
  * when production moved to the live Stripe account. Turn it off only together with a
  * move back to sandbox keys: on sandbox keys, anyone who reached the page could
  * subscribe with a test card and get Pro. The route exists either way.
