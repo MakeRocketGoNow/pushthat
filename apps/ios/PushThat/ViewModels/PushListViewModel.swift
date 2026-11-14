@@ -37,6 +37,9 @@ class PushListViewModel: ObservableObject {
     private var searchTask: Task<Void, Never>?
     /// A refresh asked for while a load or a delete held `isLoading`, run once it is done.
     private var refreshPending = false
+    /// A return to the app while a load or a delete held `isLoading`, checked once it is
+    /// done, unless a full refresh is waiting too and covers it.
+    private var returnPending = false
     private var notificationObservers: [NSObjectProtocol] = []
 
     var isAllSelected: Bool {
@@ -135,7 +138,14 @@ class PushListViewModel: ObservableObject {
             await refresh()
             return
         }
-        guard !isLoading, let userId = Auth.auth().currentUser?.uid else { return }
+        guard let userId = Auth.auth().currentUser?.uid else { return }
+        // Not dropped while something else holds `isLoading`: a page that was loading when
+        // the app went to the background is often still in flight when it comes back, and
+        // the push just shared would then stay out of the list.
+        guard !isLoading else {
+            returnPending = true
+            return
+        }
         isLoading = true
         let keys = PushKeys.load(uid: userId)
         do {
@@ -175,12 +185,17 @@ class PushListViewModel: ObservableObject {
         await loadPushes(isInitial: true)
     }
 
-    /// Ends a load or a delete, and runs the refresh that arrived meanwhile, if any.
+    /// Ends a load or a delete, and runs the refresh or the return to the app that arrived
+    /// meanwhile, if any. A full refresh reads the newest pushes too, so it stands for both.
     private func finishLoading() {
         isLoading = false
         if refreshPending {
             refreshPending = false
+            returnPending = false
             Task { await refresh() }
+        } else if returnPending {
+            returnPending = false
+            Task { await refreshOnReturn() }
         }
     }
 
