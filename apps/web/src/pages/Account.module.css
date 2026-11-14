@@ -23,10 +23,6 @@
   font-size: 0.9rem;
 }
 
-.error {
-  color: var(--color-error);
-}
-
 .danger {
   color: var(--color-error);
 }
