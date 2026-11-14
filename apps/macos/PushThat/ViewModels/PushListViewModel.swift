@@ -132,8 +132,9 @@ class PushListViewModel: ObservableObject {
     /// or every shown push was deleted elsewhere), it cannot be patched without a gap, and
     /// the list starts over from that page.
     ///
-    /// A push deleted on another device stays until the next pull to refresh: telling it
-    /// from one that is only further down would take reading as far as the list goes.
+    /// A push deleted on another device goes when it is within the newest page's span, and
+    /// one further down stays until the next pull to refresh: telling it from a push that
+    /// is only further down would take reading as far as the list goes.
     func refreshOnReturn() async {
         // Only an empty list is loaded afresh. Not one with a nil `lastDocument`: the last,
         // empty page of a list scrolled to its end clears it, and starting over there sent
@@ -160,10 +161,11 @@ class PushListViewModel: ObservableObject {
             }
             let shown = Set(pushItems.compactMap(\.id))
             let added = fresh.filter { !shown.contains($0.id ?? "") }
-            if added.count == fresh.count {
+            if added.count == fresh.count || snapshot.documents.count < pageSize {
                 // None of the newest page is shown: more pushes may lie between it and the
                 // list, and putting it on top would leave a gap no scroll reaches (the next
-                // page goes on from the old cursor, below the list). Start over from it.
+                // page goes on from the old cursor, below the list). Start over from it. A
+                // short page is every push there is, so starting over loses no place there.
                 pushItems = fresh
                 selectedItems.formIntersection(fresh.compactMap(\.id))
                 lastDocument = snapshot.documents.last
@@ -173,7 +175,18 @@ class PushListViewModel: ObservableObject {
                     fresh.compactMap { item in item.id.map { ($0, item) } },
                     uniquingKeysWith: { first, _ in first }
                 )
-                pushItems = added + pushItems.map { item in item.id.flatMap { freshById[$0] } ?? item }
+                // A shown push newer than the page's oldest yet missing from it was deleted
+                // on another device (or no longer matches the search), so it goes. One with
+                // the same time is kept: the page's limit may have cut it off.
+                let oldest = fresh.last?.createdAt
+                let kept = pushItems.filter { item in
+                    guard let id = item.id, freshById[id] == nil,
+                          let created = item.createdAt, let oldest
+                    else { return true }
+                    return created <= oldest
+                }
+                pushItems = added + kept.map { item in item.id.flatMap { freshById[$0] } ?? item }
+                selectedItems.formIntersection(pushItems.compactMap(\.id))
             }
         } catch {
             // The list stays as it was; a failed check on the way back is not worth an alert.
