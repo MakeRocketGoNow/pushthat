@@ -454,6 +454,11 @@ class PushListViewModel: ObservableObject {
     /// another device, is made while this app is not in front, and without this the list
     /// would go on without it until the toolbar's Refresh or a relaunch. It fires on every
     /// switch back to the app, which costs one query of a page.
+    ///
+    /// At launch it may arrive while `init`'s first load is still running, and the list
+    /// then reads its first page twice. That was left: skipping the second read whenever an
+    /// empty list is loading would also skip it on iOS, where a return during that first
+    /// load is a real return and may follow a push the first read missed.
     private func setupActivationListener() {
         notificationObservers.append(NotificationCenter.default.addObserver(
             forName: NSApplication.didBecomeActiveNotification,
