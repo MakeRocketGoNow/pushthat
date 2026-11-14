@@ -35,7 +35,7 @@ class PushListViewModel: ObservableObject {
     private var hasMoreData = true
     private var searchQuery = ""
     private var searchTask: Task<Void, Never>?
-    private var notificationObserver: NSObjectProtocol?
+    private var notificationObservers: [NSObjectProtocol] = []
 
     var isAllSelected: Bool {
         !pushItems.isEmpty && selectedItems.count == pushItems.count
@@ -51,10 +51,11 @@ class PushListViewModel: ObservableObject {
             }
         }
         setupPushNotificationListener()
+        setupForegroundListener()
     }
 
     deinit {
-        if let observer = notificationObserver {
+        for observer in notificationObservers {
             NotificationCenter.default.removeObserver(observer)
         }
     }
@@ -342,12 +343,32 @@ class PushListViewModel: ObservableObject {
     // MARK: - Private
 
     private func setupPushNotificationListener() {
-        notificationObserver = NotificationCenter.default.addObserver(
+        notificationObservers.append(NotificationCenter.default.addObserver(
             forName: .pushReceived,
             object: nil,
             queue: .main
         ) { [weak self] _ in
             Task { await self?.refresh() }
-        }
+        })
+    }
+
+    /// Reloads the first page each time the app comes back to the front, as Android's list
+    /// does in `onResume`. A push shared from this device never reaches `.pushReceived`
+    /// (the app keeps its own push's notification off the screen), so before this the list
+    /// went on without it until a pull to refresh or a relaunch. Shared from another app's
+    /// share sheet, the push is made while this app is in the background, so coming back
+    /// to the front is the moment it can be in the list.
+    ///
+    /// `willEnterForeground`, not the scene becoming active: that also fires at launch,
+    /// when `init` is already loading, and after every glance at Control Center or the
+    /// notification shade, none of which can have made a push.
+    private func setupForegroundListener() {
+        notificationObservers.append(NotificationCenter.default.addObserver(
+            forName: UIApplication.willEnterForegroundNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { await self?.refresh() }
+        })
     }
 }

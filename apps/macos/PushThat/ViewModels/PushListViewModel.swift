@@ -34,6 +34,7 @@ class PushListViewModel: ObservableObject {
     private var hasMoreData = true
     private var searchQuery = ""
     private var searchTask: Task<Void, Never>?
+    private var activationObserver: NSObjectProtocol?
 
     var isAllSelected: Bool {
         !pushItems.isEmpty && selectedItems.count == pushItems.count
@@ -47,6 +48,13 @@ class PushListViewModel: ObservableObject {
             Task.detached(priority: .background) {
                 await PushMigration.shared.runIfNeeded(uid: uid)
             }
+        }
+        setupActivationListener()
+    }
+
+    deinit {
+        if let observer = activationObserver {
+            NotificationCenter.default.removeObserver(observer)
         }
     }
 
@@ -329,6 +337,25 @@ class PushListViewModel: ObservableObject {
                     self?.showError = true
                 }
             }
+        }
+    }
+
+    // MARK: - Activation
+
+    /// Reloads the first page each time the app becomes active, as Android's list does in
+    /// `onResume`. A push made from another app's share menu, or on another device, is
+    /// made while this app is not in front, and nothing else reloads the list here: before
+    /// this it went on without the push until a relaunch.
+    ///
+    /// It fires on every switch back to the app, which costs one query of a page, and the
+    /// list loses the pages scrolled in after the first, as Android's does.
+    private func setupActivationListener() {
+        activationObserver = NotificationCenter.default.addObserver(
+            forName: NSApplication.didBecomeActiveNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { await self?.refresh() }
         }
     }
 
