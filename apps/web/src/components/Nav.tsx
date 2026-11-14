@@ -18,7 +18,7 @@ export default function Nav() {
         left: offsetLeft,
       });
     } else {
-      // A page with no item here (Account, Plan, the static pages while signed in): the
+      // A page with no item here (Account, the static pages while signed in): the
       // slider shrinks away where it stood, rather than staying lit on the page left behind.
       setSliderStyle((was) => ({ width: 0, left: was.left + was.width / 2 }));
     }
