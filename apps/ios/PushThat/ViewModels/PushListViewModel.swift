@@ -461,10 +461,10 @@ class PushListViewModel: ObservableObject {
 
     /// Checks for new pushes each time the app comes back to the front (`refreshOnReturn`),
     /// as Android's list does in `onResume`. A push shared from this device never reaches
-    /// `.pushReceived` (the app keeps its own push's notification off the screen), and without
-    /// this the list would go on without it until a pull to refresh or a relaunch. Shared from another app's
-    /// share sheet, the push is made while this app is in the background, so coming back
-    /// to the front is the moment it can be in the list.
+    /// `.pushReceived` (the app keeps its own push's notification off the screen), and
+    /// without this the list would go on without it until a pull to refresh or a relaunch.
+    /// Shared from another app's share sheet, the push is made while this app is in the
+    /// background, so coming back to the front is the moment it can be in the list.
     ///
     /// `willEnterForeground`, not the scene becoming active: that also fires at launch,
     /// when `init` is already loading, and after every glance at Control Center or the
