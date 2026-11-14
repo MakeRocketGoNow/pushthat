@@ -129,7 +129,10 @@ class PushListViewModel: ObservableObject {
     /// take their latest content, while the pages scrolled in below, the cursor after them
     /// and the place in the list stay as they were. Replacing the list, as `refresh()` and
     /// Android's `onResume` do, sent anyone working down the list back to its first ten
-    /// rows after every link they opened, and opening a link is what the app is for.
+    /// rows after every link they opened, and opening a link is what the app is for. When
+    /// none of the newest page is in the list (a page or more of pushes arrived while away,
+    /// or every shown push was deleted elsewhere), it cannot be patched without a gap, and
+    /// the list starts over from that page.
     ///
     /// A push deleted on another device stays until the next pull to refresh: telling it
     /// from one that is only further down would take reading as far as the list goes.
@@ -154,10 +157,23 @@ class PushListViewModel: ObservableObject {
             if let keys {
                 scrapeUntitled(fresh, keys: keys)
             }
-            let freshById = Dictionary(fresh.compactMap { item in item.id.map { ($0, item) } }, uniquingKeysWith: { first, _ in first })
             let shown = Set(pushItems.compactMap(\.id))
             let added = fresh.filter { !shown.contains($0.id ?? "") }
-            pushItems = added + pushItems.map { item in item.id.flatMap { freshById[$0] } ?? item }
+            if added.count == fresh.count {
+                // None of the newest page is shown: more pushes may lie between it and the
+                // list, and putting it on top would leave a gap no scroll reaches (the next
+                // page goes on from the old cursor, below the list). Start over from it.
+                pushItems = fresh
+                selectedItems.formIntersection(fresh.compactMap(\.id))
+                lastDocument = snapshot.documents.last
+                hasMoreData = snapshot.documents.count >= pageSize
+            } else {
+                let freshById = Dictionary(
+                    fresh.compactMap { item in item.id.map { ($0, item) } },
+                    uniquingKeysWith: { first, _ in first }
+                )
+                pushItems = added + pushItems.map { item in item.id.flatMap { freshById[$0] } ?? item }
+            }
         } catch {
             // The list stays as it was; a failed check on the way back is not worth an alert.
             print("Failed to check for new pushes: \(type(of: error))")
