@@ -1,9 +1,10 @@
 import { getFirestore } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 import { useState } from 'react';
+import { Link } from 'react-router';
 
 import Button from '@/components/Button';
-import { LIMITS, formatMb } from '@/config/plan';
+import { LIMITS, PLAN_PAGE_LINKED, formatMb } from '@/config/plan';
 import { usePlan } from '@/hooks/usePlan';
 import { KEYS_UNAVAILABLE, usePushKeys } from '@/hooks/usePushKeys';
 import {
@@ -12,7 +13,7 @@ import {
   atLimit,
   isRulesRefusal,
   limitMessage,
-  refusalMessage,
+  refusalReason,
 } from '@/services/pushRefusal';
 import {
   PushTooLongError,
@@ -31,12 +32,17 @@ export default function Push() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isUploadSubmitting, setIsUploadSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Whether `error` is the month's limit, which is followed by a link to the plan: hitting
+  // the limit is when someone on Free is most ready to upgrade, and the only way to the plan
+  // otherwise is the menu.
+  const [limitReached, setLimitReached] = useState(false);
   const { plan, refresh: refreshPlan } = usePlan();
   const { keys } = usePushKeys();
 
   const handleLinkSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    setLimitReached(false);
 
     if (!url) return;
     if (!keys) {
@@ -51,6 +57,7 @@ export default function Push() {
       // until it is read again; a refusal here asks for the read, so the next try is right.
       void refreshPlan();
       setError(limitMessage(plan, 'url'));
+      setLimitReached(true);
       return;
     }
 
@@ -79,15 +86,19 @@ export default function Push() {
       console.error('Error saving link:', error);
       // The limit reached on another device, a key a reset replaced, or a push this copy of
       // PushThat cannot make (pushRefusal.ts); the plan read again stops the next try here.
-      setError(
-        isRulesRefusal(error)
-          ? await refusalMessage(plan, 'url', refreshPlan, () => keyIsStale(getFirestore(), keys))
-          : error instanceof PushUnconfirmedError
+      if (isRulesRefusal(error)) {
+        const refusal = await refusalReason(plan, 'url', refreshPlan, () => keyIsStale(getFirestore(), keys));
+        setError(refusal.message);
+        setLimitReached(refusal.atLimit);
+      } else {
+        setError(
+          error instanceof PushUnconfirmedError
             ? UNCONFIRMED_MESSAGE
             : error instanceof PushTooLongError
               ? TOO_LONG_LINK_MESSAGE
               : 'Failed to save link. Please try again.'
-      );
+        );
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -96,6 +107,7 @@ export default function Push() {
   const handleFileSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    setLimitReached(false);
 
     if (!file) return;
     if (!keys) {
@@ -121,6 +133,7 @@ export default function Push() {
     if (plan && atLimit(plan, 'file')) {
       void refreshPlan();
       setError(limitMessage(plan, 'file'));
+      setLimitReached(true);
       return;
     }
 
@@ -139,15 +152,19 @@ export default function Push() {
       if (fileInput) fileInput.value = '';
     } catch (error) {
       console.error('Error saving file:', error);
-      setError(
-        isRulesRefusal(error)
-          ? await refusalMessage(plan, 'file', refreshPlan, () => keyIsStale(getFirestore(), keys))
-          : error instanceof PushUnconfirmedError
+      if (isRulesRefusal(error)) {
+        const refusal = await refusalReason(plan, 'file', refreshPlan, () => keyIsStale(getFirestore(), keys));
+        setError(refusal.message);
+        setLimitReached(refusal.atLimit);
+      } else {
+        setError(
+          error instanceof PushUnconfirmedError
             ? UNCONFIRMED_MESSAGE
             : error instanceof PushTooLongError
               ? 'That file name is too long to push.'
               : 'Failed to upload file. Please try again.'
-      );
+        );
+      }
     } finally {
       setIsUploadSubmitting(false);
     }
@@ -161,7 +178,17 @@ export default function Push() {
   return (
     <div>
       <h1>Push</h1>
-      {error && <div className={styles.error}>{error}</div>}
+      {error && (
+        <div className={styles.error}>
+          {error}
+          {limitReached && PLAN_PAGE_LINKED && (
+            <>
+              {' '}
+              <Link to="/account">{plan?.tier === 'pro' ? 'See your plan' : 'Upgrade to Pro'}</Link>
+            </>
+          )}
+        </div>
+      )}
 
       <form onSubmit={handleLinkSubmit} className={styles.form}>
         <div className={styles.inputGroup}>

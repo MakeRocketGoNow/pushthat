@@ -32,6 +32,13 @@
   border: 1px solid #fecaca;
 }
 
+/* The site's link color is its pink, which is hard to read on this pale red box */
+.error a {
+  color: inherit;
+  font-weight: 600;
+  text-decoration: underline;
+}
+
 .divider {
   display: flex;
   align-items: center;
