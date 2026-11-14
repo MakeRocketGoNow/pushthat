@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { Link } from 'react-router';
 
 import Button from '@/components/Button';
-import { LIMITS, PLAN_PAGE_LINKED, formatMb } from '@/config/plan';
+import { LIMITS, PLAN_SHOWN, formatMb } from '@/config/plan';
 import { usePlan } from '@/hooks/usePlan';
 import { KEYS_UNAVAILABLE, usePushKeys } from '@/hooks/usePushKeys';
 import {
@@ -176,7 +176,7 @@ export default function Push() {
       {error && (
         <div className={styles.error}>
           {error.message}
-          {error.atLimit && PLAN_PAGE_LINKED && (
+          {error.atLimit && PLAN_SHOWN && (
             <>
               {' '}
               <Link to="/account">{plan?.tier === 'pro' ? 'See your plan' : 'Upgrade to Pro'}</Link>

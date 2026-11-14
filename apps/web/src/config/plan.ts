@@ -24,12 +24,13 @@ export const LIMITS: Record<'free' | 'pro', TierLimits> = {
 };
 
 /**
- * Whether the Account page shows the plan. On since launch (2026-10-25),
- * when production moved to the live Stripe account. Turn it off only together with a
- * move back to sandbox keys: on sandbox keys, anyone who saw the plan there could
+ * Whether the web app shows the plan: its section on the Account page, the Push page's link
+ * to it when a push is refused for the month's limit, and Support's link to it. On since
+ * launch (2026-10-25), when production moved to the live Stripe account. Turn it off only
+ * together with a move back to sandbox keys: on sandbox keys, anyone who saw the plan could
  * subscribe with a test card and get Pro. The rest of the Account page shows either way.
  */
-export const PLAN_PAGE_LINKED = true;
+export const PLAN_SHOWN = true;
 
 export const SUPPORT_EMAIL = 'hello@pushthat.link';
 

@@ -62,7 +62,7 @@ Set in the dashboard, since the API cannot:
 - Checkout terms (Settings, Checkout and Payment Links): `/terms` and `/privacy`.
 - Revenue recovery (Billing, Revenue recovery): Smart Retries, failed-payment emails and automatic card updates on. Matters more on a yearly plan, since a card often expires within the year.
 
-Once the three secrets hold the live values, the functions are redeployed (they read the secret versions current at deploy) and `PLAN_PAGE_LINKED` is turned on in the web app. The sandbox's webhook endpoint points at the same function, so it was disabled at the switch (2026-10-25): its deliveries fail the live signature. Re-enable it only with the sandbox's three secrets back in place.
+Once the three secrets hold the live values, the functions are redeployed (they read the secret versions current at deploy) and `PLAN_SHOWN` is turned on in the web app. The sandbox's webhook endpoint points at the same function, so it was disabled at the switch (2026-10-25): its deliveries fail the live signature. Re-enable it only with the sandbox's three secrets back in place.
 
 ## How it is built
 

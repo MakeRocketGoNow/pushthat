@@ -3,7 +3,7 @@ import { Helmet } from 'react-helmet';
 import { Link } from 'react-router';
 
 import { PlanSection } from '@/components/PlanSection';
-import { PLAN_PAGE_LINKED } from '@/config/plan';
+import { PLAN_SHOWN } from '@/config/plan';
 import { useAuth } from '@/contexts/AuthContext';
 import { deviceId } from '@/services/keyStore';
 
@@ -31,7 +31,7 @@ export function Account() {
       </Helmet>
       <h1>Account</h1>
 
-      {PLAN_PAGE_LINKED && <PlanSection className={styles.section} />}
+      {PLAN_SHOWN && <PlanSection className={styles.section} />}
 
       <section className={styles.section}>
         <h2>Email</h2>

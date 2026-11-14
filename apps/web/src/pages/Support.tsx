@@ -2,7 +2,7 @@ import { Helmet } from 'react-helmet';
 import { Link } from 'react-router';
 
 import LegalContainer from '@/components/LegalContainer';
-import { LIMITS, PLAN_PAGE_LINKED, PRO_PRICE_USD, REFUND_DAYS, SUPPORT_EMAIL, formatMb } from '@/config/plan';
+import { LIMITS, PLAN_SHOWN, PRO_PRICE_USD, REFUND_DAYS, SUPPORT_EMAIL, formatMb } from '@/config/plan';
 
 /**
  * Support, `/support`: how to reach a person, and where everything else is. Written for
@@ -34,8 +34,8 @@ export default function Support() {
 
       <p>
         To change your card, download an invoice or cancel, open{' '}
-        {PLAN_PAGE_LINKED ? <Link to="/account">Account</Link> : 'Account'} from the web app’s menu and choose Manage
-        billing. Cancelling stops the next renewal and keeps Pro until the year already paid for ends.
+        {PLAN_SHOWN ? <Link to="/account">Account</Link> : 'Account'} from the web app’s menu and choose Manage billing.
+        Cancelling stops the next renewal and keeps Pro until the year already paid for ends.
       </p>
 
       <p>

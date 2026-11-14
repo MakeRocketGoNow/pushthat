@@ -72,7 +72,7 @@ export function describePlan(plan: PlanReport): { title: string; sentence: strin
  * moved here; that address now redirects to `/account` with its query (App.tsx), so the
  * checkout's return lands here either way.
  *
- * Shown only while `PLAN_PAGE_LINKED` is on: production ran on the Stripe sandbox's keys
+ * Shown only while `PLAN_SHOWN` is on: production ran on the Stripe sandbox's keys
  * until launch, and a test card here would give anyone Pro.
  */
 export function PlanSection({ className }: { className?: string }) {
