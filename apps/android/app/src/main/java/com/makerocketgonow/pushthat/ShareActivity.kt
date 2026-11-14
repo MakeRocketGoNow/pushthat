@@ -339,6 +339,27 @@ class ShareActivity : AppCompatActivity() {
         }
     }
 
+    /**
+     * Whether [uri], a shared file, is another app's to give: a `content:` URI that this
+     * app's own provider does not serve. The app reads a share with its own permissions, so
+     * without this an app could share `content://<this app>.files/opened/...` (the decrypted
+     * file pushes `PushFiles` hands to viewers) or a `file:` path into this app's private
+     * storage (its key store among it) and have PushThat upload it. The upload lands only in
+     * the user's own account, encrypted, but the app is not to read its own files on another
+     * app's say. `file:` is refused outright: `openFileDescriptor` opens one with this app's
+     * permissions, and apps have shared `content:` since Android 7 refused `file:` in intents.
+     *
+     * The authority is resolved without a `userId@` prefix, which the resolver strips when
+     * it opens the URI: with the prefix, the lookup finds no provider and this app's own
+     * would pass. A share from a work profile carries such a prefix legitimately, so the
+     * prefix alone is not a reason to refuse.
+     */
+    private fun isOtherAppsContent(uri: Uri): Boolean {
+        if (uri.scheme != ContentResolver.SCHEME_CONTENT) return false
+        val authority = uri.authority?.substringAfterLast('@') ?: return false
+        return packageManager.resolveContentProvider(authority, 0)?.packageName != packageName
+    }
+
     /** Keeps [prepared], ciphertext and id as they are, for `RetryPushWorker`. */
     private fun queueForRetry(prepared: PreparedPush) {
         lifecycleScope.launch(Dispatchers.IO) {
@@ -432,13 +453,14 @@ class ShareActivity : AppCompatActivity() {
     private fun shareFile(intent: Intent, keys: PushKeys) {
         lifecycleScope.launch {
             try {
-                val uri = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                val shared = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                     intent.getParcelableExtra(Intent.EXTRA_STREAM, Uri::class.java)
                 } else {
                     @Suppress("DEPRECATION")
                     intent.getParcelableExtra<Uri>(Intent.EXTRA_STREAM)
-                } ?: run {
-                    Log.w(TAG, "No file URI received")
+                }
+                val uri = shared?.takeIf { isOtherAppsContent(it) } ?: run {
+                    Log.w(TAG, "No file URI received, or one this app will not read for another")
                     Toast.makeText(this@ShareActivity, getString(R.string.no_file_received), Toast.LENGTH_SHORT).show()
                     finish()
                     return@launch
