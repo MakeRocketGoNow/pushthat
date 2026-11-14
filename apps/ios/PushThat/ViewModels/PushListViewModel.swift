@@ -71,21 +71,7 @@ class PushListViewModel: ObservableObject {
         isLoading = true
 
         let keys = PushKeys.load(uid: userId)
-
-        var query = db.collection("pushes")
-            .whereField("userId", isEqualTo: userId)
-            .order(by: "createdAt", descending: true)
-            .limit(to: pageSize)
-
-        // The blind token of the term's first word (docs/e2ee.md, "Search"); a term with no
-        // word in it is no search, and the list is unfiltered.
-        if let token = keys?.searchToken(for: searchQuery) {
-            query = db.collection("pushes")
-                .whereField("userId", isEqualTo: userId)
-                .whereField("searchTokens", arrayContains: token)
-                .order(by: "createdAt", descending: true)
-                .limit(to: pageSize)
-        }
+        var query = firstPageQuery(userId: userId, keys: keys)
 
         if !isInitial, let lastDoc = lastDocument {
             query = query.start(afterDocument: lastDoc)
@@ -115,6 +101,57 @@ class PushListViewModel: ObservableObject {
             showError = true
         }
 
+        finishLoading()
+    }
+
+    /// The list's first page, under the search term when there is one.
+    private func firstPageQuery(userId: String, keys: PushKeys?) -> Query {
+        // The blind token of the term's first word (docs/e2ee.md, "Search"); a term with no
+        // word in it is no search, and the list is unfiltered.
+        if let token = keys?.searchToken(for: searchQuery) {
+            return db.collection("pushes")
+                .whereField("userId", isEqualTo: userId)
+                .whereField("searchTokens", arrayContains: token)
+                .order(by: "createdAt", descending: true)
+                .limit(to: pageSize)
+        }
+        return db.collection("pushes")
+            .whereField("userId", isEqualTo: userId)
+            .order(by: "createdAt", descending: true)
+            .limit(to: pageSize)
+    }
+
+    /// What coming back to the app does: the first page is read again and folded into the
+    /// list rather than replacing it. Pushes made meanwhile go on top and rows already shown
+    /// take their latest content, while the pages scrolled in below, the cursor after them
+    /// and the place in the list stay as they were. Replacing the list, as `refresh()` and
+    /// Android's `onResume` do, sent anyone working down the list back to its first ten
+    /// rows after every link they opened, and opening a link is what the app is for.
+    ///
+    /// A push deleted on another device stays until the next pull to refresh: telling it
+    /// from one that is only further down would take reading as far as the list goes.
+    func refreshOnReturn() async {
+        guard !pushItems.isEmpty, lastDocument != nil else {
+            await refresh()
+            return
+        }
+        guard !isLoading, let userId = Auth.auth().currentUser?.uid else { return }
+        isLoading = true
+        let keys = PushKeys.load(uid: userId)
+        do {
+            let snapshot = try await firstPageQuery(userId: userId, keys: keys).getDocuments()
+            let fresh = snapshot.documents.compactMap { PushItem(document: $0, keys: keys) }
+            if let keys {
+                scrapeUntitled(fresh, keys: keys)
+            }
+            let freshById = Dictionary(fresh.compactMap { item in item.id.map { ($0, item) } }, uniquingKeysWith: { first, _ in first })
+            let shown = Set(pushItems.compactMap(\.id))
+            let added = fresh.filter { !shown.contains($0.id ?? "") }
+            pushItems = added + pushItems.map { item in item.id.flatMap { freshById[$0] } ?? item }
+        } catch {
+            // The list stays as it was; a failed check on the way back is not worth an alert.
+            print("Failed to check for new pushes: \(type(of: error))")
+        }
         finishLoading()
     }
 
@@ -372,10 +409,10 @@ class PushListViewModel: ObservableObject {
         })
     }
 
-    /// Reloads the first page each time the app comes back to the front, as Android's list
-    /// does in `onResume`. A push shared from this device never reaches `.pushReceived`
-    /// (the app keeps its own push's notification off the screen), so before this the list
-    /// went on without it until a pull to refresh or a relaunch. Shared from another app's
+    /// Checks for new pushes each time the app comes back to the front (`refreshOnReturn`),
+    /// as Android's list does in `onResume`. A push shared from this device never reaches
+    /// `.pushReceived` (the app keeps its own push's notification off the screen), and without
+    /// this the list would go on without it until a pull to refresh or a relaunch. Shared from another app's
     /// share sheet, the push is made while this app is in the background, so coming back
     /// to the front is the moment it can be in the list.
     ///
@@ -388,7 +425,7 @@ class PushListViewModel: ObservableObject {
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            Task { await self?.refresh() }
+            Task { await self?.refreshOnReturn() }
         })
     }
 }

@@ -36,7 +36,7 @@ class PushListViewModel: ObservableObject {
     private var searchTask: Task<Void, Never>?
     /// A refresh asked for while a load or a delete held `isLoading`, run once it is done.
     private var refreshPending = false
-    private var activationObserver: NSObjectProtocol?
+    private var notificationObservers: [NSObjectProtocol] = []
 
     var isAllSelected: Bool {
         !pushItems.isEmpty && selectedItems.count == pushItems.count
@@ -55,7 +55,7 @@ class PushListViewModel: ObservableObject {
     }
 
     deinit {
-        if let observer = activationObserver {
+        for observer in notificationObservers {
             NotificationCenter.default.removeObserver(observer)
         }
     }
@@ -69,21 +69,7 @@ class PushListViewModel: ObservableObject {
         isLoading = true
 
         let keys = PushKeys.load(uid: userId)
-
-        var query = db.collection("pushes")
-            .whereField("userId", isEqualTo: userId)
-            .order(by: "createdAt", descending: true)
-            .limit(to: pageSize)
-
-        // The blind token of the term's first word (docs/e2ee.md, "Search"); a term with no
-        // word in it is no search, and the list is unfiltered.
-        if let token = keys?.searchToken(for: searchQuery) {
-            query = db.collection("pushes")
-                .whereField("userId", isEqualTo: userId)
-                .whereField("searchTokens", arrayContains: token)
-                .order(by: "createdAt", descending: true)
-                .limit(to: pageSize)
-        }
+        var query = firstPageQuery(userId: userId, keys: keys)
 
         if !isInitial, let lastDoc = lastDocument {
             query = query.start(afterDocument: lastDoc)
@@ -113,6 +99,57 @@ class PushListViewModel: ObservableObject {
             showError = true
         }
 
+        finishLoading()
+    }
+
+    /// The list's first page, under the search term when there is one.
+    private func firstPageQuery(userId: String, keys: PushKeys?) -> Query {
+        // The blind token of the term's first word (docs/e2ee.md, "Search"); a term with no
+        // word in it is no search, and the list is unfiltered.
+        if let token = keys?.searchToken(for: searchQuery) {
+            return db.collection("pushes")
+                .whereField("userId", isEqualTo: userId)
+                .whereField("searchTokens", arrayContains: token)
+                .order(by: "createdAt", descending: true)
+                .limit(to: pageSize)
+        }
+        return db.collection("pushes")
+            .whereField("userId", isEqualTo: userId)
+            .order(by: "createdAt", descending: true)
+            .limit(to: pageSize)
+    }
+
+    /// What coming back to the app does: the first page is read again and folded into the
+    /// list rather than replacing it. Pushes made meanwhile go on top and rows already shown
+    /// take their latest content, while the pages scrolled in below, the cursor after them
+    /// and the place in the list stay as they were. Replacing the list, as `refresh()` and
+    /// Android's `onResume` do, sent anyone working down the list back to its first ten
+    /// rows after every link they opened, and opening a link is what the app is for.
+    ///
+    /// A push deleted on another device stays until the next pull to refresh: telling it
+    /// from one that is only further down would take reading as far as the list goes.
+    func refreshOnReturn() async {
+        guard !pushItems.isEmpty, lastDocument != nil else {
+            await refresh()
+            return
+        }
+        guard !isLoading, let userId = Auth.auth().currentUser?.uid else { return }
+        isLoading = true
+        let keys = PushKeys.load(uid: userId)
+        do {
+            let snapshot = try await firstPageQuery(userId: userId, keys: keys).getDocuments()
+            let fresh = snapshot.documents.compactMap { PushItem(document: $0, keys: keys) }
+            if let keys {
+                scrapeUntitled(fresh, keys: keys)
+            }
+            let freshById = Dictionary(fresh.compactMap { item in item.id.map { ($0, item) } }, uniquingKeysWith: { first, _ in first })
+            let shown = Set(pushItems.compactMap(\.id))
+            let added = fresh.filter { !shown.contains($0.id ?? "") }
+            pushItems = added + pushItems.map { item in item.id.flatMap { freshById[$0] } ?? item }
+        } catch {
+            // The list stays as it was; a failed check on the way back is not worth an alert.
+            print("Failed to check for new pushes: \(type(of: error))")
+        }
         finishLoading()
     }
 
@@ -362,21 +399,19 @@ class PushListViewModel: ObservableObject {
 
     // MARK: - Activation
 
-    /// Reloads the first page each time the app becomes active, as Android's list does in
-    /// `onResume`. A push made from another app's share menu, or on another device, is
-    /// made while this app is not in front, and nothing else reloads the list here: before
-    /// this it went on without the push until a relaunch.
-    ///
-    /// It fires on every switch back to the app, which costs one query of a page, and the
-    /// list loses the pages scrolled in after the first, as Android's does.
+    /// Checks for new pushes each time the app becomes active (`refreshOnReturn`), as
+    /// Android's list does in `onResume`. A push made from another app's share menu, or on
+    /// another device, is made while this app is not in front, and without this the list
+    /// would go on without it until the toolbar's Refresh or a relaunch. It fires on every
+    /// switch back to the app, which costs one query of a page.
     private func setupActivationListener() {
-        activationObserver = NotificationCenter.default.addObserver(
+        notificationObservers.append(NotificationCenter.default.addObserver(
             forName: NSApplication.didBecomeActiveNotification,
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            Task { await self?.refresh() }
-        }
+            Task { await self?.refreshOnReturn() }
+        })
     }
 
     // MARK: - URL Saving (for drag-and-drop)
