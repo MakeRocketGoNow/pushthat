@@ -148,26 +148,38 @@ enum PushDocuments {
     /// same title; with icons the writes differ (one device's decoder can open an icon
     /// another's refuses), and a title-only write landing after a title-and-icon one dropped
     /// the icon for good, since a titled push is not scraped again.
-    static func retitle(firestore: Firestore, keys: PushKeys, pushId: String, title: String?, icon: String?) async throws {
+    ///
+    /// Returns what the push holds once the transaction is done, which is what the list's
+    /// row should show: the content just written, or the push as it was when there was
+    /// nothing to write (another device titled it first). Nil when it could not be opened.
+    @discardableResult
+    static func retitle(firestore: Firestore, keys: PushKeys, pushId: String, title: String?, icon: String?) async throws -> PushContent? {
         let ref = firestore.collection("pushes").document(pushId)
-        _ = try await firestore.runTransaction { transaction, errorPointer in
+        let result = try await firestore.runTransaction { transaction, errorPointer -> Any? in
             do {
                 let data = try transaction.getDocument(ref).data() ?? [:]
+                let keyVersion = (data["keyVersion"] as? NSNumber)?.intValue
                 guard let userId = data["userId"] as? String,
                       let type = data["type"] as? String,
                       let enc = E2eeCrypto.Envelope(firestore: data["enc"]),
                       let current = PushContent.open(
-                          keys: keys, userId: userId, pushId: pushId, type: type,
-                          keyVersion: (data["keyVersion"] as? NSNumber)?.intValue, enc: enc
-                      ),
-                      let sealed = try PushContent.rescraped(current, title: title, icon: icon, keys: keys, pushId: pushId)
+                          keys: keys, userId: userId, pushId: pushId, type: type, keyVersion: keyVersion, enc: enc
+                      )
                 else { return nil }
+                guard let sealed = try PushContent.rescraped(current, title: title, icon: icon, keys: keys, pushId: pushId) else {
+                    return current
+                }
                 transaction.updateData(["enc": sealed.enc.firestoreData, "searchTokens": sealed.searchTokens], forDocument: ref)
+                // Opened again rather than worked out from `title` and `icon`: `rescraped`
+                // may keep the old title, keep the push's own icon or drop one that does not
+                // fit, and the row should show exactly what was sealed.
+                return PushContent.open(keys: keys, userId: userId, pushId: pushId, type: type, keyVersion: keyVersion, enc: sealed.enc)
             } catch {
                 errorPointer?.pointee = error as NSError
             }
             return nil
         }
+        return result as? PushContent
     }
 
     // MARK: - Errors

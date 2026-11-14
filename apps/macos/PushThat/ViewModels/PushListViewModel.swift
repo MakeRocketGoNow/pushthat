@@ -263,18 +263,36 @@ class PushListViewModel: ObservableObject {
     /// (`TitleScraperService`). In the background: the list does not wait for any page.
     /// A titled push is not read again for an icon (docs/e2ee.md, "Icons"), so a push
     /// from before icons keeps the placeholder rather than every list asking every site.
+    ///
+    /// The list is read once (`getDocuments`), so nothing redraws a row when its push is
+    /// rewritten: the scraped title used to appear only at the next load, a relaunch for
+    /// most. The row takes what the write left instead. A snapshot listener would also
+    /// catch other devices' changes, but the list pages by cursor and searches by token,
+    /// and a listener per page for one row's title was the larger change. Android's list is
+    /// read once too and is not redrawn by its scrape either.
     private func scrapeUntitled(_ items: [PushItem], keys: PushKeys) {
         for item in items where item.type == .url && item.title.isEmpty {
             guard case .encrypted = item.source, let id = item.id else { continue }
             let url = item.url
             let hasIcon = !(item.icon ?? "").isEmpty
             let keyVersion = item.keyVersion
-            Task.detached(priority: .utility) {
-                await TitleScraperService.shared.scrapeAndUpdate(
+            Task.detached(priority: .utility) { [weak self] in
+                guard let content = await TitleScraperService.shared.scrapeAndUpdate(
                     pushId: id, keyVersion: keyVersion, url: url, hasIcon: hasIcon, keys: keys
-                )
+                ) else { return }
+                await self?.showScraped(content, pushId: id)
             }
         }
+    }
+
+    /// Redraws the row of push `pushId` with what its scrape wrote. Found by id in the list
+    /// as it is now, not as it was when the scrape began: a refresh, search or page loaded
+    /// meanwhile has replaced the items, and a push no longer shown is left alone.
+    private func showScraped(_ content: PushContent, pushId: String) {
+        guard case let .url(_, title, _, icon) = content,
+              let index = pushItems.firstIndex(where: { $0.id == pushId })
+        else { return }
+        pushItems[index] = pushItems[index].retitled(title: title, icon: icon)
     }
 
     // MARK: - Upload

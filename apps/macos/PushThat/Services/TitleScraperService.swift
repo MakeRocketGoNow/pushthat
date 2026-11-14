@@ -25,13 +25,17 @@ actor TitleScraperService {
     /// (`PushDocuments.retitle`), only under the push's own key version. A push that already
     /// has an icon does not fetch another, since it keeps the one it has either way. A
     /// failure is logged; the push keeps showing what it showed.
-    func scrapeAndUpdate(pushId: String, keyVersion: Int?, url: String, hasIcon: Bool, keys: PushKeys) async {
-        guard keyVersion == keys.keyVersion, attempted.insert(pushId).inserted else { return }
-        guard let page = await scrape(from: url, withIcon: !hasIcon), page.title != nil || page.icon != nil else { return }
+    ///
+    /// Returns what the push holds after the write, for the list to redraw its row with, or
+    /// nil when nothing was found or written.
+    func scrapeAndUpdate(pushId: String, keyVersion: Int?, url: String, hasIcon: Bool, keys: PushKeys) async -> PushContent? {
+        guard keyVersion == keys.keyVersion, attempted.insert(pushId).inserted else { return nil }
+        guard let page = await scrape(from: url, withIcon: !hasIcon), page.title != nil || page.icon != nil else { return nil }
         do {
-            try await PushDocuments.retitle(firestore: db, keys: keys, pushId: pushId, title: page.title, icon: page.icon)
+            return try await PushDocuments.retitle(firestore: db, keys: keys, pushId: pushId, title: page.title, icon: page.icon)
         } catch {
             print("Failed to update title: \(type(of: error))")
+            return nil
         }
     }
 

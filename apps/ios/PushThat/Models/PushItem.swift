@@ -62,6 +62,14 @@ struct PushItem: Identifiable, Equatable {
         return title.isEmpty ? url : title
     }
 
+    /// This push with the title and icon a scrape wrote into it (`TitleScraperService`).
+    func retitled(title: String, icon: String?) -> PushItem {
+        PushItem(
+            id: id, url: url, userId: userId, createdAt: createdAt, title: title, type: type,
+            ext: ext, source: source, keyVersion: keyVersion, icon: icon
+        )
+    }
+
     /// What Copy puts on the clipboard: the URL, or a file push's name when it has no URL
     /// (an encrypted one, whose object is reached only through the app). Nothing for a
     /// locked push.
