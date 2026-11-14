@@ -27,7 +27,8 @@
   color: var(--color-error);
 }
 
-/* An email address has no spaces to break at, and a long one would push a narrow screen sideways */
+/* An email address, or a device id (22 characters), has no spaces to break at, and a long
+   one would push a narrow screen sideways */
 .email,
 .deviceId {
   overflow-wrap: anywhere;
