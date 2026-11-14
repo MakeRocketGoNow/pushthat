@@ -100,6 +100,10 @@ class PushListViewModel: ObservableObject {
 
             if isInitial {
                 pushItems = newItems
+                // A reload keeps the first page only. A selection of rows it dropped would
+                // be deleted unseen and would throw off `isAllSelected`, so only what the
+                // list still shows stays selected.
+                selectedItems.formIntersection(newItems.compactMap(\.id))
             } else {
                 pushItems.append(contentsOf: newItems)
             }
