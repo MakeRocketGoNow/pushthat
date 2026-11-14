@@ -234,17 +234,20 @@ class PushListViewModel: ObservableObject {
     // MARK: - Deletion
 
     func delete(at indexSet: IndexSet) {
+        // The rows are named by id before the first await: a refresh or a return to the app
+        // can change the list while the deletes wait on Firestore, and the offsets would
+        // then point at other rows, which were the ones taken off the screen.
+        let ids = indexSet.compactMap { pushItems[$0].id }
         Task {
             isLoading = true
-            for index in indexSet {
-                guard let docId = pushItems[index].id else { continue }
+            for docId in ids {
                 do {
                     try await db.collection("pushes").document(docId).delete()
                 } catch {
                     print("Failed to delete: \(error)")
                 }
             }
-            pushItems.remove(atOffsets: indexSet)
+            pushItems.removeAll { ids.contains($0.id ?? "") }
             finishLoading()
         }
     }
