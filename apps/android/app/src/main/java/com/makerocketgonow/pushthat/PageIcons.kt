@@ -6,6 +6,7 @@ import com.makerocketgonow.pushthat.e2ee.E2ee
 import okhttp3.HttpUrl
 import org.jsoup.nodes.Document
 import java.io.ByteArrayOutputStream
+import java.io.InputStream
 import kotlin.math.max
 import kotlin.math.roundToInt
 
@@ -39,6 +40,9 @@ object PageIcons {
      * almost always settle it, and `/favicon.ico` is tried after these whatever the page has.
      */
     const val MAX_LINK_CANDIDATES = 8
+
+    /** The longest side an image attached to a shared link may have and be taken for its icon. */
+    const val MAX_SHARED_SIDE = 256
 
     private val APPLE_TOUCH_ICON = setOf("apple-touch-icon", "apple-touch-icon-precomposed")
 
@@ -93,6 +97,44 @@ object PageIcons {
         var sample = 1
         while (longest / (sample * 2) >= side) sample *= 2
         return sample
+    }
+
+    /**
+     * Whether an image a share attaches is shaped like a site's icon: square, and no more
+     * than [MAX_SHARED_SIDE] a side. Chrome attaches the page's favicon to a link it shares,
+     * for the share sheet's preview, which is how a push gets the icon of a page that turns
+     * the scraper away (a shop's product page answering it with 429). Other apps attach a
+     * preview too, and theirs is often a picture of the content (a video's thumbnail, a
+     * product photo), which is not the site's icon and would be drawn as one. A favicon is
+     * square; those mostly are not, and the few that are tend to be far larger.
+     */
+    fun isIconShaped(width: Int, height: Int): Boolean = width == height && width in 1..MAX_SHARED_SIDE
+
+    /**
+     * [input] read whole, or null when it holds more than [MAX_FETCH_BYTES]: the same cap as
+     * a fetched candidate, since the stream is another app's and can be any length.
+     */
+    fun readCapped(input: InputStream): ByteArray? {
+        val out = ByteArrayOutputStream()
+        val buffer = ByteArray(8192)
+        while (true) {
+            val read = input.read(buffer)
+            if (read < 0) return out.toByteArray()
+            if (out.size() + read > MAX_FETCH_BYTES) return null
+            out.write(buffer, 0, read)
+        }
+    }
+
+    /**
+     * [bytes], an image a share attached, decoded when [isIconShaped] says it is an icon,
+     * checked on its header before anything is decoded. Null otherwise, or when the decoder
+     * cannot open it.
+     */
+    fun decodeShared(bytes: ByteArray): Bitmap? {
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+        if (!isIconShaped(bounds.outWidth, bounds.outHeight)) return null
+        return decode(bytes)
     }
 
     /** [bytes] as an image, or null when the platform's decoder cannot open them. */

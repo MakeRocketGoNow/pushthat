@@ -1,5 +1,6 @@
 package com.makerocketgonow.pushthat
 
+import android.content.ContentResolver
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -33,10 +34,12 @@ import com.makerocketgonow.pushthat.e2ee.PushKeys
 import com.makerocketgonow.pushthat.e2ee.PushStore
 import com.makerocketgonow.pushthat.e2ee.PushTooLargeException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.tasks.await
 import androidx.lifecycle.lifecycleScope
 import androidx.work.*
@@ -235,9 +238,12 @@ class ShareActivity : AppCompatActivity() {
                 val validatedUrl = extractedUrl
                 val uri = Uri.parse(validatedUrl)
 
-                // Try to get title from intent extras first, then from extracted text, then empty
-                val initialTitle = intent.getStringExtra(Intent.EXTRA_TITLE)
-                    ?: intent.getStringExtra(Intent.EXTRA_SUBJECT)
+                // The title the sharing app gives, then one found in the text, then none. A
+                // blank extra counts as none: Chrome sets `EXTRA_TITLE` on every share, whatever
+                // the page's title is, and an empty string stopped the search there.
+                // This is the only title a page that turns the scraper away will have.
+                val initialTitle = listOf(Intent.EXTRA_TITLE, Intent.EXTRA_SUBJECT)
+                    .firstNotNullOfOrNull { key -> intent.getStringExtra(key)?.trim()?.takeIf { it.isNotEmpty() } }
                     ?: extractTitleFromText(sharedText)
 
                 // Extract file extension from URL path
@@ -246,8 +252,24 @@ class ShareActivity : AppCompatActivity() {
                 // The id first: the envelope's AAD names it, so a ciphertext cannot be moved
                 // to another document.
                 val pushId = db.collection("pushes").document().id
+                // Waited for only so long: the read is from another app's provider, which can
+                // block indefinitely (one that fetches its preview when opened), and the link
+                // is pushed without an icon rather than not at all. The read runs outside this
+                // coroutine because a blocked stream cannot be cancelled, and `withContext`
+                // would wait for it past any timeout around it.
+                val iconRead = lifecycleScope.async(Dispatchers.IO) { sharedIcon(intent) }
+                val icon = withTimeoutOrNull(SHARED_ICON_TIMEOUT_MS) { iconRead.await() }
+                    ?: "".also { iconRead.cancel() }
+                val content = PushContent.Url(validatedUrl, initialTitle, ext, icon)
                 val prepared = try {
-                    PreparedPush.prepare(keys, pushId, PushContent.Url(validatedUrl, initialTitle, ext))
+                    try {
+                        PreparedPush.prepare(keys, pushId, content)
+                    } catch (e: PushTooLargeException) {
+                        // A link that fits without its icon is pushed without it, as a
+                        // scraped one is (`PushDocument.retitle`): the link is the push.
+                        if (icon.isEmpty()) throw e
+                        PreparedPush.prepare(keys, pushId, content.copy(icon = ""))
+                    }
                 } catch (e: PushTooLargeException) {
                     Log.w(TAG, "The link is too long to push")
                     // Said as it is: the generic failure's "try again later" never works here.
@@ -269,6 +291,73 @@ class ShareActivity : AppCompatActivity() {
                 finish()
             }
         }
+    }
+
+    /**
+     * The icon the app that shared the link attached, as the envelope's `icon`, or "" when
+     * there is none (docs/e2ee.md, Icons). Chrome puts the page's favicon in the share's
+     * `ClipData`, for the share sheet's preview, from the icon it already loaded. Taking it
+     * fetches nothing, and it works where the scraper cannot: a shop's product page turns
+     * `TitleScrapingWorker` away with a 429, and before this such a push got no icon at all.
+     * A push that arrives with one is not given another by the worker.
+     *
+     * A site with no icon arrives as Chrome's generic globe, which cannot be told from a real
+     * icon here; a globe was judged better than missing every icon a scrape is refused.
+     *
+     * Only an image Chrome's own provider serves is taken ([ICON_SHARING_BROWSERS]). Other
+     * apps attach a preview too, and a small square one is as often the app's own logo or
+     * an avatar as the site's icon; since the worker never replaces an icon a push has, a
+     * wrong one would stay. Other Chromium browsers likely attach the favicon the same way,
+     * but each is added once seen to. The owner check also keeps out this app's own
+     * provider, which a share could otherwise name to have the app read its own files, and
+     * an authority with a user prefix (`0@...`), which resolves to no owner here though the
+     * resolver would open it. Images that are not icon-shaped are left
+     * (`PageIcons.isIconShaped`).
+     */
+    private fun sharedIcon(intent: Intent): String {
+        val clip = intent.clipData ?: return ""
+        val uri = (0 until clip.itemCount).firstNotNullOfOrNull { clip.getItemAt(it).uri } ?: return ""
+        if (uri.scheme != ContentResolver.SCHEME_CONTENT) return ""
+        val authority = uri.authority ?: return ""
+        return try {
+            // Visible without a <queries> entry: an app whose provider this app was granted
+            // a URI from is visible to it.
+            val owner = packageManager.resolveContentProvider(authority, 0)?.packageName
+            if (owner !in ICON_SHARING_BROWSERS) return ""
+            val bytes = contentResolver.openInputStream(uri)?.use { PageIcons.readCapped(it) } ?: return ""
+            val bitmap = PageIcons.decodeShared(bytes) ?: return ""
+            try {
+                PageIcons.encode(bitmap) ?: ""
+            } finally {
+                bitmap.recycle()
+            }
+        } catch (e: Exception) {
+            // An icon is a nicety: the link is pushed without one. The type only, since a
+            // message can name the file.
+            Log.w(TAG, "Could not read the shared icon: ${e.javaClass.simpleName}")
+            ""
+        }
+    }
+
+    /**
+     * Whether [uri], a shared file, is another app's to give: a `content:` URI that this
+     * app's own provider does not serve. The app reads a share with its own permissions, so
+     * without this an app could share `content://<this app>.files/opened/...` (the decrypted
+     * file pushes `PushFiles` hands to viewers) or a `file:` path into this app's private
+     * storage (its key store among it) and have PushThat upload it. The upload lands only in
+     * the user's own account, encrypted, but the app is not to read its own files on another
+     * app's say. `file:` is refused outright: `openFileDescriptor` opens one with this app's
+     * permissions, and apps have shared `content:` since Android 7 refused `file:` in intents.
+     *
+     * The authority is resolved without a `userId@` prefix, which the resolver strips when
+     * it opens the URI: with the prefix, the lookup finds no provider and this app's own
+     * would pass. A share from a work profile carries such a prefix legitimately, so the
+     * prefix alone is not a reason to refuse.
+     */
+    private fun isOtherAppsContent(uri: Uri): Boolean {
+        if (uri.scheme != ContentResolver.SCHEME_CONTENT) return false
+        val authority = uri.authority?.substringAfterLast('@') ?: return false
+        return packageManager.resolveContentProvider(authority, 0)?.packageName != packageName
     }
 
     /** Keeps [prepared], ciphertext and id as they are, for `RetryPushWorker`. */
@@ -364,13 +453,14 @@ class ShareActivity : AppCompatActivity() {
     private fun shareFile(intent: Intent, keys: PushKeys) {
         lifecycleScope.launch {
             try {
-                val uri = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                val shared = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                     intent.getParcelableExtra(Intent.EXTRA_STREAM, Uri::class.java)
                 } else {
                     @Suppress("DEPRECATION")
                     intent.getParcelableExtra<Uri>(Intent.EXTRA_STREAM)
-                } ?: run {
-                    Log.w(TAG, "No file URI received")
+                }
+                val uri = shared?.takeIf { isOtherAppsContent(it) } ?: run {
+                    Log.w(TAG, "No file URI received, or one this app will not read for another")
                     Toast.makeText(this@ShareActivity, getString(R.string.no_file_received), Toast.LENGTH_SHORT).show()
                     finish()
                     return@launch
@@ -521,6 +611,22 @@ class ShareActivity : AppCompatActivity() {
                 finish()
             }
             .show()
+    }
+
+    companion object {
+        /**
+         * The apps whose share preview is taken as a link's icon: Chrome's channels, which
+         * attach the page's favicon (`AndroidShareSheetController` in Chromium).
+         */
+        private val ICON_SHARING_BROWSERS = setOf(
+            "com.android.chrome",
+            "com.chrome.beta",
+            "com.chrome.dev",
+            "com.chrome.canary",
+        )
+
+        /** How long a share waits for its icon. Chrome's is a file already written. */
+        private const val SHARED_ICON_TIMEOUT_MS = 2_000L
     }
 }
 
