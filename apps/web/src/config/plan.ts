@@ -2,7 +2,7 @@
  * The plan, as the pages describe it (docs/billing.md at the repository root). The
  * numbers the functions enforce and report are in `functions/src/plan.ts` and
  * the rules carry them too; these are what the front page quotes before anyone has
- * signed in, and the Plan page reads its own from `getPlan`. The copies are changed
+ * signed in, and the Account page's plan reads its own from `getPlan`. The copies are changed
  * together.
  */
 
@@ -24,10 +24,10 @@ export const LIMITS: Record<'free' | 'pro', TierLimits> = {
 };
 
 /**
- * Whether the Account page shows the plan and links to the Plan page. On since launch (2026-10-25),
+ * Whether the Account page shows the plan. On since launch (2026-10-25),
  * when production moved to the live Stripe account. Turn it off only together with a
- * move back to sandbox keys: on sandbox keys, anyone who reached the page could
- * subscribe with a test card and get Pro. The route exists either way.
+ * move back to sandbox keys: on sandbox keys, anyone who saw the plan there could
+ * subscribe with a test card and get Pro. The rest of the Account page shows either way.
  */
 export const PLAN_PAGE_LINKED = true;
 

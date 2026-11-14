@@ -2,25 +2,24 @@ import { useEffect, useState } from 'react';
 import { Helmet } from 'react-helmet';
 import { Link } from 'react-router';
 
+import { PlanSection } from '@/components/PlanSection';
 import { PLAN_PAGE_LINKED } from '@/config/plan';
 import { useAuth } from '@/contexts/AuthContext';
-import { usePlan } from '@/hooks/usePlan';
 import { deviceId } from '@/services/keyStore';
-
-import { describePlan } from './Plan';
 
 import styles from './Account.module.css';
 
 /**
- * Account, `/account`: the menu's way into everything about the account. Who is signed
- * in, the plan in a line with the way to its own page, the "Encrypted" line, and the way
- * to delete the account.
+ * Account, `/account`: the menu's way into everything about the account. The plan, who is
+ * signed in, the "Encrypted" line, and the way to delete the account.
  *
- * One page with links out, rather than a settings layout with the plan and deletion as
- * tabs inside it, because neither of those can move: `/delete-account` is public (it is the
- * address given to Google Play, read by people with no account) and `/plan` is where
- * Stripe's checkout and portal send people back to. A settings layout would have had to
- * leave itself for both.
+ * The plan comes first because it is what most people open this page for, and it is all
+ * here rather than a line linking to a page of its own: Account was four short sections, one
+ * of them a link to the page with the substance, which was a click that bought nothing.
+ *
+ * One page, rather than a settings layout with the plan and deletion as tabs, because
+ * deletion cannot move into one: `/delete-account` is public (it is the address given to
+ * Google Play, read by people with no account), so this page links out to it.
  */
 export function Account() {
   const { user } = useAuth();
@@ -32,12 +31,12 @@ export function Account() {
       </Helmet>
       <h1>Account</h1>
 
+      {PLAN_PAGE_LINKED && <PlanSection />}
+
       <section className={styles.section}>
         <h2>Email</h2>
         <p className={styles.email}>{user?.email}</p>
       </section>
-
-      {PLAN_PAGE_LINKED && <PlanSummary />}
 
       <Encrypted />
 
@@ -54,32 +53,6 @@ export function Account() {
         </p>
       </section>
     </div>
-  );
-}
-
-/** The plan as the Plan page heads it, in one line. The usage and the billing stay on that page. */
-function PlanSummary() {
-  const { plan, error } = usePlan();
-  const summary = plan && describePlan(plan);
-
-  return (
-    <section className={styles.section}>
-      <h2>Plan</h2>
-      {summary ? (
-        <p>
-          <strong>{summary.title}.</strong> {summary.sentence}
-        </p>
-      ) : error ? (
-        <p className={styles.error} role="alert">
-          {error}
-        </p>
-      ) : (
-        <p className={styles.muted}>Reading your plan…</p>
-      )}
-      <p>
-        <Link to="/plan">Usage and billing</Link>
-      </p>
-    </section>
   );
 }
 

@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from 'react';
-import { Helmet } from 'react-helmet';
 import { Link, useNavigate, useSearchParams } from 'react-router';
 
 import Button from '@/components/Button';
@@ -8,7 +7,7 @@ import { usePlan } from '@/hooks/usePlan';
 import { errorText } from '@/services/callable';
 import { PlanReport, planApi } from '@/services/plan';
 
-import styles from './Plan.module.css';
+import styles from './PlanSection.module.css';
 
 /** How often, and how many times, the plan is read back from Stripe after a checkout; see `settleCheckout`. */
 const CHECKOUT_SETTLE_WAIT_MS = 1500;
@@ -61,19 +60,21 @@ export function describePlan(plan: PlanReport): { title: string; sentence: strin
 }
 
 /**
- * The account's plan: where it stands, this month's usage against its limits, and the
- * two things that change it: subscribing, and managing the subscription in Stripe's
- * portal. The checkout is Stripe's own page, reached by redirect from a session the
- * server made; Stripe sends the person back here with `?checkout=complete` once paid,
- * and the plan is then read back from Stripe at once rather than waiting on the
- * webhook, so the page says "Pro" on arrival.
+ * The account's plan, as the first section of the Account page: where it stands, this
+ * month's usage against its limits, and the two things that change it: subscribing, and
+ * managing the subscription in Stripe's portal. The checkout is Stripe's own page, reached
+ * by redirect from a session the server made; Stripe sends the person back with
+ * `?checkout=complete` once paid, and the plan is then read back from Stripe at once
+ * rather than waiting on the webhook, so the page says "Pro" on arrival.
  *
- * Reached from the Account page, and only while `PLAN_PAGE_LINKED` is on: production ran
- * on the Stripe sandbox's keys until launch, and a test card here would give anyone Pro.
- * It keeps its own address, rather than becoming a section of Account, because Stripe's
- * checkout and portal send people back to `/plan` (docs/billing.md).
+ * Stripe still sends people back to `/plan`, which was this section's own page before it
+ * moved here; that address now redirects to `/account` with its query (App.tsx), so the
+ * checkout's return lands here either way.
+ *
+ * Shown only while `PLAN_PAGE_LINKED` is on: production ran on the Stripe sandbox's keys
+ * until launch, and a test card here would give anyone Pro.
  */
-export default function Plan() {
+export function PlanSection() {
   const { plan, error: readError, refresh, setPlan } = usePlan();
   const [busy, setBusy] = useState<'checkout' | 'settling' | 'portal' | 'payment' | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -96,7 +97,7 @@ export default function Plan() {
   useEffect(() => {
     if (settled.current || params.get('checkout') !== 'complete') return;
     settled.current = true;
-    void navigate('/plan', { replace: true });
+    void navigate('/account', { replace: true });
     setBusy('settling');
     void settleCheckout()
       .then((found) =>
@@ -180,12 +181,8 @@ export default function Plan() {
 
   if (!plan) {
     return (
-      <div className={styles.page}>
-        <Helmet>
-          <title>Plan</title>
-        </Helmet>
-        <BackToAccount />
-        <h1>Plan</h1>
+      <section className={styles.section} id="plan">
+        <h2>Plan</h2>
         {readError ? (
           <p className={styles.row}>
             <span className={styles.error} role="alert">
@@ -198,7 +195,7 @@ export default function Plan() {
         ) : (
           <p className={styles.muted}>Reading your plan…</p>
         )}
-      </div>
+      </section>
     );
   }
 
@@ -212,71 +209,63 @@ export default function Plan() {
   const limits = plan.limits;
 
   return (
-    <div className={styles.page}>
-      <Helmet>
-        <title>Plan</title>
-      </Helmet>
-      <BackToAccount />
-      <h1>Plan</h1>
-
-      <section className={styles.section}>
-        <h2>{title}</h2>
-        <p>{sentence}</p>
-        {canSubscribe && (
-          <div className={styles.row}>
-            <Button solid onClick={() => void subscribe()} isSubmitting={busy !== null}>
-              {busy === 'checkout'
-                ? 'Opening checkout…'
-                : busy === 'settling'
-                  ? 'Confirming your subscription…'
-                  : `Subscribe for $${plan.priceUsd} a year`}
+    <section className={styles.section} id="plan">
+      <h2>Plan</h2>
+      <p>
+        <strong>{title}.</strong> {sentence}
+      </p>
+      {canSubscribe && (
+        <div className={styles.row}>
+          <Button solid onClick={() => void subscribe()} isSubmitting={busy !== null}>
+            {busy === 'checkout'
+              ? 'Opening checkout…'
+              : busy === 'settling'
+                ? 'Confirming your subscription…'
+                : `Subscribe for $${plan.priceUsd} a year`}
+          </Button>
+          <span className={styles.muted}>Before tax, charged by Stripe. Cancel any time.</span>
+        </div>
+      )}
+      {hasCustomer && (
+        <div className={styles.row}>
+          <Button outline onClick={() => void openPortal()} isSubmitting={busy !== null}>
+            {busy === 'portal' ? 'Opening…' : 'Manage billing'}
+          </Button>
+          {pastDue && (
+            <Button outline onClick={() => void openPortal('payment')} isSubmitting={busy !== null}>
+              {busy === 'payment' ? 'Opening…' : 'Update payment method'}
             </Button>
-            <span className={styles.muted}>Before tax, charged by Stripe. Cancel any time.</span>
-          </div>
-        )}
-        {hasCustomer && (
-          <div className={styles.row}>
-            <Button outline onClick={() => void openPortal()} isSubmitting={busy !== null}>
-              {busy === 'portal' ? 'Opening…' : 'Manage billing'}
-            </Button>
-            {pastDue && (
-              <Button outline onClick={() => void openPortal('payment')} isSubmitting={busy !== null}>
-                {busy === 'payment' ? 'Opening…' : 'Update payment method'}
-              </Button>
-            )}
-            <span className={styles.muted}>
-              {canSubscribe
-                ? 'Past invoices, in Stripe’s billing portal.'
-                : 'Invoices, the card, and cancelling, in Stripe’s billing portal.'}
-            </span>
-          </div>
-        )}
-        {error && (
-          <p className={styles.error} role="alert">
-            {error}
-          </p>
-        )}
-        {notice && (
-          <p className={styles.notice} role="status">
-            {notice}
-          </p>
-        )}
-      </section>
-
-      <section className={styles.section}>
-        <h2>This month</h2>
-        <Meter label="URL pushes" used={plan.usage.url} limit={limits.url} />
-        <Meter label="File pushes" used={plan.usage.file} limit={limits.file} />
-        <p className={styles.muted}>
-          Files up to {formatMb(limits.fileBytes)}, kept for {limits.keepDays} days from the moment they are pushed; a
-          file already pushed keeps the retention it was pushed with. The month starts on the day you{' '}
-          {plan.tier === 'pro' ? 'subscribed' : 'signed up'}.
+          )}
+          <span className={styles.muted}>
+            {canSubscribe
+              ? 'Past invoices, in Stripe’s billing portal.'
+              : 'Invoices, the card, and cancelling, in Stripe’s billing portal.'}
+          </span>
+        </div>
+      )}
+      {error && (
+        <p className={styles.error} role="alert">
+          {error}
         </p>
-      </section>
+      )}
+      {notice && (
+        <p className={styles.notice} role="status">
+          {notice}
+        </p>
+      )}
+
+      <h3>This month</h3>
+      <Meter label="URL pushes" used={plan.usage.url} limit={limits.url} />
+      <Meter label="File pushes" used={plan.usage.file} limit={limits.file} />
+      <p className={styles.muted}>
+        Files up to {formatMb(limits.fileBytes)}, kept for {limits.keepDays} days from the moment they are pushed; a
+        file already pushed keeps the retention it was pushed with. The month starts on the day you{' '}
+        {plan.tier === 'pro' ? 'subscribed' : 'signed up'}.
+      </p>
 
       {plan.tier === 'free' && (
-        <section className={styles.section}>
-          <h2>Pro</h2>
+        <>
+          <h3>Pro</h3>
           <ul className={styles.list}>
             <li>
               {LIMITS.pro.url.toLocaleString()} URL pushes a month, up from {LIMITS.free.url}
@@ -295,17 +284,9 @@ export default function Plan() {
             ${plan.priceUsd} a year. Refunds, cancelling and receipts are explained on the{' '}
             <Link to="/support">support page</Link>.
           </p>
-        </section>
+        </>
       )}
-    </div>
-  );
-}
-
-function BackToAccount() {
-  return (
-    <Link to="/account" className={styles.back}>
-      ← Account
-    </Link>
+    </section>
   );
 }
 

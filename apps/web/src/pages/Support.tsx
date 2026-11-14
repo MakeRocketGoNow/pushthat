@@ -34,8 +34,8 @@ export default function Support() {
 
       <p>
         To change your card, download an invoice or cancel, open{' '}
-        {PLAN_PAGE_LINKED ? <Link to="/plan">Plan</Link> : 'Plan'} in the web app (under Account in its menu) and choose
-        Manage billing. Cancelling stops the next renewal and keeps Pro until the year already paid for ends.
+        {PLAN_PAGE_LINKED ? <Link to="/account">Account</Link> : 'Account'} from the web app’s menu and choose Manage
+        billing. Cancelling stops the next renewal and keeps Pro until the year already paid for ends.
       </p>
 
       <p>
