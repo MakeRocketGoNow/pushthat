@@ -31,22 +31,22 @@ export default function Push() {
   const [file, setFile] = useState<File | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isUploadSubmitting, setIsUploadSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  // Whether `error` is the month's limit, which is followed by a link to the plan: hitting
-  // the limit is when someone on Free is most ready to upgrade, and the only way to the plan
-  // otherwise is the menu.
-  const [limitReached, setLimitReached] = useState(false);
+  // The message and whether it is the month's limit, which is followed by a link to the
+  // plan: hitting the limit is when someone on Free is most ready to upgrade, and the only
+  // way to the plan otherwise is the menu. One piece of state, so the link cannot stay under
+  // a later, unrelated error: the link and file forms submit independently and share it.
+  const [error, setError] = useState<{ message: string; atLimit: boolean } | null>(null);
+  const fail = (message: string, atLimit = false) => setError({ message, atLimit });
   const { plan, refresh: refreshPlan } = usePlan();
   const { keys } = usePushKeys();
 
   const handleLinkSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-    setLimitReached(false);
 
     if (!url) return;
     if (!keys) {
-      setError(KEYS_UNAVAILABLE);
+      fail(KEYS_UNAVAILABLE);
       return;
     }
 
@@ -56,8 +56,7 @@ export default function Push() {
       // Read once per mount, so a new period or a subscription in another tab is not seen
       // until it is read again; a refusal here asks for the read, so the next try is right.
       void refreshPlan();
-      setError(limitMessage(plan, 'url'));
-      setLimitReached(true);
+      fail(limitMessage(plan, 'url'), true);
       return;
     }
 
@@ -68,7 +67,7 @@ export default function Push() {
       try {
         new URL(url);
       } catch (error) {
-        setError('Invalid URL');
+        fail('Invalid URL');
         setIsSubmitting(false);
         return;
       }
@@ -88,10 +87,9 @@ export default function Push() {
       // PushThat cannot make (pushRefusal.ts); the plan read again stops the next try here.
       if (isRulesRefusal(error)) {
         const refusal = await refusalReason(plan, 'url', refreshPlan, () => keyIsStale(getFirestore(), keys));
-        setError(refusal.message);
-        setLimitReached(refusal.atLimit);
+        fail(refusal.message, refusal.atLimit);
       } else {
-        setError(
+        fail(
           error instanceof PushUnconfirmedError
             ? UNCONFIRMED_MESSAGE
             : error instanceof PushTooLongError
@@ -107,11 +105,10 @@ export default function Push() {
   const handleFileSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-    setLimitReached(false);
 
     if (!file) return;
     if (!keys) {
-      setError(KEYS_UNAVAILABLE);
+      fail(KEYS_UNAVAILABLE);
       return;
     }
 
@@ -122,7 +119,7 @@ export default function Push() {
     // `>=`, as the Storage rule has it: a file of exactly the limit is refused there. The
     // rule measures the encrypted object, a few bytes a megabyte larger than the file.
     if (encryptedSize(file.size) >= limits.fileBytes) {
-      setError(
+      fail(
         `File size must be under ${formatMb(limits.fileBytes)}${plan?.tier === 'free' ? ` on the free plan (${formatMb(LIMITS.pro.fileBytes)} on Pro)` : ''}.`
       );
       return;
@@ -132,8 +129,7 @@ export default function Push() {
     // nothing to ever delete them. Refused here first, with the plan already in hand.
     if (plan && atLimit(plan, 'file')) {
       void refreshPlan();
-      setError(limitMessage(plan, 'file'));
-      setLimitReached(true);
+      fail(limitMessage(plan, 'file'), true);
       return;
     }
 
@@ -154,10 +150,9 @@ export default function Push() {
       console.error('Error saving file:', error);
       if (isRulesRefusal(error)) {
         const refusal = await refusalReason(plan, 'file', refreshPlan, () => keyIsStale(getFirestore(), keys));
-        setError(refusal.message);
-        setLimitReached(refusal.atLimit);
+        fail(refusal.message, refusal.atLimit);
       } else {
-        setError(
+        fail(
           error instanceof PushUnconfirmedError
             ? UNCONFIRMED_MESSAGE
             : error instanceof PushTooLongError
@@ -180,8 +175,8 @@ export default function Push() {
       <h1>Push</h1>
       {error && (
         <div className={styles.error}>
-          {error}
-          {limitReached && PLAN_PAGE_LINKED && (
+          {error.message}
+          {error.atLimit && PLAN_PAGE_LINKED && (
             <>
               {' '}
               <Link to="/account">{plan?.tier === 'pro' ? 'See your plan' : 'Upgrade to Pro'}</Link>
