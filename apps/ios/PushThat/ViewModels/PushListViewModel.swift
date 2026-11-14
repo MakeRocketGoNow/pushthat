@@ -35,6 +35,8 @@ class PushListViewModel: ObservableObject {
     private var hasMoreData = true
     private var searchQuery = ""
     private var searchTask: Task<Void, Never>?
+    /// A refresh asked for while a load or a delete held `isLoading`, run once it is done.
+    private var refreshPending = false
     private var notificationObservers: [NSObjectProtocol] = []
 
     var isAllSelected: Bool {
@@ -109,7 +111,7 @@ class PushListViewModel: ObservableObject {
             showError = true
         }
 
-        isLoading = false
+        finishLoading()
     }
 
     func loadMore() {
@@ -117,10 +119,28 @@ class PushListViewModel: ObservableObject {
         Task { await loadPushes(isInitial: false) }
     }
 
+    /// Reloads the first page. The cursor is reset only once the load is sure to run: a
+    /// refresh that arrived while another load or a delete held `isLoading` used to clear
+    /// it and return, and the next page then fetched page 1 again, duplicating its rows.
+    /// Nor is such a refresh dropped: it runs once the load in flight is done, so a push
+    /// made meanwhile (a dropped URL, a share, a search typed during a load) still lands.
     func refresh() async {
+        guard !isLoading else {
+            refreshPending = true
+            return
+        }
         lastDocument = nil
         hasMoreData = true
         await loadPushes(isInitial: true)
+    }
+
+    /// Ends a load or a delete, and runs the refresh that arrived meanwhile, if any.
+    private func finishLoading() {
+        isLoading = false
+        if refreshPending {
+            refreshPending = false
+            Task { await refresh() }
+        }
     }
 
     // MARK: - Search
@@ -133,17 +153,13 @@ class PushListViewModel: ObservableObject {
             guard !Task.isCancelled else { return }
 
             searchQuery = query
-            lastDocument = nil
-            hasMoreData = true
-            await loadPushes(isInitial: true)
+            await refresh()
         }
     }
 
     func clearSearch() {
         searchQuery = ""
-        lastDocument = nil
-        hasMoreData = true
-        Task { await loadPushes(isInitial: true) }
+        Task { await refresh() }
     }
 
     // MARK: - Selection
@@ -188,7 +204,7 @@ class PushListViewModel: ObservableObject {
                 }
             }
             pushItems.remove(atOffsets: indexSet)
-            isLoading = false
+            finishLoading()
         }
     }
 
@@ -207,7 +223,7 @@ class PushListViewModel: ObservableObject {
             pushItems.removeAll { selectedItems.contains($0.id ?? "") }
             selectedItems.removeAll()
             isSelectionMode = false
-            isLoading = false
+            finishLoading()
         }
     }
 
