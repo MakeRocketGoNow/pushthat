@@ -236,9 +236,12 @@ class ShareActivity : AppCompatActivity() {
                 val validatedUrl = extractedUrl
                 val uri = Uri.parse(validatedUrl)
 
-                // Try to get title from intent extras first, then from extracted text, then empty
-                val initialTitle = intent.getStringExtra(Intent.EXTRA_TITLE)
-                    ?: intent.getStringExtra(Intent.EXTRA_SUBJECT)
+                // The title the sharing app gives, then one found in the text, then none. A
+                // blank extra counts as none: Chrome sets `EXTRA_TITLE` on every share, whatever
+                // the page's title is, and an empty string stopped the search there.
+                // This is the only title a page that turns the scraper away will have.
+                val initialTitle = listOf(Intent.EXTRA_TITLE, Intent.EXTRA_SUBJECT)
+                    .firstNotNullOfOrNull { key -> intent.getStringExtra(key)?.trim()?.takeIf { it.isNotEmpty() } }
                     ?: extractTitleFromText(sharedText)
 
                 // Extract file extension from URL path
