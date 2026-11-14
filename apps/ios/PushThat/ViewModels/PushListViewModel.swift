@@ -137,7 +137,10 @@ class PushListViewModel: ObservableObject {
     /// A push deleted on another device stays until the next pull to refresh: telling it
     /// from one that is only further down would take reading as far as the list goes.
     func refreshOnReturn() async {
-        guard !pushItems.isEmpty, lastDocument != nil else {
+        // Only an empty list is loaded afresh. Not one with a nil `lastDocument`: the last,
+        // empty page of a list scrolled to its end clears it, and starting over there sent
+        // whoever reached the bottom back to the top.
+        guard !pushItems.isEmpty else {
             await refresh()
             return
         }
