@@ -81,8 +81,8 @@ export function DeleteAccount() {
           extension.
         </li>
         <li>
-          Choose <strong>Delete account</strong>. On the website and in the extension this opens this page: use the{' '}
-          <a href="#delete">form below</a>.
+          Choose <strong>Delete account</strong>. On the website and in the extension, choose <strong>Account</strong>{' '}
+          and then <strong>Delete account</strong>, which opens this page: use the <a href="#delete">form below</a>.
         </li>
         <li>
           In the Android, iPhone and Mac apps, enter your password to confirm, and press <strong>Delete account</strong>

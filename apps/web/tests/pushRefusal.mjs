@@ -12,6 +12,7 @@ import {
   limitMessage,
   outdatedMessage,
   refusalMessage,
+  refusalReason,
   usedMessage,
 } from '../src/services/pushRefusal.ts';
 
@@ -51,6 +52,16 @@ describe('a refused push', () => {
       }),
       outdatedMessage()
     ));
+});
+
+// The Push page follows the limit's sentence, and only that one, with a link to the plan.
+describe('whether a refusal was the limit', () => {
+  test('at the limit', async () =>
+    assert.equal((await refusalReason(plan(49), 'url', read(plan(50)), stale)).atLimit, true));
+  test('under a key a reset replaced', async () =>
+    assert.equal((await refusalReason(plan(1), 'url', read(plan(1)), stale)).atLimit, false));
+  test('out of date', async () =>
+    assert.equal((await refusalReason(plan(1), 'url', read(plan(1)), current)).atLimit, false));
 });
 
 describe('the out-of-date sentence', () => {

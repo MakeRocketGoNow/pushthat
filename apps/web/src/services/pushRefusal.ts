@@ -70,20 +70,28 @@ export const outdatedMessage = () =>
     : 'PushThat refused this push. Reload the page to update PushThat, then try again.';
 
 /**
- * The sentence for a push the rules refused. `reread` is the page's read of the plan
- * (`usePlan`'s `refresh`), which also keeps what it read, so the page's next check before
- * sending sees the count that refused this one. If it cannot read, the plan the page
+ * Why the rules refused a push: the sentence, and whether the reason was the month's limit,
+ * which the Push page follows with a link to the plan. `reread` is the page's read of the
+ * plan (`usePlan`'s `refresh`), which also keeps what it read, so the page's next check
+ * before sending sees the count that refused this one. If it cannot read, the plan the page
  * already had decides. `keyIsStale` is the page's check of the account's key version; a
  * check that fails counts as not stale.
  */
-export async function refusalMessage(
+export async function refusalReason(
   known: PlanReport | undefined,
   type: 'url' | 'file',
   reread: () => Promise<PlanReport | undefined>,
   keyIsStale: () => Promise<boolean>
-): Promise<string> {
+): Promise<{ message: string; atLimit: boolean }> {
   const plan = (await reread().catch(() => undefined)) ?? known;
-  if (plan && atLimit(plan, type)) return limitMessage(plan, type);
-  if (await keyIsStale().catch(() => false)) return STALE_KEY_MESSAGE;
-  return outdatedMessage();
+  if (plan && atLimit(plan, type)) return { message: limitMessage(plan, type), atLimit: true };
+  if (await keyIsStale().catch(() => false)) return { message: STALE_KEY_MESSAGE, atLimit: false };
+  return { message: outdatedMessage(), atLimit: false };
 }
+
+/**
+ * `refusalReason`'s sentence alone, for where nothing can follow it with a link: the
+ * extension's notice for a page pushed from its menu (pagePush.ts).
+ */
+export const refusalMessage = async (...args: Parameters<typeof refusalReason>) =>
+  (await refusalReason(...args)).message;

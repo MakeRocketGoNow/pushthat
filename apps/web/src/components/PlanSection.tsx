@@ -1,15 +1,14 @@
+import clsx from 'clsx';
 import { useEffect, useRef, useState } from 'react';
-import { Helmet } from 'react-helmet';
 import { Link, useNavigate, useSearchParams } from 'react-router';
 
 import Button from '@/components/Button';
 import { LIMITS, formatMb } from '@/config/plan';
 import { usePlan } from '@/hooks/usePlan';
 import { errorText } from '@/services/callable';
-import { deviceId } from '@/services/keyStore';
 import { PlanReport, planApi } from '@/services/plan';
 
-import styles from './Plan.module.css';
+import styles from './PlanSection.module.css';
 
 /** How often, and how many times, the plan is read back from Stripe after a checkout; see `settleCheckout`. */
 const CHECKOUT_SETTLE_WAIT_MS = 1500;
@@ -62,17 +61,21 @@ export function describePlan(plan: PlanReport): { title: string; sentence: strin
 }
 
 /**
- * The account's plan: where it stands, this month's usage against its limits, and the
- * two things that change it: subscribing, and managing the subscription in Stripe's
- * portal. The checkout is Stripe's own page, reached by redirect from a session the
- * server made; Stripe sends the person back here with `?checkout=complete` once paid,
- * and the plan is then read back from Stripe at once rather than waiting on the
- * webhook, so the page says "Pro" on arrival.
+ * The account's plan, as the first section of the Account page: where it stands, this
+ * month's usage against its limits, and the two things that change it: subscribing, and
+ * managing the subscription in Stripe's portal. The checkout is Stripe's own page, reached
+ * by redirect from a session the server made; Stripe sends the person back with
+ * `?checkout=complete` once paid, and the plan is then read back from Stripe at once
+ * rather than waiting on the webhook, so the page says "Pro" on arrival.
  *
- * Not linked from the navigation until launch (`PLAN_PAGE_LINKED`): production runs on
- * the Stripe sandbox's keys until then, and a test card here would give anyone Pro.
+ * Stripe still sends people back to `/plan`, which was this section's own page before it
+ * moved here; that address now redirects to `/account` with its query (App.tsx), so the
+ * checkout's return lands here either way.
+ *
+ * Shown only while `PLAN_SHOWN` is on: production ran on the Stripe sandbox's keys
+ * until launch, and a test card here would give anyone Pro.
  */
-export default function Plan() {
+export function PlanSection({ className }: { className?: string }) {
   const { plan, error: readError, refresh, setPlan } = usePlan();
   const [busy, setBusy] = useState<'checkout' | 'settling' | 'portal' | 'payment' | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -95,7 +98,7 @@ export default function Plan() {
   useEffect(() => {
     if (settled.current || params.get('checkout') !== 'complete') return;
     settled.current = true;
-    void navigate('/plan', { replace: true });
+    void navigate('/account', { replace: true });
     setBusy('settling');
     void settleCheckout()
       .then((found) =>
@@ -179,11 +182,8 @@ export default function Plan() {
 
   if (!plan) {
     return (
-      <div className={styles.page}>
-        <Helmet>
-          <title>Plan</title>
-        </Helmet>
-        <h1>Plan</h1>
+      <section className={clsx(className, styles.plan)} id="plan">
+        <h2>Plan</h2>
         {readError ? (
           <p className={styles.row}>
             <span className={styles.error} role="alert">
@@ -196,11 +196,7 @@ export default function Plan() {
         ) : (
           <p className={styles.muted}>Reading your plan…</p>
         )}
-        {/* Nothing in it depends on the plan, so it shows while the plan is read or cannot be.
-            Keyed, so that React keeps the one section when the plan arrives rather than
-            mounting another, which would read the device id again and blink its line. */}
-        <Encrypted key="encrypted" />
-      </div>
+      </section>
     );
   }
 
@@ -214,70 +210,62 @@ export default function Plan() {
   const limits = plan.limits;
 
   return (
-    <div className={styles.page}>
-      <Helmet>
-        <title>Plan</title>
-      </Helmet>
-      <h1>Plan</h1>
-
-      <section className={styles.section}>
-        <h2>{title}</h2>
-        <p>{sentence}</p>
-        {canSubscribe && (
-          <div className={styles.row}>
-            <Button solid onClick={() => void subscribe()} isSubmitting={busy !== null}>
-              {busy === 'checkout'
-                ? 'Opening checkout…'
-                : busy === 'settling'
-                  ? 'Confirming your subscription…'
-                  : `Subscribe for $${plan.priceUsd} a year`}
+    <section className={clsx(className, styles.plan)} id="plan">
+      <h2>Plan</h2>
+      <p>
+        <strong>{title}.</strong> {sentence}
+      </p>
+      {canSubscribe && (
+        <div className={styles.row}>
+          {/* Labels short enough for one line on a phone. The button's capitals and letter
+              spacing wrap "Subscribe for $24 a year" at 375px, and "$24/year" only just fits
+              there and wraps at 360px, so the price is in the line beside the button. */}
+          <Button solid onClick={() => void subscribe()} isSubmitting={busy !== null}>
+            {busy === 'checkout' ? 'Opening checkout…' : busy === 'settling' ? 'Confirming…' : 'Subscribe to Pro'}
+          </Button>
+          <span className={styles.muted}>${plan.priceUsd} a year before tax, charged by Stripe. Cancel any time.</span>
+        </div>
+      )}
+      {hasCustomer && (
+        <div className={styles.row}>
+          <Button outline onClick={() => void openPortal()} isSubmitting={busy !== null}>
+            {busy === 'portal' ? 'Opening…' : 'Manage billing'}
+          </Button>
+          {pastDue && (
+            <Button outline onClick={() => void openPortal('payment')} isSubmitting={busy !== null}>
+              {busy === 'payment' ? 'Opening…' : 'Update card'}
             </Button>
-            <span className={styles.muted}>Before tax, charged by Stripe. Cancel any time.</span>
-          </div>
-        )}
-        {hasCustomer && (
-          <div className={styles.row}>
-            <Button outline onClick={() => void openPortal()} isSubmitting={busy !== null}>
-              {busy === 'portal' ? 'Opening…' : 'Manage billing'}
-            </Button>
-            {pastDue && (
-              <Button outline onClick={() => void openPortal('payment')} isSubmitting={busy !== null}>
-                {busy === 'payment' ? 'Opening…' : 'Update payment method'}
-              </Button>
-            )}
-            <span className={styles.muted}>
-              {canSubscribe
-                ? 'Past invoices, in Stripe’s billing portal.'
-                : 'Invoices, the card, and cancelling, in Stripe’s billing portal.'}
-            </span>
-          </div>
-        )}
-        {error && (
-          <p className={styles.error} role="alert">
-            {error}
-          </p>
-        )}
-        {notice && (
-          <p className={styles.notice} role="status">
-            {notice}
-          </p>
-        )}
-      </section>
-
-      <section className={styles.section}>
-        <h2>This month</h2>
-        <Meter label="URL pushes" used={plan.usage.url} limit={limits.url} />
-        <Meter label="File pushes" used={plan.usage.file} limit={limits.file} />
-        <p className={styles.muted}>
-          Files up to {formatMb(limits.fileBytes)}, kept for {limits.keepDays} days from the moment they are pushed; a
-          file already pushed keeps the retention it was pushed with. The month starts on the day you{' '}
-          {plan.tier === 'pro' ? 'subscribed' : 'signed up'}.
+          )}
+          <span className={styles.muted}>
+            {canSubscribe
+              ? 'Past invoices, in Stripe’s billing portal.'
+              : 'Invoices, the card, and cancelling, in Stripe’s billing portal.'}
+          </span>
+        </div>
+      )}
+      {error && (
+        <p className={styles.error} role="alert">
+          {error}
         </p>
-      </section>
+      )}
+      {notice && (
+        <p className={styles.notice} role="status">
+          {notice}
+        </p>
+      )}
+
+      <h3>This month</h3>
+      <Meter label="URL pushes" used={plan.usage.url} limit={limits.url} />
+      <Meter label="File pushes" used={plan.usage.file} limit={limits.file} />
+      <p className={styles.muted}>
+        Files up to {formatMb(limits.fileBytes)}, kept for {limits.keepDays} days from the moment they are pushed; a
+        file already pushed keeps the retention it was pushed with. The month starts on the day you{' '}
+        {plan.tier === 'pro' ? 'subscribed' : 'signed up'}.
+      </p>
 
       {plan.tier === 'free' && (
-        <section className={styles.section}>
-          <h2>Pro</h2>
+        <>
+          <h3>Pro</h3>
           <ul className={styles.list}>
             <li>
               {LIMITS.pro.url.toLocaleString()} URL pushes a month, up from {LIMITS.free.url}
@@ -296,45 +284,7 @@ export default function Plan() {
             ${plan.priceUsd} a year. Refunds, cancelling and receipts are explained on the{' '}
             <Link to="/support">support page</Link>.
           </p>
-        </section>
-      )}
-
-      <Encrypted key="encrypted" />
-    </div>
-  );
-}
-
-/**
- * The "Encrypted" line (docs/e2ee.md, Saying so): that the pushes are encrypted, this
- * device's id, and where to read what that means. On the Plan page because the web app has
- * no settings page and this is the page about the account. The id is what this install
- * puts on its pushes in place of the device's model name, so showing it lets someone see
- * all the server is told about the device. IndexedDB can refuse (a private window in
- * some browsers), and the line then goes without the id rather than not at all.
- */
-function Encrypted() {
-  const [id, setId] = useState<string | null>(null);
-  useEffect(() => {
-    let current = true;
-    deviceId()
-      .then((made) => current && setId(made))
-      .catch((error) => console.error('Could not read the device id:', error));
-    return () => {
-      current = false;
-    };
-  }, []);
-
-  return (
-    <section className={styles.section}>
-      <h2>Encrypted</h2>
-      <p>
-        Your pushes are encrypted on your devices with a key made from your password, and only they can read them.{' '}
-        <Link to="/security">How it works</Link>.
-      </p>
-      {id && (
-        <p className={styles.muted}>
-          This device: <code className={styles.deviceId}>{id}</code>
-        </p>
+        </>
       )}
     </section>
   );

@@ -1,21 +1,11 @@
-.page {
-  max-width: 560px;
-}
+/* The section's own layout comes from the page, through `className`, so the plan is spaced
+   like the sections around it from one place. Only what is the plan's alone is here. */
 
-.section {
-  margin: 2rem 0;
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-}
-
-/* The gap spaces a section's contents; the global margins on p, h2 and ul would add to it */
-.section > * {
-  margin: 0;
-}
-
-.section h2 {
-  font-size: 1.25rem;
+/* This month and Pro are parts of the plan, under its heading, so they sit a step down and
+   a little apart from what comes before them rather than starting sections of their own. */
+.plan h3 {
+  font-size: 1rem;
+  margin-top: 0.75rem;
 }
 
 .row {
@@ -74,9 +64,4 @@
 
 .meterFillFull {
   background: var(--color-error);
-}
-
-/* A device id is 22 characters with no spaces, which would otherwise push a narrow screen sideways */
-.deviceId {
-  overflow-wrap: anywhere;
 }

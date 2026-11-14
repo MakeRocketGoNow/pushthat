@@ -1,4 +1,4 @@
-import { Navigate, Outlet, Route, Routes, useSearchParams } from 'react-router';
+import { Navigate, Outlet, Route, Routes, useLocation, useSearchParams } from 'react-router';
 
 import Layout from './Layout';
 import ProtectedRoute from './components/ProtectedRoute';
@@ -7,11 +7,11 @@ import { useAuth } from './contexts/AuthContext';
 import { AuthProvider } from './contexts/AuthProvider';
 import { KeysProvider } from './contexts/KeysContext';
 import { ThemeProvider } from './contexts/ThemeContext';
+import { Account } from './pages/Account';
 import { IndexPage } from './pages/Index';
 import Links from './pages/Links';
 import Login from './pages/Login';
 import NotFound from './pages/NotFound';
-import Plan from './pages/Plan';
 import Push from './pages/Push';
 import { ResetPassword } from './pages/ResetPassword';
 import { ViewPush } from './pages/ViewPush';
@@ -50,6 +50,18 @@ function ImagePageOrHome() {
   );
 }
 
+/**
+ * `/plan`, the Plan page's address before it became the first section of Account. Stripe's
+ * checkout returns here with `?checkout=complete` and its portal returns here
+ * (functions/src/stripe-functions.ts, `planPageUrl`, and the portal's configuration), so the
+ * query goes along: the plan section reads it to confirm a subscription on arrival. Kept
+ * for old bookmarks once those point at `/account` too.
+ */
+function PlanRedirect() {
+  const { search } = useLocation();
+  return <Navigate to={{ pathname: '/account', search }} replace />;
+}
+
 function App() {
   return (
     <AuthProvider>
@@ -75,7 +87,8 @@ function App() {
               <Route element={<ProtectedRoute />}>
                 <Route path="/links" element={<Links />} />
                 <Route path="/push" element={<Push />} />
-                <Route path="/plan" element={<Plan />} />
+                <Route path="/account" element={<Account />} />
+                <Route path="/plan" element={<PlanRedirect />} />
               </Route>
               <Route path="*" element={<NotFound />} />
             </Route>

@@ -1,8 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useLocation } from 'react-router';
 
-import { PLAN_PAGE_LINKED } from '@/config/plan';
-
 import styles from './Nav.module.css';
 
 export default function Nav() {
@@ -19,6 +17,10 @@ export default function Nav() {
         width: offsetWidth,
         left: offsetLeft,
       });
+    } else {
+      // A page with no item here (Account, the static pages while signed in): the
+      // slider shrinks away where it stood, rather than staying lit on the page left behind.
+      setSliderStyle((was) => ({ width: 0, left: was.left + was.width / 2 }));
     }
   }, [currentPath]);
 
@@ -37,11 +39,6 @@ export default function Nav() {
       <Link to="/links" className={`${styles.navItem} ${currentPath === '/links' ? styles.active : ''}`}>
         Links
       </Link>
-      {PLAN_PAGE_LINKED && (
-        <Link to="/plan" className={`${styles.navItem} ${currentPath === '/plan' ? styles.active : ''}`}>
-          Plan
-        </Link>
-      )}
     </nav>
   );
 }

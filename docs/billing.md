@@ -13,7 +13,7 @@ Checkout happens on the web app only. The Android, iOS and macOS apps show the p
 | File size           | 25 MB  | 100 MB       |
 | Files kept          | 7 days | 30 days      |
 
-A file's retention is decided when it is pushed, from the tier at that moment, and nothing moves it afterwards: subscribing does not extend files already pushed, and a lapse does not shorten them. The Plan page says so. Re-stamping on a tier change would need a composite index on `userId` and `expiresAt`, and was not worth it for a push that is a hand-off, not storage.
+A file's retention is decided when it is pushed, from the tier at that moment, and nothing moves it afterwards: subscribing does not extend files already pushed, and a lapse does not shorten them. The plan section of the Account page says so. Re-stamping on a tier change would need a composite index on `userId` and `expiresAt`, and was not worth it for a push that is a hand-off, not storage.
 
 Decided 2026-10-25. A URL push costs about $0.00002 to serve, so the URL limits are abuse caps. Files cost through download egress ($0.12 per GB past the project's free 100 GB a month) and storage; a Pro account at every limit at once is 10 GB a month, $1.50 to $2.70, against $22.16 kept after Stripe's fees (about 6.4% + 30 cents). That worst case was accepted knowingly; real use is far below it. Billing is yearly only because the fixed 30 cents takes a fifth of a $2 monthly charge.
 
@@ -30,12 +30,12 @@ Set up on 2026-10-25.
 
 - **Product:** PushThat Pro, `prod_VVWkWeG0cIT51z`, tax code `txcd_10103000` (software as a service for personal use)
 - **Price:** $24 a year, `tax_behavior: exclusive`, `price_1UUVggEJNixT7uDaaVEcm1i6`
-- **Customer portal:** `bpc_1UUVh2EJNixT7uDa2ChCsS3U`, the default configuration. Invoice history, the card, name, email and address editable, cancelling at the period's end with a reason asked for. Plan changes are off. Returns to `https://pushthat.link/plan`; terms and privacy links are `/terms` and `/privacy`.
+- **Customer portal:** `bpc_1UUVh2EJNixT7uDa2ChCsS3U`, the default configuration. Invoice history, the card, name, email and address editable, cancelling at the period's end with a reason asked for. Plan changes are off. Returns to `https://pushthat.link/plan`, which the web app redirects to `/account`, where the plan now is; terms and privacy links are `/terms` and `/privacy`.
 - **Webhook:** `we_1UUVhAEJNixT7uDa9cl3QtUg` at `https://us-central1-push-that.cloudfunctions.net/stripeWebhook`, API version `2025-03-31.basil`, for `customer.subscription.created`, `updated`, `deleted`, `paused` and `resumed`, `invoice.paid`, `charge.refunded` and `charge.dispute.created`. Its signing secret is shown in the endpoint's page in Workbench.
 
 There is one Firebase project, `push-that`, so the sandbox's webhook points at production's function. That is deliberate until launch (decided 2026-10-25): production runs on the sandbox's three settings while billing is tested end to end against the deployed functions, then all three are replaced with the live account's at once. The three always come from the same environment, since the key picks the account checkouts are made in, the webhook secret verifies only that account's endpoint, and the price id must be a price in it.
 
-While production is on the sandbox, anyone who reaches the Plan page can subscribe with a test card and get Pro, so the web app does not link to it or show it until launch.
+While production is on the sandbox, anyone who sees the plan on the Account page can subscribe with a test card and get Pro, so the web app does not show it until launch.
 
 | Secret                  | Before launch                                    | At launch                                                                               |
 | ----------------------- | ------------------------------------------------ | --------------------------------------------------------------------------------------- |
@@ -62,7 +62,7 @@ Set in the dashboard, since the API cannot:
 - Checkout terms (Settings, Checkout and Payment Links): `/terms` and `/privacy`.
 - Revenue recovery (Billing, Revenue recovery): Smart Retries, failed-payment emails and automatic card updates on. Matters more on a yearly plan, since a card often expires within the year.
 
-Once the three secrets hold the live values, the functions are redeployed (they read the secret versions current at deploy) and `PLAN_PAGE_LINKED` is turned on in the web app. The sandbox's webhook endpoint points at the same function, so it was disabled at the switch (2026-10-25): its deliveries fail the live signature. Re-enable it only with the sandbox's three secrets back in place.
+Once the three secrets hold the live values, the functions are redeployed (they read the secret versions current at deploy) and `PLAN_SHOWN` is turned on in the web app. The sandbox's webhook endpoint points at the same function, so it was disabled at the switch (2026-10-25): its deliveries fail the live signature. Re-enable it only with the sandbox's three secrets back in place.
 
 ## How it is built
 

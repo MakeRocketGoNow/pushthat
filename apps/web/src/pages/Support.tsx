@@ -2,7 +2,7 @@ import { Helmet } from 'react-helmet';
 import { Link } from 'react-router';
 
 import LegalContainer from '@/components/LegalContainer';
-import { LIMITS, PLAN_PAGE_LINKED, PRO_PRICE_USD, REFUND_DAYS, SUPPORT_EMAIL, formatMb } from '@/config/plan';
+import { LIMITS, PLAN_SHOWN, PRO_PRICE_USD, REFUND_DAYS, SUPPORT_EMAIL, formatMb } from '@/config/plan';
 
 /**
  * Support, `/support`: how to reach a person, and where everything else is. Written for
@@ -34,8 +34,8 @@ export default function Support() {
 
       <p>
         To change your card, download an invoice or cancel, open{' '}
-        {PLAN_PAGE_LINKED ? <Link to="/plan">Plan</Link> : 'Plan'} in the web app and choose Manage billing. Cancelling
-        stops the next renewal and keeps Pro until the year already paid for ends.
+        {PLAN_SHOWN ? <Link to="/account">Account</Link> : 'Account'} from the web app’s menu and choose Manage billing.
+        Cancelling stops the next renewal and keeps Pro until the year already paid for ends.
       </p>
 
       <p>
@@ -70,9 +70,9 @@ export default function Support() {
       </p>
 
       <p>
-        To close your account, use <Link to="/delete-account">Delete account</Link>, here or in the app’s menu: it
-        deletes the account at once, with everything pushed from it. If you cannot sign in, write to us from the
-        account’s address and we will delete it for you.
+        To close your account, use <Link to="/delete-account">Delete account</Link>, here, from Account in the website’s
+        menu, or in the app’s menu: it deletes the account at once, with everything pushed from it. If you cannot sign
+        in, write to us from the account’s address and we will delete it for you.
       </p>
 
       <h5>BUGS AND IDEAS</h5>
