@@ -216,14 +216,13 @@ export function PlanSection() {
       </p>
       {canSubscribe && (
         <div className={styles.row}>
+          {/* Labels short enough for one line on a phone. The button's capitals and letter
+              spacing wrap "Subscribe for $24 a year" at 375px, and "$24/year" only just fits
+              there and wraps at 360px, so the price is in the line beside the button. */}
           <Button solid onClick={() => void subscribe()} isSubmitting={busy !== null}>
-            {busy === 'checkout'
-              ? 'Opening checkout…'
-              : busy === 'settling'
-                ? 'Confirming your subscription…'
-                : `Subscribe for $${plan.priceUsd} a year`}
+            {busy === 'checkout' ? 'Opening checkout…' : busy === 'settling' ? 'Confirming…' : 'Subscribe to Pro'}
           </Button>
-          <span className={styles.muted}>Before tax, charged by Stripe. Cancel any time.</span>
+          <span className={styles.muted}>${plan.priceUsd} a year before tax, charged by Stripe. Cancel any time.</span>
         </div>
       )}
       {hasCustomer && (
@@ -233,7 +232,7 @@ export function PlanSection() {
           </Button>
           {pastDue && (
             <Button outline onClick={() => void openPortal('payment')} isSubmitting={busy !== null}>
-              {busy === 'payment' ? 'Opening…' : 'Update payment method'}
+              {busy === 'payment' ? 'Opening…' : 'Update card'}
             </Button>
           )}
           <span className={styles.muted}>
