@@ -2,7 +2,8 @@ name: CI
 
 # The checks that need nothing but the repository (the functions' unit tests, the web app's
 # lint and builds, the Android unit tests, the encryption reference's tests) run on every
-# pull request and every push to `main`. A push to `main` then deploys whatever it changed
+# push to `main`, and on a pull request when it touches what they read (the `affected` job
+# below). A push to `main` then deploys whatever it changed
 # to the `push-that` Firebase project, once the check for that folder has passed: see
 # docs/deploying.md for the jobs, the Google Cloud setup they need, and how to deploy by
 # hand.
@@ -39,7 +40,68 @@ permissions:
   contents: read
 
 jobs:
+  # Which checks a pull request needs. A check whose folder the pull request leaves alone is
+  # skipped: a copy change on the site has no reason to wait on Gradle. Pushes to `main` and
+  # runs started by hand get every check, because the deploys below need theirs to pass.
+  #
+  # The skipping is done per job with `if:`, not with `paths:` on the trigger, because
+  # `functions`, `web` and `android` are required checks on `main`. GitHub counts a skipped
+  # job as passing, but a workflow that never started leaves a required check waiting
+  # forever and the pull request unmergeable.
+  #
+  # Each pattern lists everything that check reads, not just its own folder: the web app's
+  # key tests and the Android unit tests both read packages/push-test/vectors.json, and the
+  # web build reads firebase.json to prerender. A new read outside the folder belongs here
+  # too, or a pull request that changes only that file merges without the check that
+  # covers it. A change to this file runs everything, so an edit to a job is tested.
+  #
+  # The jobs below run unless this says `false`, so if it fails they run rather than being
+  # skipped unchecked.
+  affected:
+    runs-on: ubuntu-latest
+    outputs:
+      functions: ${{ steps.diff.outputs.functions }}
+      web: ${{ steps.diff.outputs.web }}
+      android: ${{ steps.diff.outputs.android }}
+      push-test: ${{ steps.diff.outputs.push-test }}
+      play-promote: ${{ steps.diff.outputs.play-promote }}
+    steps:
+      # A pull request's checkout is GitHub's trial merge of it into its base, so the first
+      # parent is the base branch and the diff between them is exactly what the merge would
+      # change. Two commits deep is enough to have that parent.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: github.event_name == 'pull_request'
+        with:
+          fetch-depth: 2
+      - id: diff
+        env:
+          EVENT: ${{ github.event_name }}
+        run: |
+          if [ "$EVENT" = pull_request ]; then
+            changed=$(git diff --name-only HEAD^1 HEAD)
+            echo "Changed by this pull request:"
+            echo "$changed"
+          fi
+          # A here-string rather than a pipe: under `pipefail`, `grep -q` stopping early
+          # can fail the `echo` feeding it.
+          touches() {
+            if [ "$EVENT" != pull_request ] || grep -qE "^(\.github/workflows/ci\.yml$|$1)" <<< "$changed"; then
+              echo true
+            else
+              echo false
+            fi
+          }
+          {
+            echo "functions=$(touches 'functions/')"
+            echo "web=$(touches 'apps/web/|packages/push-test/|\.nvmrc$|firebase\.json$')"
+            echo "android=$(touches 'apps/android/|packages/push-test/')"
+            echo "push-test=$(touches 'packages/push-test/')"
+            echo "play-promote=$(touches '\.github/scripts/|\.nvmrc$')"
+          } | tee -a "$GITHUB_OUTPUT"
+
   functions:
+    needs: affected
+    if: ${{ !cancelled() && needs.affected.outputs.functions != 'false' }}
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -57,6 +119,8 @@ jobs:
       - run: npm test
 
   web:
+    needs: affected
+    if: ${{ !cancelled() && needs.affected.outputs.web != 'false' }}
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -79,6 +143,8 @@ jobs:
       - run: npm run build:chrome
 
   android:
+    needs: affected
+    if: ${{ !cancelled() && needs.affected.outputs.android != 'false' }}
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -98,6 +164,8 @@ jobs:
   # vectors.json is what the generator produces, so a change to the bytes cannot land
   # without the vectors the clients check against.
   push-test:
+    needs: affected
+    if: ${{ !cancelled() && needs.affected.outputs.push-test != 'false' }}
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -117,6 +185,8 @@ jobs:
   # when someone starts it, so without this a broken change to the script would be found
   # at the moment of a release. No install: the script has no dependencies.
   play-promote:
+    needs: affected
+    if: ${{ !cancelled() && needs.affected.outputs.play-promote != 'false' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

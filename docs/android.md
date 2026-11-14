@@ -159,7 +159,8 @@ with no rules. Without the key the run stops before it reaches Play, so an Envir
 that exists but is unprotected is harmless only while it is empty.
 
 The work is done by `.github/scripts/play-promote.mjs`, which has no dependencies and
-whose tests (`node --test '.github/scripts/*.test.mjs'`) run on every pull request. They
+whose tests (`node --test '.github/scripts/*.test.mjs'`) run on every pull request that
+changes it. They
 prove what the script asks Play for against a stand-in; only a real promotion proves Play
 agrees.
 

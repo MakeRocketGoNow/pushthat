@@ -123,7 +123,9 @@ Stripe's API, so nothing reaches Stripe.
 
 CI (`.github/workflows/ci.yml`) runs the functions' unit tests, the web app's lint, key
 vectors and builds, the Android unit tests, the encryption reference's tests and the
-production promote script's tests on every pull request. `.github/workflows/android.yml` builds the Android release bundle, and on
+production promote script's tests. On a pull request each runs only when the change touches
+what it reads (the `affected` job lists the paths), so a file one of them starts reading
+from outside its folder is added there too. `.github/workflows/android.yml` builds the Android release bundle, and on
 `main` releases it to Play's internal testing track ([docs/android.md](docs/android.md#shipping-to-play)).
 The emulator suites run only in the deploy that follows a merge, and the Xcode builds not
 at all, so run them yourself when a change reaches the rules, the functions or the Apple
