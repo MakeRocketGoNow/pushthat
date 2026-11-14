@@ -31,7 +31,7 @@ export function Account() {
       </Helmet>
       <h1>Account</h1>
 
-      {PLAN_PAGE_LINKED && <PlanSection />}
+      {PLAN_PAGE_LINKED && <PlanSection className={styles.section} />}
 
       <section className={styles.section}>
         <h2>Email</h2>

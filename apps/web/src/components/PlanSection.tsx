@@ -1,3 +1,4 @@
+import clsx from 'clsx';
 import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router';
 
@@ -74,7 +75,7 @@ export function describePlan(plan: PlanReport): { title: string; sentence: strin
  * Shown only while `PLAN_PAGE_LINKED` is on: production ran on the Stripe sandbox's keys
  * until launch, and a test card here would give anyone Pro.
  */
-export function PlanSection() {
+export function PlanSection({ className }: { className?: string }) {
   const { plan, error: readError, refresh, setPlan } = usePlan();
   const [busy, setBusy] = useState<'checkout' | 'settling' | 'portal' | 'payment' | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -181,7 +182,7 @@ export function PlanSection() {
 
   if (!plan) {
     return (
-      <section className={styles.section} id="plan">
+      <section className={clsx(className, styles.plan)} id="plan">
         <h2>Plan</h2>
         {readError ? (
           <p className={styles.row}>
@@ -209,7 +210,7 @@ export function PlanSection() {
   const limits = plan.limits;
 
   return (
-    <section className={styles.section} id="plan">
+    <section className={clsx(className, styles.plan)} id="plan">
       <h2>Plan</h2>
       <p>
         <strong>{title}.</strong> {sentence}
