@@ -294,9 +294,16 @@ class ShareActivity : AppCompatActivity() {
      *
      * A site with no icon arrives as Chrome's generic globe, which cannot be told from a real
      * icon here; a globe was judged better than missing every icon a scrape is refused.
-     * Images that are not icon-shaped are left (`PageIcons.isIconShaped`), and so is a URI
-     * this app's own provider serves: a share naming one would otherwise have the app read
-     * its own files on another app's behalf.
+     *
+     * Only an image Chrome's own provider serves is taken ([ICON_SHARING_BROWSERS]). Other
+     * apps attach a preview too, and a small square one is as often the app's own logo or
+     * an avatar as the site's icon; since the worker never replaces an icon a push has, a
+     * wrong one would stay. Other Chromium browsers likely attach the favicon the same way,
+     * but each is added once seen to. The owner check also keeps out this app's own
+     * provider, which a share could otherwise name to have the app read its own files, and
+     * an authority with a user prefix (`0@...`), which resolves to no owner here though the
+     * resolver would open it. Images that are not icon-shaped are left
+     * (`PageIcons.isIconShaped`).
      */
     private fun sharedIcon(intent: Intent): String {
         val clip = intent.clipData ?: return ""
@@ -304,7 +311,10 @@ class ShareActivity : AppCompatActivity() {
         if (uri.scheme != ContentResolver.SCHEME_CONTENT) return ""
         val authority = uri.authority ?: return ""
         return try {
-            if (packageManager.resolveContentProvider(authority, 0)?.packageName == packageName) return ""
+            // Visible without a <queries> entry: an app whose provider this app was granted
+            // a URI from is visible to it.
+            val owner = packageManager.resolveContentProvider(authority, 0)?.packageName
+            if (owner !in ICON_SHARING_BROWSERS) return ""
             val bytes = contentResolver.openInputStream(uri)?.use { PageIcons.readCapped(it) } ?: return ""
             val bitmap = PageIcons.decodeShared(bytes) ?: return ""
             try {
@@ -570,6 +580,19 @@ class ShareActivity : AppCompatActivity() {
                 finish()
             }
             .show()
+    }
+
+    companion object {
+        /**
+         * The apps whose share preview is taken as a link's icon: Chrome's channels, which
+         * attach the page's favicon (`AndroidShareSheetController` in Chromium).
+         */
+        private val ICON_SHARING_BROWSERS = setOf(
+            "com.android.chrome",
+            "com.chrome.beta",
+            "com.chrome.dev",
+            "com.chrome.canary",
+        )
     }
 }
 
