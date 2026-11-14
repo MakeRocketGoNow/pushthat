@@ -34,10 +34,12 @@ import com.makerocketgonow.pushthat.e2ee.PushKeys
 import com.makerocketgonow.pushthat.e2ee.PushStore
 import com.makerocketgonow.pushthat.e2ee.PushTooLargeException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.tasks.await
 import androidx.lifecycle.lifecycleScope
 import androidx.work.*
@@ -250,7 +252,14 @@ class ShareActivity : AppCompatActivity() {
                 // The id first: the envelope's AAD names it, so a ciphertext cannot be moved
                 // to another document.
                 val pushId = db.collection("pushes").document().id
-                val icon = withContext(Dispatchers.IO) { sharedIcon(intent) }
+                // Waited for only so long: the read is from another app's provider, which can
+                // block indefinitely (one that fetches its preview when opened), and the link
+                // is pushed without an icon rather than not at all. The read runs outside this
+                // coroutine because a blocked stream cannot be cancelled, and `withContext`
+                // would wait for it past any timeout around it.
+                val iconRead = lifecycleScope.async(Dispatchers.IO) { sharedIcon(intent) }
+                val icon = withTimeoutOrNull(SHARED_ICON_TIMEOUT_MS) { iconRead.await() }
+                    ?: "".also { iconRead.cancel() }
                 val content = PushContent.Url(validatedUrl, initialTitle, ext, icon)
                 val prepared = try {
                     try {
@@ -593,6 +602,9 @@ class ShareActivity : AppCompatActivity() {
             "com.chrome.dev",
             "com.chrome.canary",
         )
+
+        /** How long a share waits for its icon. Chrome's is a file already written. */
+        private const val SHARED_ICON_TIMEOUT_MS = 2_000L
     }
 }
 
