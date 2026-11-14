@@ -1,5 +1,6 @@
 package com.makerocketgonow.pushthat
 
+import android.content.ContentResolver
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -246,8 +247,17 @@ class ShareActivity : AppCompatActivity() {
                 // The id first: the envelope's AAD names it, so a ciphertext cannot be moved
                 // to another document.
                 val pushId = db.collection("pushes").document().id
+                val icon = withContext(Dispatchers.IO) { sharedIcon(intent) }
+                val content = PushContent.Url(validatedUrl, initialTitle, ext, icon)
                 val prepared = try {
-                    PreparedPush.prepare(keys, pushId, PushContent.Url(validatedUrl, initialTitle, ext))
+                    try {
+                        PreparedPush.prepare(keys, pushId, content)
+                    } catch (e: PushTooLargeException) {
+                        // A link that fits without its icon is pushed without it, as a
+                        // scraped one is (`PushDocument.retitle`): the link is the push.
+                        if (icon.isEmpty()) throw e
+                        PreparedPush.prepare(keys, pushId, content.copy(icon = ""))
+                    }
                 } catch (e: PushTooLargeException) {
                     Log.w(TAG, "The link is too long to push")
                     // Said as it is: the generic failure's "try again later" never works here.
@@ -268,6 +278,42 @@ class ShareActivity : AppCompatActivity() {
                 Log.e(TAG, "Error in shareLink", e)
                 finish()
             }
+        }
+    }
+
+    /**
+     * The icon the app that shared the link attached, as the envelope's `icon`, or "" when
+     * there is none (docs/e2ee.md, Icons). Chrome puts the page's favicon in the share's
+     * `ClipData`, for the share sheet's preview, from the icon it already loaded. Taking it
+     * fetches nothing, and it works where the scraper cannot: a shop's product page turns
+     * `TitleScrapingWorker` away with a 429, and before this such a push got no icon at all.
+     * A push that arrives with one is not given another by the worker.
+     *
+     * A site with no icon arrives as Chrome's generic globe, which cannot be told from a real
+     * icon here; a globe was judged better than missing every icon a scrape is refused.
+     * Images that are not icon-shaped are left (`PageIcons.isIconShaped`), and so is a URI
+     * this app's own provider serves: a share naming one would otherwise have the app read
+     * its own files on another app's behalf.
+     */
+    private fun sharedIcon(intent: Intent): String {
+        val clip = intent.clipData ?: return ""
+        val uri = (0 until clip.itemCount).firstNotNullOfOrNull { clip.getItemAt(it).uri } ?: return ""
+        if (uri.scheme != ContentResolver.SCHEME_CONTENT) return ""
+        val authority = uri.authority ?: return ""
+        return try {
+            if (packageManager.resolveContentProvider(authority, 0)?.packageName == packageName) return ""
+            val bytes = contentResolver.openInputStream(uri)?.use { PageIcons.readCapped(it) } ?: return ""
+            val bitmap = PageIcons.decodeShared(bytes) ?: return ""
+            try {
+                PageIcons.encode(bitmap) ?: ""
+            } finally {
+                bitmap.recycle()
+            }
+        } catch (e: Exception) {
+            // An icon is a nicety: the link is pushed without one. The type only, since a
+            // message can name the file.
+            Log.w(TAG, "Could not read the shared icon: ${e.javaClass.simpleName}")
+            ""
         }
     }
 

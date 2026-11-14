@@ -1,8 +1,13 @@
 package com.makerocketgonow.pushthat
 
 import okhttp3.HttpUrl.Companion.toHttpUrl
+import java.io.ByteArrayInputStream
 import org.jsoup.Jsoup
+import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /** Which icons a page offers, in what order, and the sizes they are cut to. Every page is made up. */
@@ -117,5 +122,26 @@ class PageIconsTest {
         assertEquals(2, PageIcons.sampleSize(128, 128, 64))
         assertEquals(2, PageIcons.sampleSize(200, 200, 64))
         assertEquals(256, PageIcons.sampleSize(20_000, 10, 64))
+    }
+
+    @Test
+    fun aSharedImageIsAnIconOnlyWhenSquareAndSmall() {
+        assertTrue(PageIcons.isIconShaped(16, 16))
+        assertTrue(PageIcons.isIconShaped(PageIcons.MAX_SHARED_SIDE, PageIcons.MAX_SHARED_SIDE))
+        // A video's thumbnail, a product photo: pictures of the content, not the site's icon.
+        assertFalse(PageIcons.isIconShaped(320, 180))
+        assertFalse(PageIcons.isIconShaped(48, 47))
+        assertFalse(PageIcons.isIconShaped(PageIcons.MAX_SHARED_SIDE + 1, PageIcons.MAX_SHARED_SIDE + 1))
+        // What the decoder reports for bytes it cannot open.
+        assertFalse(PageIcons.isIconShaped(-1, -1))
+        assertFalse(PageIcons.isIconShaped(0, 0))
+    }
+
+    @Test
+    fun aSharedStreamIsReadWholeUpToTheCap() {
+        val fits = ByteArray(PageIcons.MAX_FETCH_BYTES.toInt()) { it.toByte() }
+        assertArrayEquals(fits, PageIcons.readCapped(ByteArrayInputStream(fits)))
+        assertArrayEquals(ByteArray(0), PageIcons.readCapped(ByteArrayInputStream(ByteArray(0))))
+        assertNull(PageIcons.readCapped(ByteArrayInputStream(ByteArray(PageIcons.MAX_FETCH_BYTES.toInt() + 1))))
     }
 }
