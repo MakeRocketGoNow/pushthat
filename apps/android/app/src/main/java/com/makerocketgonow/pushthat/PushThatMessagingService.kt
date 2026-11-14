@@ -24,6 +24,7 @@ import com.makerocketgonow.pushthat.e2ee.AccountKeyStore
 import com.makerocketgonow.pushthat.e2ee.PushContent
 import com.makerocketgonow.pushthat.e2ee.PushDocument
 import com.makerocketgonow.pushthat.e2ee.forgetSession
+import java.text.NumberFormat
 import java.util.concurrent.TimeUnit
 
 class PushThatMessagingService : FirebaseMessagingService() {
@@ -46,6 +47,13 @@ class PushThatMessagingService : FirebaseMessagingService() {
 
     override fun onMessageReceived(remoteMessage: RemoteMessage) {
         Log.d(TAG, "From: ${remoteMessage.from}")
+
+        // A push the server took back at the month's limit (functions/src/notifications.ts,
+        // removedMessageOf). It names no push, so it is checked before anything that reads one.
+        remoteMessage.data["refused"]?.let { type ->
+            receiveRemoved(type, remoteMessage.data["limit"])
+            return
+        }
 
         // An encrypted push carries only its id (docs/e2ee.md, Notifications): the content
         // is read and decrypted here. A plaintext push, from a client that has not updated,
@@ -105,6 +113,28 @@ class PushThatMessagingService : FirebaseMessagingService() {
         broadcastPushReceived()
     }
 
+    /**
+     * The notice for a push the server took back because it landed past the month's limit:
+     * the rules let a burst through before any of it is counted, so the push was saved here
+     * and then left the list. Shown whichever device made it, since the server cannot tell
+     * which did and the limit is the account's. One notification a type, replaced by the
+     * next and alerting only once while it is in the tray, so a queue of offline shares taken
+     * back together sounds once rather than once a push. A later notice of the type, while an
+     * earlier one is still showing, is silent too: the tray already says it. A type this
+     * version does not know is left alone. The list is told to read again, as for a push
+     * received.
+     */
+    private fun receiveRemoved(type: String, limit: String?) {
+        val count = limit?.toIntOrNull()?.let { NumberFormat.getIntegerInstance().format(it) } ?: return
+        val body = when (type) {
+            PushContent.TYPE_URL -> getString(R.string.push_removed_url, count)
+            PushContent.TYPE_FILE -> getString(R.string.push_removed_file, count)
+            else -> return
+        }
+        sendAppNotification(getString(R.string.push_removed_title), body, "refused-$type".hashCode(), alertOnce = true)
+        broadcastPushReceived()
+    }
+
     /** The push's content, or null when this install cannot open it. */
     private fun readPush(pushId: String): PushContent? {
         val uid = FirebaseAuth.getInstance().currentUser?.uid ?: return null
@@ -130,7 +160,7 @@ class PushThatMessagingService : FirebaseMessagingService() {
     }
 
     /** A notification whose tap opens the app's list: a file push, or one not yet read. */
-    private fun sendAppNotification(title: String, body: String?, notificationId: Int) {
+    private fun sendAppNotification(title: String, body: String?, notificationId: Int, alertOnce: Boolean = false) {
         val appIntent = Intent(this, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
         }
@@ -144,6 +174,7 @@ class PushThatMessagingService : FirebaseMessagingService() {
             .setAutoCancel(true)
             .setSound(RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION))
             .setContentIntent(pendingIntent)
+            .setOnlyAlertOnce(alertOnce)
         body?.let { builder.setContentText(it) }
         (getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager).notify(notificationId, builder.build())
     }

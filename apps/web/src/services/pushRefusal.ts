@@ -26,12 +26,19 @@ import type { PlanReport } from './plan.ts';
 
 export const isRulesRefusal = (error: unknown) => error instanceof FirebaseError && error.code === 'permission-denied';
 
+/**
+ * The sentence for a month's limit reached, naming the number. The notice for a push the
+ * server took back past it says this alone, as the server does to iOS
+ * (functions/src/notifications.ts, `removedBodyOf`) and Android does from its strings.
+ */
+export const usedMessage = (type: 'url' | 'file', limit?: number) =>
+  `You have used this month's ${limit === undefined ? '' : `${limit.toLocaleString()} `}${type === 'url' ? 'link' : 'file'} pushes.`;
+
 /** The sentence for a push past the month's limit, naming the number and, on Free, what Pro allows. */
 export const limitMessage = (plan: PlanReport | undefined, type: 'url' | 'file') => {
-  const what = type === 'url' ? 'link' : 'file';
-  if (!plan) return `You have used this month's ${what} pushes.`;
+  if (!plan) return usedMessage(type);
   const more = plan.tier === 'free' ? ` Pro allows ${LIMITS.pro[type].toLocaleString()}.` : '';
-  return `You have used this month's ${plan.limits[type].toLocaleString()} ${what} pushes.${more}`;
+  return `${usedMessage(type, plan.limits[type])}${more}`;
 };
 
 /**

@@ -2,4 +2,4 @@ Your pushes are now end-to-end encrypted: only devices you sign in on can read t
 
 New in the menu: Delete account, and the app's version on the last line.
 
-A link's icon now comes from Chrome or from its page, so your list never asks Google. Older links show a plain icon. Notifications and search work on encrypted pushes, and an unconfirmed share is retried, not dropped.
+A link's icon now comes from Chrome or its page, never from Google. Notifications and search work on encrypted pushes, and an unconfirmed share is retried, not dropped. A push over the month's limit now says why it's removed.

@@ -1,7 +1,7 @@
 import { Timestamp } from 'firebase-admin/firestore';
 
 import { LIMITS, usageOf } from '../../src/plan';
-import { NewPush, recordPush } from '../../src/usage';
+import { NewPush, QUIET_NOTICE_MS, recordPush } from '../../src/usage';
 import { clearFirestore, closeFirestore, db, millisOf, userDoc } from './harness';
 
 /**
@@ -30,8 +30,7 @@ async function makePush(type: NewPush['type'] = 'url') {
   return { ref, push: { userId: UID, type } as NewPush };
 }
 
-const record = (made: Awaited<ReturnType<typeof makePush>>) =>
-  recordPush(db(), made.ref, made.push, NOW, { emailOf });
+const record = (made: Awaited<ReturnType<typeof makePush>>) => recordPush(db(), made.ref, made.push, NOW, { emailOf });
 
 afterAll(() => closeFirestore());
 beforeEach(() => clearFirestore());
@@ -39,7 +38,7 @@ beforeEach(() => clearFirestore());
 test('counts a URL push, making the user document when there is none', async () => {
   const made = await makePush();
 
-  expect(await record(made)).toBe('counted');
+  expect(await record(made)).toEqual({ outcome: 'counted' });
 
   const user = await userDoc(UID);
   expect(user.email).toBe('user_1@example.com');
@@ -86,7 +85,7 @@ test('a push deleted before it was counted still counts, and is not brought back
   const made = await makePush('file');
   await made.ref.delete();
 
-  expect(await record(made)).toBe('counted');
+  expect(await record(made)).toEqual({ outcome: 'counted' });
 
   expect((await made.ref.get()).exists).toBe(false);
   expect((await userDoc(UID)).usageRecords).toEqual({ [periodKey]: { file: 1 } });
@@ -97,7 +96,7 @@ describe('the limit, applied again where the count is exact', () => {
     await seedUser({ createdAt: CREATED, usageRecords: { [periodKey]: { url: LIMITS.free.url } } });
     const made = await makePush();
 
-    expect(await record(made)).toBe('refused');
+    expect(await record(made)).toEqual({ outcome: 'refused', limit: LIMITS.free.url, removed: true, sound: true });
 
     expect((await made.ref.get()).exists).toBe(false);
     expect((await userDoc(UID)).usageRecords).toEqual({ [periodKey]: { url: LIMITS.free.url } });
@@ -107,8 +106,17 @@ describe('the limit, applied again where the count is exact', () => {
     await seedUser({ createdAt: CREATED, usageRecords: { [periodKey]: { file: LIMITS.free.file } } });
     const made = await makePush('file');
 
-    expect(await record(made)).toBe('refused');
+    expect(await record(made)).toEqual({ outcome: 'refused', limit: LIMITS.free.file, removed: true, sound: true });
     expect((await made.ref.get()).exists).toBe(false);
+  });
+
+  test('a push its user deleted before the count is refused without saying it was taken back', async () => {
+    await seedUser({ createdAt: CREATED, usageRecords: { [periodKey]: { url: LIMITS.free.url } } });
+    const made = await makePush();
+    await made.ref.delete();
+
+    expect(await record(made)).toEqual({ outcome: 'refused', limit: LIMITS.free.url, removed: false, sound: false });
+    expect((await userDoc(UID)).usageRecords).toEqual({ [periodKey]: { url: LIMITS.free.url } });
   });
 
   test('a burst past it keeps only as many as the month had left', async () => {
@@ -117,18 +125,40 @@ describe('the limit, applied again where the count is exact', () => {
 
     const outcomes = await Promise.all(burst.map(record));
 
-    expect(outcomes.filter((o) => o === 'counted')).toHaveLength(2);
-    expect(outcomes.filter((o) => o === 'refused')).toHaveLength(3);
+    expect(outcomes.filter((o) => o.outcome === 'counted')).toHaveLength(2);
+    expect(outcomes.filter((o) => o.outcome === 'refused')).toHaveLength(3);
+    // Each refusal sends a notice, and only the first may sound (usage.ts, QUIET_NOTICE_MS).
+    expect(outcomes.filter((o) => o.outcome === 'refused' && o.sound)).toHaveLength(1);
     expect((await userDoc(UID)).usageRecords).toEqual({ [periodKey]: { url: LIMITS.free.url } });
     const left = await Promise.all(burst.map(async (made) => (await made.ref.get()).exists));
     expect(left.filter(Boolean)).toHaveLength(2);
+  });
+
+  test('a notice within ten minutes of one that sounded is quiet, and one after sounds again', async () => {
+    await seedUser({
+      createdAt: CREATED,
+      usageRecords: { [periodKey]: { url: LIMITS.free.url, file: LIMITS.free.file } },
+    });
+    const at = (ms: number) => new Date(NOW.getTime() + ms);
+    const recordAt = async (type: NewPush['type'], ms: number) => {
+      const made = await makePush(type);
+      return recordPush(db(), made.ref, made.push, at(ms), { emailOf });
+    };
+
+    expect(await recordAt('url', 0)).toMatchObject({ outcome: 'refused', sound: true });
+    expect(await recordAt('url', QUIET_NOTICE_MS - 1)).toMatchObject({ outcome: 'refused', sound: false });
+    // Each type keeps its own quiet: a file notice is news while links are quiet.
+    expect(await recordAt('file', 1000)).toMatchObject({ outcome: 'refused', sound: true });
+    // Measured from the notice that sounded, not the quiet ones after it.
+    expect(await recordAt('url', QUIET_NOTICE_MS)).toMatchObject({ outcome: 'refused', sound: true });
+    expect(millisOf((await userDoc(UID)).limitNoticeAt.url)).toBe(at(QUIET_NOTICE_MS).getTime());
   });
 
   test('Pro is counted past the Free limit', async () => {
     await seedUser({ createdAt: CREATED, subscription: PRO, usageRecords: { [periodKey]: { url: LIMITS.free.url } } });
     const made = await makePush();
 
-    expect(await record(made)).toBe('counted');
+    expect(await record(made)).toEqual({ outcome: 'counted' });
     expect((await userDoc(UID)).usageRecords).toEqual({ [periodKey]: { url: LIMITS.free.url + 1 } });
   });
 
@@ -139,6 +169,22 @@ describe('the limit, applied again where the count is exact', () => {
       usageRecords: { [periodKey]: { url: LIMITS.free.url } },
     });
 
-    expect(await record(await makePush())).toBe('refused');
+    expect(await record(await makePush())).toEqual({
+      outcome: 'refused',
+      limit: LIMITS.free.url,
+      removed: true,
+      sound: true,
+    });
+  });
+
+  test('Pro is refused at its own limit, which the refusal names', async () => {
+    await seedUser({ createdAt: CREATED, subscription: PRO, usageRecords: { [periodKey]: { url: LIMITS.pro.url } } });
+
+    expect(await record(await makePush())).toEqual({
+      outcome: 'refused',
+      limit: LIMITS.pro.url,
+      removed: true,
+      sound: true,
+    });
   });
 });

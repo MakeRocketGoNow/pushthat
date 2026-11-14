@@ -7,14 +7,15 @@
  * See a full list of supported triggers at https://firebase.google.com/docs/functions
  */
 import { initializeApp } from 'firebase-admin/app';
-import { SendResponse, getMessaging } from 'firebase-admin/messaging';
+import { DocumentReference } from 'firebase-admin/firestore';
+import { BaseMessage, SendResponse, getMessaging } from 'firebase-admin/messaging';
 import { getStorage } from 'firebase-admin/storage';
 import * as logger from 'firebase-functions/logger';
 import { onDocumentCreated, onDocumentDeleted } from 'firebase-functions/v2/firestore';
 // import { beforeUserCreated } from 'firebase-functions/v2/identity';
 import 'whatwg-fetch';
 
-import { deadTokens, pushMessageOf } from './notifications';
+import { deadTokens, pushMessageOf, removedMessageOf } from './notifications';
 import { storagePathOf } from './orphans';
 import { recordPush } from './usage';
 
@@ -77,6 +78,63 @@ export const onPushRecordDeleted = onDocumentDeleted('pushes/{pushId}', async (e
   }
 });
 
+/**
+ * Sends `message` to every device on the user's account, by the FCM tokens on the user
+ * document, and takes off it the tokens FCM says are dead (notifications.ts).
+ */
+async function sendToDevices(userRef: DocumentReference, message: BaseMessage): Promise<void> {
+  const recipientTokensSnapshot = await userRef.get();
+
+  if (!recipientTokensSnapshot.exists) {
+    logger.info('No recipients found for this notification');
+    return;
+  }
+
+  // Get all valid FCM tokens from the user's devices
+  const userData = recipientTokensSnapshot.data() ?? {};
+  const tokens = (
+    Array.isArray(userData.fcmTokens) ? userData.fcmTokens : userData.fcmToken ? [userData.fcmToken] : []
+  ).filter((token): token is string => typeof token === 'string');
+
+  if (!tokens.length) {
+    logger.info('No valid FCM tokens found');
+    return;
+  }
+
+  // Send messages in batches (FCM allows up to 500 tokens per request)
+  const batchResponse = await getMessaging().sendEachForMulticast({
+    ...message,
+    tokens: tokens,
+  });
+
+  logger.info(
+    `Successfully sent notifications: ${batchResponse.successCount} successful, ${batchResponse.failureCount} failed`
+  );
+
+  // Handle any failed messages
+  if (batchResponse.failureCount > 0) {
+    batchResponse.responses.forEach((resp: SendResponse) => {
+      if (!resp.success) logger.error('Notification failed:', resp.error);
+    });
+
+    // Only the tokens FCM says are dead leave the document (notifications.ts); a
+    // failure about the message or the moment keeps them.
+    const dead = deadTokens(tokens, batchResponse.responses);
+    if (dead.length > 0) {
+      logger.info(`Removing ${dead.length} dead token${dead.length === 1 ? '' : 's'}`);
+
+      const validTokens = Array.isArray(userData.fcmTokens)
+        ? userData.fcmTokens.filter((token: string) => !dead.includes(token))
+        : [];
+
+      await recipientTokensSnapshot.ref.update({
+        fcmTokens: validTokens,
+        fcmToken: null,
+      });
+    }
+  }
+}
+
 export const onNewPushCreated = onDocumentCreated('pushes/{pushId}', async (event) => {
   try {
     const snapshot = event.data;
@@ -86,76 +144,29 @@ export const onNewPushCreated = onDocumentCreated('pushes/{pushId}', async (even
     }
 
     const pushData = snapshot.data();
+    const userRef = snapshot.ref.firestore.collection('users').doc(pushData.userId);
 
     // Count the push, or take it back: the rules let a burst through before any of it
     // is counted, and the count here is the exact one (usage.ts). A push taken back is
-    // not announced; the device that made it sees it go from its list.
-    const outcome = await recordPush(
+    // announced as removed, naming the limit, since the device that made it was told it
+    // was saved (notifications.ts, `removedMessageOf`).
+    const result = await recordPush(
       snapshot.ref.firestore,
       snapshot.ref,
       { userId: pushData.userId, type: pushData.type },
       new Date()
     );
-    if (outcome === 'refused') return;
-
-    // Get the messaging instance
-    const messaging = getMessaging();
-
-    // Fetch the user document that contains an array of FCM tokens
-    const recipientTokensSnapshot = await event.data?.ref.firestore.collection('users').doc(pushData.userId).get();
-
-    if (!recipientTokensSnapshot?.exists) {
-      logger.info('No recipients found for this notification');
-      return;
-    }
-
-    // Get all valid FCM tokens from the user's devices
-    // Assuming fcmTokens is an array of tokens in the user document
-    const userData = recipientTokensSnapshot.data();
-    const tokens = (
-      Array.isArray(userData?.fcmTokens) ? userData.fcmTokens : userData?.fcmToken ? [userData.fcmToken] : []
-    ).filter((token): token is string => typeof token === 'string');
-
-    if (!tokens.length) {
-      logger.info('No valid FCM tokens found');
+    if (result.outcome === 'refused') {
+      // recordPush refuses only a URL or file push; anything else it throws on. One its user
+      // deleted before this ran was not taken back by anyone but them, so nothing is said.
+      if (result.removed) {
+        await sendToDevices(userRef, removedMessageOf(pushData.type as 'url' | 'file', result.limit, result.sound));
+      }
       return;
     }
 
     // The push's id and what a device needs to fetch it, nothing it holds (notifications.ts).
-    const message = pushMessageOf(event.params.pushId, pushData);
-
-    // Send messages in batches (FCM allows up to 500 tokens per request)
-    const batchResponse = await messaging.sendEachForMulticast({
-      ...message,
-      tokens: tokens,
-    });
-
-    logger.info(
-      `Successfully sent notifications: ${batchResponse.successCount} successful, ${batchResponse.failureCount} failed`
-    );
-
-    // Handle any failed messages
-    if (batchResponse.failureCount > 0) {
-      batchResponse.responses.forEach((resp: SendResponse) => {
-        if (!resp.success) logger.error('Notification failed:', resp.error);
-      });
-
-      // Only the tokens FCM says are dead leave the document (notifications.ts); a
-      // failure about the message or the moment keeps them.
-      const dead = deadTokens(tokens, batchResponse.responses);
-      if (dead.length > 0) {
-        logger.info(`Removing ${dead.length} dead token${dead.length === 1 ? '' : 's'}`);
-
-        const validTokens = Array.isArray(userData?.fcmTokens)
-          ? userData.fcmTokens.filter((token: string) => !dead.includes(token))
-          : [];
-
-        await recipientTokensSnapshot.ref.update({
-          fcmTokens: validTokens,
-          fcmToken: null,
-        });
-      }
-    }
+    await sendToDevices(userRef, pushMessageOf(event.params.pushId, pushData));
   } catch (error) {
     logger.error('Error sending push notification:', error);
     throw error;
