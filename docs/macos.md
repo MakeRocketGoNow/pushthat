@@ -50,7 +50,9 @@ yet, so treat macOS 14 as the real minimum.
 
 ## How it differs from iOS
 
-1. **No push notifications.** FCM is not used on macOS, so the app refreshes by pulling.
+1. **No push notifications.** FCM is not used on macOS, so the list checks for new pushes
+   each time the app becomes active (`didBecomeActive`), and reloads from the toolbar's
+   Refresh button.
 2. **Keychain sharing by team.** The app and its extension share sign-in through
    `$(TeamIdentifierPrefix)com.makerocketgonow.pushthatapp` rather than an app group, which
    avoids the permission prompt an app group raises.
