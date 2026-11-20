@@ -14,10 +14,10 @@ import org.junit.Test
 class AgeGateTest {
 
     @Test
-    fun onlyABracketEndingUnderThirteenIsUnderTheMinimum() {
+    fun everyBracketUnderEighteenIsUnderTheMinimum() {
         assertEquals(true, AgeGate.underMinimum(0, 12))
-        assertEquals(false, AgeGate.underMinimum(13, 15))
-        assertEquals(false, AgeGate.underMinimum(16, 17))
+        assertEquals(true, AgeGate.underMinimum(13, 15))
+        assertEquals(true, AgeGate.underMinimum(16, 17))
         assertEquals(false, AgeGate.underMinimum(18, null))
     }
 
@@ -27,9 +27,9 @@ class AgeGateTest {
     }
 
     @Test
-    fun aRangeAcrossThirteenIsLetIn() {
+    fun aRangeAcrossEighteenIsLetIn() {
         // Not a bracket Play documents; a guess would lock out whoever it is wrong about.
-        assertEquals(false, AgeGate.underMinimum(10, 14))
+        assertEquals(false, AgeGate.underMinimum(16, 20))
     }
 
     private fun manager(result: AgeSignalsResult): FakeAgeSignalsManager = FakeAgeSignalsManager().apply {
@@ -39,8 +39,8 @@ class AgeGateTest {
     }
 
     @Test
-    fun aChildSignalBlocks() = runBlocking {
-        val result = AgeSignalsResult.builder().setAgeLower(0).setAgeUpper(12).build()
+    fun aTeenSignalBlocks() = runBlocking {
+        val result = AgeSignalsResult.builder().setAgeLower(16).setAgeUpper(17).build()
         assertEquals(true, AgeGate.ask(manager(result), null) {})
     }
 

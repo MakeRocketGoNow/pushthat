@@ -15,14 +15,15 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.tasks.await
 
 /**
- * PushThat is for people 13 and older. This asks Google Play for the age signal once per
+ * PushThat is for people 18 and older. This asks Google Play for the age signal once per
  * launch and keeps one fact from it: whether Play says the person using this phone is
- * under 13. California's Digital Age Assurance Act (AB 1043, Civil Code 1798.500 and on)
+ * under 18. California's Digital Age Assurance Act (AB 1043, Civil Code 1798.500 and on)
  * requires every app from a covered store to request the signal when it is downloaded and
  * launched, from January 2027, and treats what comes back as actual knowledge of the
- * user's age. Knowing a user is under 13 and carrying on collecting their email and pushes
- * is what COPPA forbids without verified parental consent, which PushThat has no way to
- * get, so such an install is signed out and stops at a screen that says why
+ * user's age. Knowing a user is under the age the Terms and Privacy Policy set, and carrying
+ * on regardless, would make both documents untrue (and under 13, would be collecting a
+ * child's email and pushes without the parental consent COPPA wants, which PushThat has no
+ * way to get). So such an install is signed out and stops at a screen that says why
  * (LoginActivity). Brazil makes sharing mandatory at the same time; the same check covers it.
  *
  * Only the verdict is stored, never the age range, the install ID or the approval date:
@@ -36,8 +37,12 @@ import kotlinx.coroutines.tasks.await
  * adults for Google's outages.
  */
 object AgeGate {
-    /** COPPA's line: under it, collecting anything needs a parent's verified consent. */
-    const val MINIMUM_AGE = 13
+    /**
+     * The age the Terms (Registration) require to form the contract, and the Privacy Policy
+     * says the app is not intended for anyone under. 13, COPPA's line, was tried first and
+     * contradicted both. A change here is a change to those documents too (apps/web).
+     */
+    const val MINIMUM_AGE = 18
 
     private const val TAG = "AgeGate"
     private const val PREFS = "age_gate"
@@ -82,7 +87,7 @@ object AgeGate {
      * access first, which is how its documentation orders the calls: that step is where Play
      * takes the user to verify an age it needs and does not have. Anywhere else it is
      * skipped, since there it puts up Play's "share your age?" prompt, and nothing in
-     * PushThat changes with the answer for anyone 13 or over. The signal is still read, as
+     * PushThat changes with the answer for anyone of age. The signal is still read, as
      * Play already shares it in some places (Texas, Australia, Canada) without the prompt.
      *
      * [activity] may be null only where [manager] will not report mandatory sharing (the
@@ -123,7 +128,7 @@ object AgeGate {
     /**
      * Play's brackets are closed ranges ([0, 12], [13, 15], [16, 17]) and an open top one
      * ([18, null]); both ends null means no age was shared. A range whose top is under
-     * [MINIMUM_AGE] is a child. A range that straddles it would be one Play has not
+     * [MINIMUM_AGE] is turned away. A range that straddles it would be one Play has not
      * documented, and is let in rather than guessed at.
      */
     internal fun underMinimum(ageLower: Int?, ageUpper: Int?): Boolean? = when {

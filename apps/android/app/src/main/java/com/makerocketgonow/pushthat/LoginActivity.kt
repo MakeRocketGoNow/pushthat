@@ -70,7 +70,7 @@ class LoginActivity : AppCompatActivity() {
         // goes here rather than waiting for the next sign-in to overwrite it.
         if (user == null) forgetSession(this)
 
-        // Play said the person using this phone is under 13 (AgeGate): the gate, and nothing
+        // Play said the person using this phone is under 18 (AgeGate): the gate, and nothing
         // past it. render signs out whoever is still signed in.
         val blocked = AgeGate.isBlocked(this)
 
@@ -208,7 +208,7 @@ class LoginActivity : AppCompatActivity() {
     }
 
     /**
-     * The screen for an install Play says belongs to someone under 13: what PushThat is for
+     * The screen for an install Play says belongs to someone under 18: what PushThat is for
      * and why it stops here, with nothing to press. Whoever is signed in is signed out, so
      * pushes stop arriving and nothing more is read or sent for them. Not while a sign-in or
      * registration is mid-step, since stopping one partway can leave an account's keys half

@@ -91,7 +91,7 @@ class ShareActivity : AppCompatActivity() {
         // the key (an install that updated while signed in) goes to LoginActivity's password
         // prompt rather than pushing: there is nothing to encrypt with, and a plaintext push
         // is what the encryption exists to stop. The share itself is not kept. Nor is it on an
-        // install Play says belongs to someone under 13, which goes to the gate (AgeGate). The
+        // install Play says belongs to someone under 18, which goes to the gate (AgeGate). The
         // share reads the last verdict rather than asking Play: it is not a launch of the app,
         // and waiting on Play would hold the share sheet open.
         val user = auth.currentUser

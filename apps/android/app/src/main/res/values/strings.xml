@@ -129,7 +129,7 @@
     <string name="url_copied">URL copied to clipboard</string>
     <string name="name_copied">Name copied</string>
     <string name="keys_changed">Your encryption keys were changed on another device while this one was setting up. Try again.</string>
-    <!-- The screen an install stops at when Google Play says its user is under 13 (AgeGate). Both take the age. -->
+    <!-- The screen an install stops at when Google Play says its user is under 18 (AgeGate). Both take the age. -->
     <string name="age_gate_title">PushThat is for people %1$d and older</string>
     <string name="age_gate_body">Google Play says the person using this phone is under %1$d, so PushThat can\'t be used here. If that\'s not right, the age can be corrected in the Google account\'s settings, and PushThat checks again each time it opens.</string>
 </resources>

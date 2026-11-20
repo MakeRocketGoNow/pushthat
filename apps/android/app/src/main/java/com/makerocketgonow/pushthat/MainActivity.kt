@@ -156,7 +156,7 @@ class MainActivity : AppCompatActivity() {
         // updated while signed in) goes to LoginActivity's password prompt before the list,
         // and one with a recovery key not yet confirmed to its recovery key screen, unless
         // Settings is showing that key here (this is a rotation, not a new process). An install
-        // Play says belongs to someone under 13 goes to LoginActivity's gate (AgeGate).
+        // Play says belongs to someone under 18 goes to LoginActivity's gate (AgeGate).
         keySettings = ViewModelProvider(this)[KeySettingsViewModel::class.java]
         val settingsShowKey = keySettings.state.value.let {
             it is KeySettingsViewModel.State.RecoveryKey || it is KeySettingsViewModel.State.Working
@@ -194,7 +194,7 @@ class MainActivity : AppCompatActivity() {
             loadPushRecords(true)
         }
         // This launch's age signal, for a launch that came straight here signed in (see
-        // LoginActivity). Under 13, the list goes and the gate takes its place.
+        // LoginActivity). Under 18, the list goes and the gate takes its place.
         lifecycleScope.launch {
             if (AgeGate.checkOnce(this@MainActivity)) {
                 startActivity(Intent(this@MainActivity, LoginActivity::class.java))
