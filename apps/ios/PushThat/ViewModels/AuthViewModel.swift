@@ -556,8 +556,8 @@ class AuthViewModel: ObservableObject {
     }
 
     /// Signs out a device at the age gate. Notifications are stopped again here, after the
-    /// gate already did so, because a sign-in that finished after the gate shut may have
-    /// written a fresh token.
+    /// gate already did so: neither token writer adds a token while the gate is shut, so this
+    /// is a second line, for a token written in the moment before the verdict was stored.
     func signOutAtAgeGate() {
         Self.stopNotificationsAtAgeGate()
         signOut()
@@ -730,7 +730,8 @@ class AuthViewModel: ObservableObject {
     }
 
     private func updateFCMToken() async {
-        guard let userId = auth.currentUser?.uid else { return }
+        // Not at the age gate, as in AppDelegate's copy.
+        guard !AccountKeyStore.isUnderMinimumAge, let userId = auth.currentUser?.uid else { return }
 
         do {
             let token = try await Messaging.messaging().token()

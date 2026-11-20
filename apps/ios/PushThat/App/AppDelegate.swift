@@ -146,7 +146,9 @@ extension AppDelegate: MessagingDelegate {
     }
 
     private func updateFCMToken(_ token: String) async {
-        guard let userId = Auth.auth().currentUser?.uid else { return }
+        // Not at the age gate: deleting the token mints a fresh one, which would otherwise be
+        // written straight back while a session lasts (a sign-out that failed, say).
+        guard !AccountKeyStore.isUnderMinimumAge, let userId = Auth.auth().currentUser?.uid else { return }
 
         do {
             try await Firestore.firestore()
