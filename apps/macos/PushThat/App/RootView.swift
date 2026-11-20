@@ -2,10 +2,14 @@ import SwiftUI
 
 struct RootView: View {
     @EnvironmentObject var authViewModel: AuthViewModel
+    @EnvironmentObject var ageGate: AgeGate
 
     var body: some View {
         Group {
-            if !authViewModel.isAuthenticated {
+            if ageGate.isBlocked {
+                // The gate, and nothing past it (AgeGate).
+                AgeGateView()
+            } else if !authViewModel.isAuthenticated {
                 LoginView()
             } else {
                 // A session is not enough to show pushes: the device also needs the
@@ -22,6 +26,7 @@ struct RootView: View {
                 }
             }
         }
+        .animation(.easeInOut, value: ageGate.isBlocked)
         .animation(.easeInOut, value: authViewModel.isAuthenticated)
         .animation(.easeInOut, value: authViewModel.keyGate)
         // Here rather than on LoginView, so that the unlock and recovery screens show the
@@ -38,4 +43,5 @@ struct RootView: View {
 #Preview {
     RootView()
         .environmentObject(AuthViewModel())
+        .environmentObject(AgeGate())
 }

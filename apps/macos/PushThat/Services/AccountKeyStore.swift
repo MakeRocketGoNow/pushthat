@@ -32,6 +32,7 @@ enum AccountKeyStore {
     private static let service = "com.makerocketgonow.pushthat.e2ee"
     private static let accountKeyItem = "accountKey"
     private static let deviceIdItem = "deviceId"
+    private static let ageGateItem = "ageGate"
 
     enum StoreError: LocalizedError {
         case keychain(OSStatus)
@@ -122,6 +123,20 @@ enum AccountKeyStore {
     /// On sign-out. The device id stays: it belongs to the install, not the account.
     static func clearAccountKey() {
         SecItemDelete(query(accountKeyItem) as CFDictionary)
+    }
+
+    /// `AgeGate`'s verdict: whether the system last said the person using this device is
+    /// under `AgeGate.minimumAge`. One byte, never the age range. Here rather than in the
+    /// app's defaults so that the share extension can read it: an app group would do that on
+    /// iOS, but the Mac app has none (docs/macos.md). `ThisDeviceOnly`, since it is about
+    /// whoever uses this device and a backup restored onto another should not carry it.
+    static var isUnderMinimumAge: Bool {
+        read(ageGateItem) == Data([1])
+    }
+
+    /// Not thrown: a verdict that could not be kept is one the next launch asks for again.
+    static func setUnderMinimumAge(_ underMinimum: Bool) {
+        try? write(ageGateItem, Data([underMinimum ? 1 : 0]), accessible: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly)
     }
 
     /// This install's id, made on first use.
