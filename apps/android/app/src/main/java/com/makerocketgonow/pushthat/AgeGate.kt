@@ -86,7 +86,10 @@ object AgeGate {
         // cancelled instead, the second asks for itself.
         if (checkedThisProcess) return isBlocked(activity)
         val manager = AgeSignalsManagerFactory.create(activity.applicationContext)
-        val answer = ask(manager, activity)
+        val answer = ask(manager, requestAccess = {
+            val request = AgeSignalsAccessRequest.builder().setActivity(activity).build()
+            manager.requestAgeSignalsAccess(request).await().ageSignalsStatus()
+        })
         // Marked only once Play has answered (or failed to): a check cancelled because the
         // activity went (a rotation) runs again from the next one, rather than never this launch.
         checkedThisProcess = true
@@ -107,21 +110,21 @@ object AgeGate {
      * PushThat changes with the answer for anyone of age. The signal is still read, as
      * Play already shares it in some places (Texas, Australia, Canada) without the prompt.
      *
-     * [activity] may be null only where [manager] will not report mandatory sharing (the
-     * tests): the access request has to have an activity to show Play's prompt over. [log]
-     * is replaceable for the same reason: `android.util.Log` throws in a JVM unit test.
+     * [requestAccess] is the access request, passed in because it needs an activity to show
+     * Play's prompt over, which a JVM unit test has none of; it returns Play's
+     * `AgeSignalsStatus`. [log] is replaceable for the same reason: `android.util.Log` throws
+     * in a JVM unit test.
      */
     internal suspend fun ask(
         manager: AgeSignalsManager,
-        activity: Activity?,
+        requestAccess: suspend () -> Int?,
         log: (String) -> Unit = { Log.w(TAG, it) },
     ): Boolean? = try {
         val features = manager.getApplicableAgeFeatures(ApplicableAgeFeaturesRequest.builder().build()).await()
         val shared = if (ApplicableAgeFeature.MANDATORY_SHARING in features.features()) {
-            val request = AgeSignalsAccessRequest.builder().setActivity(requireNotNull(activity)).build()
             // NOT_SHARED or VERIFICATION_REQUIRED: no age to act on. Verifying happens in
             // the Play Store, not here, so there is nothing for PushThat to show for it.
-            manager.requestAgeSignalsAccess(request).await().ageSignalsStatus() == AgeSignalsStatus.SHARED
+            requestAccess() == AgeSignalsStatus.SHARED
         } else {
             true
         }

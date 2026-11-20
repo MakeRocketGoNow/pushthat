@@ -4,6 +4,8 @@ import com.google.android.play.agesignals.AgeSignalsException
 import com.google.android.play.agesignals.AgeSignalsResult
 import com.google.android.play.agesignals.ApplicableAgeFeaturesResult
 import com.google.android.play.agesignals.model.AgeSignalsErrorCode
+import com.google.android.play.agesignals.model.AgeSignalsStatus
+import com.google.android.play.agesignals.model.ApplicableAgeFeature
 import com.google.android.play.agesignals.testing.FakeAgeSignalsManager
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
@@ -32,8 +34,36 @@ class AgeGateTest {
         assertEquals(false, AgeGate.underMinimum(16, 20))
     }
 
+    private val noAccessRequest: suspend () -> Int? = { error("access requested without mandatory sharing") }
+
+    private fun mandatory(result: AgeSignalsResult): FakeAgeSignalsManager = FakeAgeSignalsManager().apply {
+        setNextApplicableAgeFeaturesResult(
+            ApplicableAgeFeaturesResult.builder().setFeatures(setOf(ApplicableAgeFeature.MANDATORY_SHARING)).build(),
+        )
+        setNextAgeSignalsResult(result)
+    }
+
+    private val teen = AgeSignalsResult.builder().setAgeLower(16).setAgeUpper(17).build()
+
+    @Test
+    fun whereSharingIsMandatoryASharedAgeIsRead() = runBlocking {
+        assertEquals(true, AgeGate.ask(mandatory(teen), { AgeSignalsStatus.SHARED }) {})
+    }
+
+    @Test
+    fun whereSharingIsMandatoryNoAccessIsNoAnswer() = runBlocking {
+        assertNull(AgeGate.ask(mandatory(teen), { AgeSignalsStatus.NOT_SHARED }) {})
+        assertNull(AgeGate.ask(mandatory(teen), { AgeSignalsStatus.VERIFICATION_REQUIRED }) {})
+    }
+
+    @Test
+    fun aFailedAccessRequestIsNoAnswer() = runBlocking {
+        val failing: suspend () -> Int? = { throw AgeSignalsException(AgeSignalsErrorCode.NETWORK_ERROR) }
+        assertNull(AgeGate.ask(mandatory(teen), failing) {})
+    }
+
     private fun manager(result: AgeSignalsResult): FakeAgeSignalsManager = FakeAgeSignalsManager().apply {
-        // No mandatory sharing, so ask() never needs an activity for Play's prompt.
+        // No mandatory sharing: Play is not asked for access.
         setNextApplicableAgeFeaturesResult(ApplicableAgeFeaturesResult.builder().setFeatures(emptySet()).build())
         setNextAgeSignalsResult(result)
     }
@@ -41,13 +71,13 @@ class AgeGateTest {
     @Test
     fun aTeenSignalBlocks() = runBlocking {
         val result = AgeSignalsResult.builder().setAgeLower(16).setAgeUpper(17).build()
-        assertEquals(true, AgeGate.ask(manager(result), null) {})
+        assertEquals(true, AgeGate.ask(manager(result), noAccessRequest) {})
     }
 
     @Test
     fun anAdultSignalDoesNotBlock() = runBlocking {
         val result = AgeSignalsResult.builder().setAgeLower(18).build()
-        assertEquals(false, AgeGate.ask(manager(result), null) {})
+        assertEquals(false, AgeGate.ask(manager(result), noAccessRequest) {})
     }
 
     @Test
@@ -55,6 +85,6 @@ class AgeGateTest {
         val manager = FakeAgeSignalsManager().apply {
             setNextApplicableAgeFeaturesException(AgeSignalsException(AgeSignalsErrorCode.PLAY_STORE_NOT_FOUND))
         }
-        assertNull(AgeGate.ask(manager, null) {})
+        assertNull(AgeGate.ask(manager, noAccessRequest) {})
     }
 }
