@@ -17,10 +17,12 @@ import DeclaredAgeRange
 /// how it was declared: nothing else in the app needs them, and nothing about them leaves the
 /// device.
 ///
-/// Every failure lets the person in: an OS before 26.2, the API erroring, the person declining
-/// to share. The law asks for the request, not for refusing service when no answer comes, and
-/// a gate that shut on errors would lock adults out for reasons that have nothing to do with
-/// their age.
+/// Every failure lets in a device that is not already blocked: an OS before 26.2, the API
+/// erroring, the person declining to share. The law asks for the request, not for refusing
+/// service when no answer comes, and a gate that shut on errors would lock adults out for
+/// reasons that have nothing to do with their age. A blocked device keeps its verdict through
+/// the same failures, until the system shares an age of 18 or over: the last answer is still
+/// what the app knows about this person's age, and an error does not unknow it.
 ///
 /// This file is the same in `apps/ios` and `apps/macos`.
 @MainActor
