@@ -54,6 +54,13 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
     func userNotificationCenter(_ center: UNUserNotificationCenter,
                                 willPresent notification: UNNotification,
                                 withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
+        // A device at the age gate shows nothing that still reaches it before its token is
+        // gone (AgeGate, AuthViewModel.stopNotificationsAtAgeGate).
+        guard !AccountKeyStore.isUnderMinimumAge else {
+            completionHandler([])
+            return
+        }
+
         let userInfo = notification.request.content.userInfo
         if userInfo["keyVersion"] != nil, let deviceId = userInfo["deviceId"] as? String,
            deviceId == (try? AccountKeyStore.deviceId()) {

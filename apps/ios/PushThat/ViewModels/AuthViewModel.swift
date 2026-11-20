@@ -538,16 +538,28 @@ class AuthViewModel: ObservableObject {
         signOut()
     }
 
-    /// Signs out a device the system says belongs to someone under 18 (AgeGate). The plain
-    /// sign-out leaves this install's notification token on the account, so the account's
-    /// pushes would go on arriving (as "New push", or in full in the older plaintext shape),
-    /// and the notifications already shown keep their decrypted titles and links, which still
-    /// open on a tap. So the token goes, as for a deleted account, and the shown
+    /// Stops notifications on a device the system says belongs to someone under 18 (AgeGate).
+    /// A plain sign-out leaves this install's notification token on the account, so the
+    /// account's pushes would go on arriving (as "New push", or in full in the older plaintext
+    /// shape), and the notifications already shown keep their decrypted titles and links,
+    /// which still open on a tap. So the token goes, as for a deleted account, and the shown
     /// notifications with it. The account itself is left alone: the age is about whoever uses
     /// this device, who may not be the account's owner. The Android gate does the same.
-    func signOutAtAgeGate() {
+    ///
+    /// Run whenever the gate is shut, signed in or not, and again at each launch while it
+    /// stays shut (`PushThatApp`), rather than only from the gate's sign-out: a device signed
+    /// out earlier still has its token on the account, and a deletion that failed offline is
+    /// not retried otherwise. Not waited for, as it asks the network.
+    static func stopNotificationsAtAgeGate() {
         Messaging.messaging().deleteToken { _ in }
         UNUserNotificationCenter.current().removeAllDeliveredNotifications()
+    }
+
+    /// Signs out a device at the age gate. Notifications are stopped again here, after the
+    /// gate already did so, because a sign-in that finished after the gate shut may have
+    /// written a fresh token.
+    func signOutAtAgeGate() {
+        Self.stopNotificationsAtAgeGate()
         signOut()
     }
 

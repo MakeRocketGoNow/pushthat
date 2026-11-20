@@ -531,10 +531,14 @@ class AuthViewModel: ObservableObject {
         signOut()
     }
 
-    /// Signs out a device the system says belongs to someone under 18 (AgeGate). The iOS
-    /// app also deletes its notification token and clears the shown notifications here;
-    /// the Mac app links no FirebaseMessaging and shows no notifications, so the sign-out
-    /// is all there is.
+    /// On iOS, deletes the notification token and clears the shown notifications of a device
+    /// at the age gate (AgeGate). The Mac app links no FirebaseMessaging and shows no
+    /// notifications, so there is nothing to stop; kept so that `PushThatApp` is the same in
+    /// both forks.
+    static func stopNotificationsAtAgeGate() {}
+
+    /// Signs out a device the system says belongs to someone under 18 (AgeGate). On iOS this
+    /// also stops notifications again; here the sign-out is all there is.
     func signOutAtAgeGate() {
         signOut()
     }

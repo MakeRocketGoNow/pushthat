@@ -35,6 +35,19 @@ final class NotificationService: UNNotificationServiceExtension {
         self.contentHandler = contentHandler
         lock.unlock()
 
+        // A device at the age gate (AgeGate in the app) is shown nothing of a push that
+        // reaches it before its token is gone: "New push" with no link, which this extension
+        // cannot drop without Apple's filtering entitlement.
+        if AccountKeyStore.isUnderMinimumAge {
+            let blank = (request.content.mutableCopy() as? UNMutableNotificationContent) ?? UNMutableNotificationContent()
+            blank.title = Self.fallbackTitle
+            blank.subtitle = ""
+            blank.body = ""
+            blank.userInfo = [:]
+            deliver(blank)
+            return
+        }
+
         let userInfo = request.content.userInfo
         // The plaintext shape a push made before encryption still sends carries its own
         // title and URL, and is shown as it came.
