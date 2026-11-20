@@ -3,6 +3,7 @@ import FirebaseAuth
 import FirebaseAnalytics
 import FirebaseFirestore
 import FirebaseMessaging
+import UserNotifications
 
 @MainActor
 class AuthViewModel: ObservableObject {
@@ -537,6 +538,31 @@ class AuthViewModel: ObservableObject {
         signOut()
     }
 
+    /// Stops notifications on a device the system says belongs to someone under 18 (AgeGate).
+    /// A plain sign-out leaves this install's notification token on the account, so the
+    /// account's pushes would go on arriving (as "New push", for the extension to decrypt),
+    /// and the notifications already shown keep their decrypted titles and links, which still
+    /// open on a tap. So the token goes, as for a deleted account, and the shown
+    /// notifications with it. The account itself is left alone: the age is about whoever uses
+    /// this device, who may not be the account's owner. The Android gate does the same.
+    ///
+    /// Run whenever the gate is shut, signed in or not, and again at each launch while it
+    /// stays shut (`PushThatApp`), rather than only from the gate's sign-out: a device signed
+    /// out earlier still has its token on the account, and a deletion that failed offline is
+    /// not retried otherwise. Not waited for, as it asks the network.
+    static func stopNotificationsAtAgeGate() {
+        Messaging.messaging().deleteToken { _ in }
+        UNUserNotificationCenter.current().removeAllDeliveredNotifications()
+    }
+
+    /// Signs out a device at the age gate. Notifications are stopped again here, after the
+    /// gate already did so: neither token writer adds a token while the gate is shut, so this
+    /// is a second line, for a token written in the moment before the verdict was stored.
+    func signOutAtAgeGate() {
+        Self.stopNotificationsAtAgeGate()
+        signOut()
+    }
+
     /// Firebase saying the signed-in account no longer exists. `revokedMeansGone` says
     /// whether a revoked session counts: it does straight after this deletion's own
     /// sign-in, and it must not for a session of unknown age, which a password change or
@@ -704,7 +730,8 @@ class AuthViewModel: ObservableObject {
     }
 
     private func updateFCMToken() async {
-        guard let userId = auth.currentUser?.uid else { return }
+        // Not at the age gate, as in AppDelegate's copy.
+        guard !AccountKeyStore.isUnderMinimumAge, let userId = auth.currentUser?.uid else { return }
 
         do {
             let token = try await Messaging.messaging().token()

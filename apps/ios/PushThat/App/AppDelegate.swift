@@ -54,6 +54,13 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
     func userNotificationCenter(_ center: UNUserNotificationCenter,
                                 willPresent notification: UNNotification,
                                 withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
+        // A device at the age gate shows nothing that still reaches it before its token is
+        // gone (AgeGate, AuthViewModel.stopNotificationsAtAgeGate).
+        guard !AccountKeyStore.isUnderMinimumAge else {
+            completionHandler([])
+            return
+        }
+
         let userInfo = notification.request.content.userInfo
         if userInfo["keyVersion"] != nil, let deviceId = userInfo["deviceId"] as? String,
            deviceId == (try? AccountKeyStore.deviceId()) {
@@ -75,6 +82,14 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
                                 didReceive response: UNNotificationResponse,
                                 withCompletionHandler completionHandler: @escaping () -> Void) {
         let userInfo = response.notification.request.content.userInfo
+
+        // A device at the age gate opens nothing from a notification. The gate clears the
+        // shown ones when it signs out, but a tap can land first: on a launch from the tap,
+        // before the gate's sign-out has run.
+        guard !AccountKeyStore.isUnderMinimumAge else {
+            completionHandler()
+            return
+        }
 
         if let urlString = userInfo["url"] as? String,
            let url = URL(string: urlString) {
@@ -131,7 +146,9 @@ extension AppDelegate: MessagingDelegate {
     }
 
     private func updateFCMToken(_ token: String) async {
-        guard let userId = Auth.auth().currentUser?.uid else { return }
+        // Not at the age gate: deleting the token mints a fresh one, which would otherwise be
+        // written straight back while a session lasts (a sign-out that failed, say).
+        guard !AccountKeyStore.isUnderMinimumAge, let userId = Auth.auth().currentUser?.uid else { return }
 
         do {
             try await Firestore.firestore()

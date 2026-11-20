@@ -116,6 +116,16 @@ class ShareViewController: NSViewController {
             return
         }
 
+        // A device the system says belongs to someone under 18 (AgeGate in the app) takes no
+        // shares. The extension reads the app's last verdict rather than asking itself: a
+        // share is not a launch of the app, and waiting on the system would hold the share
+        // sheet open. Checked before the session, since the app signs out such a device and
+        // this says why. The number is AgeGate.minimumAge, which this target does not build.
+        guard !AccountKeyStore.isUnderMinimumAge else {
+            completeWithError("PushThat is for people 18 and older.")
+            return
+        }
+
         // Check if user is authenticated
         guard let userId = Auth.auth().currentUser?.uid else {
             completeWithError("Please sign in to PushThat first")

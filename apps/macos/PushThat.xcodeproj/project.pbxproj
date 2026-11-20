@@ -58,6 +58,9 @@
 		A1000022226B52E900000011 /* PushDocuments.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000022226B52E900000002 /* PushDocuments.swift */; };
 		A1000022226B52E900000012 /* PushMigration.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000022226B52E900000003 /* PushMigration.swift */; };
 		A1000022226B52E900000013 /* PushFileOpener.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000022226B52E900000004 /* PushFileOpener.swift */; };
+		A1000024226B52E900000001 /* AgeGate.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000024226B52E900000002 /* AgeGate.swift */; };
+		A1000024226B52E900000003 /* AgeGate.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000024226B52E900000002 /* AgeGate.swift */; };
+		A1000024226B52E900000004 /* AgeGateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000024226B52E900000005 /* AgeGateTests.swift */; };
 		A1000022226B52E900000020 /* E2eeCrypto.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000020226B52E900000002 /* E2eeCrypto.swift */; };
 		A1000022226B52E900000021 /* AccountKeyStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000020226B52E900000005 /* AccountKeyStore.swift */; };
 		A1000022226B52E900000022 /* PushContent.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1000022226B52E900000001 /* PushContent.swift */; };
@@ -137,6 +140,8 @@
 		A1000022226B52E900000002 /* PushDocuments.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PushDocuments.swift; sourceTree = "<group>"; };
 		A1000022226B52E900000003 /* PushMigration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PushMigration.swift; sourceTree = "<group>"; };
 		A1000022226B52E900000004 /* PushFileOpener.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PushFileOpener.swift; sourceTree = "<group>"; };
+		A1000024226B52E900000002 /* AgeGate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgeGate.swift; sourceTree = "<group>"; };
+		A1000024226B52E900000005 /* AgeGateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgeGateTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -275,6 +280,7 @@
 				A1000022226B52E900000002 /* PushDocuments.swift */,
 				A1000022226B52E900000003 /* PushMigration.swift */,
 				A1000022226B52E900000004 /* PushFileOpener.swift */,
+				A1000024226B52E900000002 /* AgeGate.swift */,
 				A1000020226B52E900000011 /* AccountKeyMaps.swift */,
 			);
 			path = Services;
@@ -304,6 +310,7 @@
 			children = (
 				A1000021226B52E900000002 /* E2eeVectorTests.swift */,
 				A1000021226B52E90000000E /* AccountKeyMapsTests.swift */,
+				A1000024226B52E900000005 /* AgeGateTests.swift */,
 				A1000021226B52E900000004 /* vectors.json */,
 			);
 			path = PushThatTests;
@@ -485,6 +492,7 @@
 				A1000022226B52E900000011 /* PushDocuments.swift in Sources */,
 				A1000022226B52E900000012 /* PushMigration.swift in Sources */,
 				A1000022226B52E900000013 /* PushFileOpener.swift in Sources */,
+				A1000024226B52E900000001 /* AgeGate.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -513,6 +521,8 @@
 				A1000022226B52E900000032 /* AccountKeyStore.swift in Sources */,
 				A1000020226B52E900000012 /* AccountKeyMaps.swift in Sources */,
 				A1000021226B52E90000000F /* AccountKeyMapsTests.swift in Sources */,
+				A1000024226B52E900000003 /* AgeGate.swift in Sources */,
+				A1000024226B52E900000004 /* AgeGateTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -581,7 +591,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
-				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
@@ -640,7 +650,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
-				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				SDKROOT = macosx;
