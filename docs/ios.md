@@ -46,10 +46,11 @@ the Firestore and Storage rules are what protect it.
 
 PushThat is for people 18 and older, and California's AB 1043 has every app ask the system
 for the user's age at launch from January 2027. `Services/AgeGate.swift` asks Apple's
-Declared Age Range API once per launch, where Apple says the age laws apply to the user (iOS
-26.2 and later; older systems are not asked). A device the system says is under 18 is signed
-out, its notification token and shown notifications cleared, and it stops at a screen that
-says why; the share extension turns shares away. Only that verdict is kept, in the shared
+Declared Age Range API once per launch (and again on each return to the app while a device
+is blocked), where Apple says the age laws apply to the user (iOS 26.2 and later; older
+systems are not asked). A device the system says is under 18 is signed out, its notification
+token deleted and its notifications cleared and blanked, and it stops at a screen that says
+why; the share extension turns shares away. Only that verdict is kept, in the shared
 Keychain, never the age range. Every failure lets a device that is not already blocked in.
 The Mac app and the Android app do the same.
 
