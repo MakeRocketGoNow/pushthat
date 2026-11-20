@@ -32,6 +32,12 @@ import kotlinx.coroutines.tasks.await
  * Play's terms limit the signal to age-appropriate experiences and legal compliance, and
  * nothing else in the app needs it. Nothing about it leaves the phone.
  *
+ * So the gate closes this install, not the account. The account, its email and its pushes
+ * stay on the server, usable from the web and the extension: the signal describes whoever
+ * uses this phone, which may not be the account's owner (a parent signed in on a child's
+ * phone), and sending it to the server would be collecting it. Acting on the account itself
+ * would be a separate decision, and one for whoever owns the legal side.
+ *
  * Every failure lets the person in. The API is beta, Play is missing on some phones (a
  * sideloaded build, a device without Play services), and outside the regions where Play
  * shares the signal there is usually nothing to read. The law asks for the request, not
