@@ -10,6 +10,7 @@ import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.app.NotificationManagerCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.isVisible
@@ -21,12 +22,15 @@ import androidx.lifecycle.repeatOnLifecycle
 import com.google.firebase.Firebase
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.auth
+import com.google.firebase.messaging.FirebaseMessaging
 import com.makerocketgonow.pushthat.LoginViewModel.Screen
 import com.makerocketgonow.pushthat.e2ee.AccountKeyStore
 import com.makerocketgonow.pushthat.e2ee.MIN_NEW_PASSWORD_LENGTH
 import com.makerocketgonow.pushthat.e2ee.forgetSession
 import com.makerocketgonow.pushthat.e2ee.signOut
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.tasks.await
+import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * Everything before the push list: signing in or registering, the recovery key prompt for
@@ -70,6 +74,10 @@ class LoginActivity : AppCompatActivity() {
         // goes here rather than waiting for the next sign-in to overwrite it.
         if (user == null) forgetSession(this)
 
+        // Play said the person using this phone is under 18 (AgeGate): the gate, and nothing
+        // past it. render signs out whoever is still signed in.
+        val blocked = AgeGate.isBlocked(this)
+
         // Signed in with the key here: straight to the list. Signed in without it (an install
         // that updated while signed in, or a sign-in that stopped partway), the form asks
         // for the password once instead; see unlockEmail. Signed in with a recovery key not
@@ -77,7 +85,7 @@ class LoginActivity : AppCompatActivity() {
         // first, since nothing else will ever show it again. Only from an idle form: after a
         // rotation the view model is mid-step or already past it.
         val idle = viewModel.state.value.let { it.screen == Screen.Form && it.working == null }
-        if (user != null && idle) {
+        if (user != null && idle && !blocked) {
             if (AccountKeyStore.hasUnconfirmedRecoveryKey(this, user.uid)) {
                 viewModel.showUnconfirmedRecoveryKey(user.uid)
             } else if (AccountKeyStore.hasKey(this, user.uid)) {
@@ -129,9 +137,34 @@ class LoginActivity : AppCompatActivity() {
                 viewModel.state.collect { render(it) }
             }
         }
+
+    }
+
+    /**
+     * This launch's age signal, when the launch stops here. A launch that goes straight to the
+     * list asks from MainActivity instead, since this activity is finishing by then. Rendered
+     * either way: the answer can close the gate as well as open it.
+     *
+     * From onStart rather than onCreate so that coming back to the gate asks again. The gate
+     * tells someone Play has misjudged to correct their age and return, and returning from
+     * Recents to a process still alive is no new launch; without this they would see the gate
+     * until Android ended the process.
+     */
+    override fun onStart() {
+        super.onStart()
+        if (isFinishing) return
+        AgeGate.askAgainIfBlocked(this)
+        lifecycleScope.launch {
+            AgeGate.checkOnce(this@LoginActivity)
+            render(viewModel.state.value)
+        }
     }
 
     private fun render(state: LoginViewModel.State) {
+        if (AgeGate.isBlocked(this)) {
+            renderAgeGate(state)
+            return
+        }
         val screen = state.screen
         if (screen == Screen.Done) {
             startMainActivity()
@@ -189,6 +222,44 @@ class LoginActivity : AppCompatActivity() {
 
         errorText.isVisible = state.error != null
         errorText.text = state.error
+    }
+
+    /**
+     * The screen for an install Play says belongs to someone under 18: what PushThat is for
+     * and why it stops here, with nothing to press. Whoever is signed in is signed out, and
+     * this install's notification token is deleted: signing out alone leaves the token on the
+     * account, and PushThatMessagingService shows a notification for a push with no session
+     * at all. (The service also drops every message while the gate is shut, for a token that
+     * survives this, and onNewToken registers none.) Not while a sign-in or registration is
+     * mid-step, since stopping one partway can leave an account's keys half written; it signs
+     * out on the render that follows the step, or at the next launch.
+     */
+    private fun renderAgeGate(state: LoginViewModel.State) {
+        if (state.working == null && auth.currentUser != null) {
+            // Bounded, as in AccountDeletion: Firebase is asked over the network, and nothing
+            // waits on the answer.
+            lifecycleScope.launch {
+                runCatching { withTimeoutOrNull(5_000) { FirebaseMessaging.getInstance().deleteToken().await() } }
+            }
+            // Pushes shown before the gate closed would still open their links from the tray:
+            // each notification's intent opens the link itself, not the list.
+            NotificationManagerCompat.from(this).cancelAll()
+            signOut(this, auth)
+        }
+
+        findViewById<View>(R.id.logoImage).isVisible = true
+        titleText.isVisible = true
+        titleText.text = getString(R.string.age_gate_title, AgeGate.MINIMUM_AGE)
+        bodyText.isVisible = true
+        bodyText.text = getString(R.string.age_gate_body, AgeGate.MINIMUM_AGE)
+        for (
+            view in listOf(
+                accountEmailText, emailInput, passwordInput, passwordRuleText, forgotPasswordText,
+                recoveryInput, recoveryKeyView, errorText, progress, primaryButton, secondaryButton,
+            )
+        ) {
+            view.isVisible = false
+        }
     }
 
     /**

@@ -42,11 +42,17 @@ class PushThatMessagingService : FirebaseMessagingService() {
 
     override fun onNewToken(token: String) {
         Log.d(TAG, "Refreshed token: $token")
+        // Not for an install at the age gate, which has deleted its token (LoginActivity).
+        if (AgeGate.isBlocked(this)) return
         updateUserFcmToken(token)
     }
 
     override fun onMessageReceived(remoteMessage: RemoteMessage) {
         Log.d(TAG, "From: ${remoteMessage.from}")
+
+        // An install at the age gate shows nothing: a token the gate's delete did not reach
+        // still has the server sending here, and a push is shown even with no session.
+        if (AgeGate.isBlocked(this)) return
 
         // A push the server took back at the month's limit (functions/src/notifications.ts,
         // removedMessageOf). It names no push, so it is checked before anything that reads one.
