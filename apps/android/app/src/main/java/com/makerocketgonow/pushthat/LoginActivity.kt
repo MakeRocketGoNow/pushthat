@@ -70,6 +70,10 @@ class LoginActivity : AppCompatActivity() {
         // goes here rather than waiting for the next sign-in to overwrite it.
         if (user == null) forgetSession(this)
 
+        // Play said the person using this phone is under 13 (AgeGate): the gate, and nothing
+        // past it. render signs out whoever is still signed in.
+        val blocked = AgeGate.isBlocked(this)
+
         // Signed in with the key here: straight to the list. Signed in without it (an install
         // that updated while signed in, or a sign-in that stopped partway), the form asks
         // for the password once instead; see unlockEmail. Signed in with a recovery key not
@@ -77,7 +81,7 @@ class LoginActivity : AppCompatActivity() {
         // first, since nothing else will ever show it again. Only from an idle form: after a
         // rotation the view model is mid-step or already past it.
         val idle = viewModel.state.value.let { it.screen == Screen.Form && it.working == null }
-        if (user != null && idle) {
+        if (user != null && idle && !blocked) {
             if (AccountKeyStore.hasUnconfirmedRecoveryKey(this, user.uid)) {
                 viewModel.showUnconfirmedRecoveryKey(user.uid)
             } else if (AccountKeyStore.hasKey(this, user.uid)) {
@@ -129,9 +133,21 @@ class LoginActivity : AppCompatActivity() {
                 viewModel.state.collect { render(it) }
             }
         }
+
+        // This launch's age signal, when the launch stops here. A launch that goes straight to
+        // the list asks from MainActivity instead, since this activity is finishing by then.
+        // Rendered either way: the answer can close the gate as well as open it.
+        lifecycleScope.launch {
+            AgeGate.checkOnce(this@LoginActivity)
+            render(viewModel.state.value)
+        }
     }
 
     private fun render(state: LoginViewModel.State) {
+        if (AgeGate.isBlocked(this)) {
+            renderAgeGate(state)
+            return
+        }
         val screen = state.screen
         if (screen == Screen.Done) {
             startMainActivity()
@@ -189,6 +205,31 @@ class LoginActivity : AppCompatActivity() {
 
         errorText.isVisible = state.error != null
         errorText.text = state.error
+    }
+
+    /**
+     * The screen for an install Play says belongs to someone under 13: what PushThat is for
+     * and why it stops here, with nothing to press. Whoever is signed in is signed out, so
+     * pushes stop arriving and nothing more is read or sent for them. Not while a sign-in or
+     * registration is mid-step, since stopping one partway can leave an account's keys half
+     * written; it signs out on the render that follows the step, or at the next launch.
+     */
+    private fun renderAgeGate(state: LoginViewModel.State) {
+        if (state.working == null && auth.currentUser != null) signOut(this, auth)
+
+        findViewById<View>(R.id.logoImage).isVisible = true
+        titleText.isVisible = true
+        titleText.text = getString(R.string.age_gate_title, AgeGate.MINIMUM_AGE)
+        bodyText.isVisible = true
+        bodyText.text = getString(R.string.age_gate_body, AgeGate.MINIMUM_AGE)
+        for (
+            view in listOf(
+                accountEmailText, emailInput, passwordInput, passwordRuleText, forgotPasswordText,
+                recoveryInput, recoveryKeyView, errorText, progress, primaryButton, secondaryButton,
+            )
+        ) {
+            view.isVisible = false
+        }
     }
 
     /**

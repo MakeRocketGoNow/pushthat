@@ -122,6 +122,11 @@ dependencies {
     implementation("com.google.firebase:firebase-messaging")
     implementation("androidx.swiperefreshlayout:swiperefreshlayout:1.2.0")
 
+    // Play's age signal, which California's AB 1043 has every app request at launch from
+    // January 2027 (AgeGate). 0.0.6 rather than the 0.0.4 Play's emails name: 0.0.4 has no
+    // getApplicableAgeFeatures, the call that says whether sharing is mandatory for this user. The jar also carries FakeAgeSignalsManager, which the unit tests use.
+    implementation("com.google.android.play:age-signals:0.0.6")
+
     // Used directly by our own code and layouts. These arrive transitively via
     // appcompat/material/firebase anyway, but relying on that means a dependency
     // update elsewhere can silently take them away.
