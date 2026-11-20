@@ -3,6 +3,7 @@ import FirebaseAuth
 import FirebaseAnalytics
 import FirebaseFirestore
 import FirebaseMessaging
+import UserNotifications
 
 @MainActor
 class AuthViewModel: ObservableObject {
@@ -534,6 +535,19 @@ class AuthViewModel: ObservableObject {
         // deleted account's device. Not waited for: it asks the network, the account is
         // already gone, and the copy the server used went with the user document.
         Messaging.messaging().deleteToken { _ in }
+        signOut()
+    }
+
+    /// Signs out a device the system says belongs to someone under 18 (AgeGate). The plain
+    /// sign-out leaves this install's notification token on the account, so the account's
+    /// pushes would go on arriving (as "New push", or in full in the older plaintext shape),
+    /// and the notifications already shown keep their decrypted titles and links, which still
+    /// open on a tap. So the token goes, as for a deleted account, and the shown
+    /// notifications with it. The account itself is left alone: the age is about whoever uses
+    /// this device, who may not be the account's owner. The Android gate does the same.
+    func signOutAtAgeGate() {
+        Messaging.messaging().deleteToken { _ in }
+        UNUserNotificationCenter.current().removeAllDeliveredNotifications()
         signOut()
     }
 

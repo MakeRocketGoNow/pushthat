@@ -531,6 +531,14 @@ class AuthViewModel: ObservableObject {
         signOut()
     }
 
+    /// Signs out a device the system says belongs to someone under 18 (AgeGate). The iOS
+    /// app also deletes its notification token and clears the shown notifications here;
+    /// the Mac app links no FirebaseMessaging and shows no notifications, so the sign-out
+    /// is all there is.
+    func signOutAtAgeGate() {
+        signOut()
+    }
+
     /// Firebase saying the signed-in account no longer exists. `revokedMeansGone` says
     /// whether a revoked session counts: it does straight after this deletion's own
     /// sign-in, and it must not for a session of unknown age, which a password change or

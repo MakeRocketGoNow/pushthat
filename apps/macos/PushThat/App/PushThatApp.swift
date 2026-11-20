@@ -29,12 +29,12 @@ struct PushThatApp: App {
                 // changed under it.
                 .checksAge(with: ageGate)
                 // A device the system says belongs to someone under 18 (AgeGate) is signed
-                // out, so that pushes stop and nothing more is read or sent for them. Not while
+                // out, so that nothing more is read or sent for them. Not while
                 // a sign-in or registration is mid-step, since stopping one partway can leave
                 // an account's keys half written; it signs out once the step is done, or at
                 // the next launch.
                 .onChange(of: ageGate.isBlocked && authViewModel.isAuthenticated && !authViewModel.isLoading, initial: true) { _, mustSignOut in
-                    if mustSignOut { authViewModel.signOut() }
+                    if mustSignOut { authViewModel.signOutAtAgeGate() }
                 }
                 .modelContainer(sharedModelContainer)
                 .frame(minWidth: 400, minHeight: 500)

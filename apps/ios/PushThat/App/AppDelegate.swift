@@ -76,6 +76,14 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
                                 withCompletionHandler completionHandler: @escaping () -> Void) {
         let userInfo = response.notification.request.content.userInfo
 
+        // A device at the age gate opens nothing from a notification. The gate clears the
+        // shown ones when it signs out, but a tap can land first: on a launch from the tap,
+        // before the gate's sign-out has run.
+        guard !AccountKeyStore.isUnderMinimumAge else {
+            completionHandler()
+            return
+        }
+
         if let urlString = userInfo["url"] as? String,
            let url = URL(string: urlString) {
             UIApplication.shared.open(url)
