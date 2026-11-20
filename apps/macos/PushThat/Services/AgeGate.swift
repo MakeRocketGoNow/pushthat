@@ -45,6 +45,15 @@ final class AgeGate: ObservableObject {
     /// Whether the last answer said the person using this device is under `minimumAge`.
     @Published private(set) var isBlocked = AccountKeyStore.isUnderMinimumAge
 
+    /// Lets the next check ask again, when the gate is shut. The gate's screen says PushThat
+    /// checks each time it opens, and on iOS coming back from the background is not a launch:
+    /// someone who corrected their age in Settings and switched back would otherwise stay at
+    /// the gate until they force-quit the app. Only when shut: for anyone let in, one check
+    /// per launch is what the law asks for. The Android gate does the same on resume.
+    func askAgainIfBlocked() {
+        if isBlocked { Self.checkedThisLaunch = false }
+    }
+
     /// This launch's answer, unless one has been had already. A check that learns nothing
     /// leaves the stored verdict as it was.
     @available(iOS 26.2, macOS 26.2, *)
@@ -113,10 +122,30 @@ final class AgeGate: ObservableObject {
 @available(iOS 26.2, macOS 26.2, *)
 private struct AgeRangeCheck: ViewModifier {
     @Environment(\.requestAgeRange) private var requestAgeRange
+    @Environment(\.scenePhase) private var scenePhase
     let gate: AgeGate
+    @State private var wasInBackground = false
 
     func body(content: Content) -> some View {
-        content.task { await gate.checkOnce(requestAgeRange) }
+        content
+            .task { await gate.checkOnce(requestAgeRange) }
+            // Again on the way back from the background (AgeGate.askAgainIfBlocked). From the
+            // background only, not from `.inactive`: the system's own sheet makes the scene
+            // inactive while it shows, and asking again as it closed would put it straight
+            // back up. A new task rather than `.task(id:)`, which would cancel a request
+            // whose sheet is showing as soon as the phase moved.
+            .onChange(of: scenePhase) { _, phase in
+                switch phase {
+                case .background:
+                    wasInBackground = true
+                case .active where wasInBackground:
+                    wasInBackground = false
+                    gate.askAgainIfBlocked()
+                    Task { await gate.checkOnce(requestAgeRange) }
+                default:
+                    break
+                }
+            }
     }
 }
 
