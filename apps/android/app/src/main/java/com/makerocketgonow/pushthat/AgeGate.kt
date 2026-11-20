@@ -60,6 +60,14 @@ object AgeGate {
 
     private val checking = Mutex()
 
+    /**
+     * Lets the next [checkOnce] ask Play again, when the gate is shut. Only then: for anyone
+     * let in, one check per launch is what the law asks for, and each is a call to Play.
+     */
+    fun askAgainIfBlocked(context: Context) {
+        if (isBlocked(context)) checkedThisProcess = false
+    }
+
     /** Whether the last answer from Play said the person using this phone is under [MINIMUM_AGE]. */
     fun isBlocked(context: Context): Boolean =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean(KEY_UNDER_MINIMUM, false)

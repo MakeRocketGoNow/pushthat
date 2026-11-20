@@ -137,9 +137,22 @@ class LoginActivity : AppCompatActivity() {
             }
         }
 
-        // This launch's age signal, when the launch stops here. A launch that goes straight to
-        // the list asks from MainActivity instead, since this activity is finishing by then.
-        // Rendered either way: the answer can close the gate as well as open it.
+    }
+
+    /**
+     * This launch's age signal, when the launch stops here. A launch that goes straight to the
+     * list asks from MainActivity instead, since this activity is finishing by then. Rendered
+     * either way: the answer can close the gate as well as open it.
+     *
+     * From onStart rather than onCreate so that coming back to the gate asks again. The gate
+     * tells someone Play has misjudged to correct their age and return, and returning from
+     * Recents to a process still alive is no new launch; without this they would see the gate
+     * until Android ended the process.
+     */
+    override fun onStart() {
+        super.onStart()
+        if (isFinishing) return
+        AgeGate.askAgainIfBlocked(this)
         lifecycleScope.launch {
             AgeGate.checkOnce(this@LoginActivity)
             render(viewModel.state.value)
