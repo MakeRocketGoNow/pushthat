@@ -12,6 +12,8 @@ import com.google.android.play.agesignals.ApplicableAgeFeaturesRequest
 import com.google.android.play.agesignals.model.AgeSignalsStatus
 import com.google.android.play.agesignals.model.ApplicableAgeFeature
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.tasks.await
 
 /**
@@ -56,6 +58,8 @@ object AgeGate {
     @Volatile
     private var checkedThisProcess = false
 
+    private val checking = Mutex()
+
     /** Whether the last answer from Play said the person using this phone is under [MINIMUM_AGE]. */
     fun isBlocked(context: Context): Boolean =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean(KEY_UNDER_MINIMUM, false)
@@ -66,7 +70,12 @@ object AgeGate {
      * nothing leaves the stored verdict as it was. The caller's activity is lent to Play,
      * which may show its own prompt over it.
      */
-    suspend fun checkOnce(activity: Activity): Boolean {
+    suspend fun checkOnce(activity: Activity): Boolean = checking.withLock {
+        // Locked so that one check runs at a time: a sign-in that finishes before the login
+        // screen's check does starts MainActivity's while the first is still waiting, and
+        // where sharing is mandatory that would be two access requests, one over an activity
+        // that is going. The second caller waits and reads the first answer; if the first was
+        // cancelled instead, the second asks for itself.
         if (checkedThisProcess) return isBlocked(activity)
         val manager = AgeSignalsManagerFactory.create(activity.applicationContext)
         val answer = ask(manager, activity)
