@@ -66,11 +66,23 @@ object AgeGate {
 
     private val checking = Mutex()
 
+    /** Whether the last check asked Play for access, which may have shown Play's own screen. */
+    @Volatile
+    private var lastCheckAskedForAccess = false
+
     /**
      * Lets the next [checkOnce] ask Play again, when the gate is shut. Only then: for anyone
      * let in, one check per launch is what the law asks for, and each is a call to Play.
+     *
+     * Not on the return from Play's own screen. The access request lends Play the activity,
+     * and a full-screen answer (its verification flow) stops and restarts it; re-asking then
+     * would open Play's screen again each time the person backed out of it.
      */
     fun askAgainIfBlocked(context: Context) {
+        if (lastCheckAskedForAccess) {
+            lastCheckAskedForAccess = false
+            return
+        }
         if (isBlocked(context)) checkedThisProcess = false
     }
 
@@ -93,6 +105,7 @@ object AgeGate {
         if (checkedThisProcess) return isBlocked(activity)
         val manager = AgeSignalsManagerFactory.create(activity.applicationContext)
         val answer = ask(manager, requestAccess = {
+            lastCheckAskedForAccess = true
             val request = AgeSignalsAccessRequest.builder().setActivity(activity).build()
             manager.requestAgeSignalsAccess(request).await().ageSignalsStatus()
         })
