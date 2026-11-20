@@ -141,8 +141,9 @@ From a terminal:
 gh workflow run android-promote.yml --ref main -f rollout=10
 ```
 
-Play Console does the same by hand (Internal testing or Closed testing, the release,
-Promote release, Production), and is the only way to halt a rollout.
+The workflow cannot reach Play until the one-off setup below is done. Until then, and to
+halt a rollout at any time, use Play Console ([By hand in Play
+Console](#by-hand-in-play-console)).
 
 One-off setup, in this order:
 
@@ -163,6 +164,39 @@ whose tests (`node --test '.github/scripts/*.test.mjs'`) run on every pull reque
 changes it. They
 prove what the script asks Play for against a stand-in; only a real promotion proves Play
 agrees.
+
+### By hand in Play Console
+
+This does what the workflow does, with the exact bundle a testing track already serves:
+
+1. Test and release, Testing, Internal testing (or Closed testing). On the release to ship,
+   choose Promote release, then Production.
+2. The draft keeps the release's name and "What's new" note. Check the note and the
+   rollout percentage (Console offers 100), then Next.
+3. The review step lists errors and warnings. Two warnings come with this app's bundles
+   and need nothing: no deobfuscation file, and no debug symbols for the native code. Anything else
+   is worth reading before going on. Save.
+4. Save only stages the release. Go to Publishing overview (the dialog after Save offers
+   it), then Submit for review and Send changes for review. A release that stops at Save
+   is never reviewed and never ships.
+
+Don't leave a staged change unsent. While anything sits under "Changes not yet submitted
+for review", every upload through the API is refused with "Changes cannot be sent for
+review automatically", so the next merge's internal build fails. Send the change, or
+remove it, and run the failed job again.
+
+### Play's review
+
+Either way, Google reviews the release before anyone gets it. Play says reviews are
+typically done within 7 days but may take longer. Publishing overview lists the release
+under "Changes in review" until then.
+
+Managed publishing is off for this app (the switch at the top of Publishing overview), so
+an approved release goes live on its own, with no further step. To stop one, use Remove
+changes in Publishing overview while it is still in review; once approved, it can only be
+halted (Production, the release, Halt rollout). With managed publishing on, an approved
+release would instead wait under "Changes ready to publish" until someone presses
+Publish, which is easy to miss: the first launch sat there approved for days.
 
 ## Release notes
 
