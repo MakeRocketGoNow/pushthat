@@ -23,7 +23,8 @@ The `PushThatTests` target checks the encryption ([e2ee](e2ee.md)) byte for byte
 `packages/push-test/vectors.json`, which it copies in from the repository: the keys, the
 push envelope, the search tokens and their blind index, and the file format. It also checks
 what a sign-in and each key write decide from the stored keys (`AccountKeyMaps.swift`, kept
-apart from the Firestore calls so the tests need no Firebase). It runs on any simulator you
+apart from the Firestore calls so the tests need no Firebase), and what the age gate makes of
+a shared age range. It runs on any simulator you
 have (`xcrun simctl list devices available`; add `,OS=` and the version when a name has
 several):
 
@@ -33,11 +34,24 @@ xcodebuild -project PushThat.xcodeproj -scheme PushThat -destination 'platform=i
 
 The project carries no development team (`DEVELOPMENT_TEAM` is empty), so signing for a
 device needs your own: select the project, then each of the two targets, Signing &
-Capabilities, and pick a team. A simulator build needs none.
+Capabilities, and pick a team. A simulator build needs none. The app's App ID also needs
+the Declared Age Range capability, which the age gate's entitlement asks for (see
+[the age gate](#the-age-gate)).
 
 The Firebase client config is `PushThat/Resources/GoogleService-Info.plist`, for the
 bundle id `com.makerocketgonow.pushthat`. It is public by design: it names the project, and
 the Firestore and Storage rules are what protect it.
+
+## The age gate
+
+PushThat is for people 18 and older, and California's AB 1043 has every app ask the system
+for the user's age at launch from January 2027. `Services/AgeGate.swift` asks Apple's
+Declared Age Range API once per launch, where Apple says the age laws apply to the user (iOS
+26.2 and later; older systems are not asked). A device the system says is under 18 is signed
+out, its notification token and shown notifications cleared, and it stops at a screen that
+says why; the share extension turns shares away. Only that verdict is kept, in the shared
+Keychain, never the age range. Every failure lets a device that is not already blocked in.
+The Mac app and the Android app do the same.
 
 ## Push notifications
 
