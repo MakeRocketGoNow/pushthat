@@ -33,7 +33,8 @@ final class AgeGate: ObservableObject {
     /// extensions' refusal says the number in words of its own.
     static let minimumAge = 18
 
-    /// Once per process, which is once per launch. Not once per install: the law says "when
+    /// Once per process, which is once per launch, and again on each return from the
+    /// background while the device is blocked (`askAgainIfBlocked`). Not once per install: the law says "when
     /// the application is downloaded and launched", and a child's age range can be set after
     /// the app is already on the device.
     private static var checkedThisLaunch = false
@@ -41,7 +42,10 @@ final class AgeGate: ObservableObject {
     /// Set while a check waits on the system. Each window runs its own check (two scenes on
     /// an iPad, a second window on the Mac), and without this each would ask, and could put
     /// up the system's sheet, at once. A second caller returns rather than waiting: the
-    /// verdict is published, so its window follows the first one's answer.
+    /// verdict is published, so its window follows the first one's answer. If the first is
+    /// cancelled instead (its window closed with the request pending), nothing asks again
+    /// this launch unless the device is blocked; accepted, as it needs several windows and
+    /// one closed mid-request, and the next launch asks.
     private static var checking = false
 
     /// Whether the last answer said the person using this device is under `minimumAge`.
