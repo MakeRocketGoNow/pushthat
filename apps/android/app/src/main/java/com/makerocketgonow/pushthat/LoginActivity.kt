@@ -21,12 +21,15 @@ import androidx.lifecycle.repeatOnLifecycle
 import com.google.firebase.Firebase
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.auth
+import com.google.firebase.messaging.FirebaseMessaging
 import com.makerocketgonow.pushthat.LoginViewModel.Screen
 import com.makerocketgonow.pushthat.e2ee.AccountKeyStore
 import com.makerocketgonow.pushthat.e2ee.MIN_NEW_PASSWORD_LENGTH
 import com.makerocketgonow.pushthat.e2ee.forgetSession
 import com.makerocketgonow.pushthat.e2ee.signOut
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.tasks.await
+import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * Everything before the push list: signing in or registering, the recovery key prompt for
@@ -209,13 +212,23 @@ class LoginActivity : AppCompatActivity() {
 
     /**
      * The screen for an install Play says belongs to someone under 18: what PushThat is for
-     * and why it stops here, with nothing to press. Whoever is signed in is signed out, so
-     * pushes stop arriving and nothing more is read or sent for them. Not while a sign-in or
-     * registration is mid-step, since stopping one partway can leave an account's keys half
-     * written; it signs out on the render that follows the step, or at the next launch.
+     * and why it stops here, with nothing to press. Whoever is signed in is signed out, and
+     * this install's notification token is deleted: signing out alone leaves the token on the
+     * account, and PushThatMessagingService shows a notification for a push with no session
+     * at all. (The service also drops every message while the gate is shut, for a token that
+     * survives this, and onNewToken registers none.) Not while a sign-in or registration is
+     * mid-step, since stopping one partway can leave an account's keys half written; it signs
+     * out on the render that follows the step, or at the next launch.
      */
     private fun renderAgeGate(state: LoginViewModel.State) {
-        if (state.working == null && auth.currentUser != null) signOut(this, auth)
+        if (state.working == null && auth.currentUser != null) {
+            // Bounded, as in AccountDeletion: Firebase is asked over the network, and nothing
+            // waits on the answer.
+            lifecycleScope.launch {
+                runCatching { withTimeoutOrNull(5_000) { FirebaseMessaging.getInstance().deleteToken().await() } }
+            }
+            signOut(this, auth)
+        }
 
         findViewById<View>(R.id.logoImage).isVisible = true
         titleText.isVisible = true
