@@ -103,7 +103,7 @@ npm ci && npm run lint && npm run build && npm test && npm run test:emulator
 # apps/ios
 xcodebuild -project PushThat.xcodeproj -scheme PushThat -destination 'generic/platform=iOS Simulator' build
 
-# apps/macos (fails today on its deployment target: see docs/macos.md)
+# apps/macos
 xcodebuild -project PushThat.xcodeproj -scheme PushThat -destination 'platform=macOS' CODE_SIGNING_ALLOWED=NO build
 
 # packages/push-test (sending needs a real key, so the send script is only parsed)

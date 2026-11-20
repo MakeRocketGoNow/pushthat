@@ -23,8 +23,8 @@ The `PushThatTests` target checks the encryption ([e2ee](e2ee.md)) byte for byte
 blind index, and the file format. It also checks what a sign-in and each key write decide
 from the stored keys (`AccountKeyMaps.swift`, kept apart from the Firestore calls so the
 tests need no Firebase). It compiles the files it tests instead of loading the app, and the
-scheme does not build the app for testing, so they are checked even while the app itself
-does not build (see the deployment target below):
+scheme does not build the app for testing, so a test run does not depend on the app
+building:
 
 ```bash
 xcodebuild -project PushThat.xcodeproj -scheme PushThat -destination 'platform=macOS' CODE_SIGNING_ALLOWED=NO test
@@ -40,13 +40,12 @@ in the same `push-that` project as iOS, so accounts and pushes are shared. Bundl
 `com.makerocketgonow.pushthatapp.macos` for the app and
 `com.makerocketgonow.pushthatapp.macos.share` for the extension.
 
-## Known issue: the deployment target
+## The deployment target
 
-The project targets macOS 13.0, but the local retry cache (`PendingPush`, and the
-`ModelContainer` in `PushThatApp`) uses SwiftData, which needs macOS 14. With Xcode 26 the
-build above fails on exactly that ("only available in macOS 14 or newer"). Raising
-`MACOSX_DEPLOYMENT_TARGET` to 14.0 in the project's build settings is the likely fix; it has not been made
-yet, so treat macOS 14 as the real minimum.
+The app needs macOS 14. The local retry cache (`PendingPush`, and the `ModelContainer` in
+`PushThatApp`) uses SwiftData, which arrived in macOS 14. The project targeted 13.0 until
+Xcode 26 started refusing that combination ("only available in macOS 14 or newer"), so 14.0
+is the target and the real minimum alike.
 
 ## How it differs from iOS
 
