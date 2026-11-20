@@ -36,6 +36,12 @@ final class AgeGate: ObservableObject {
     /// the app is already on the device.
     private static var checkedThisLaunch = false
 
+    /// Set while a check waits on the system. Each window runs its own check (two scenes on
+    /// an iPad, a second window on the Mac), and without this each would ask, and could put
+    /// up the system's sheet, at once. A second caller returns rather than waiting: the
+    /// verdict is published, so its window follows the first one's answer.
+    private static var checking = false
+
     /// Whether the last answer said the person using this device is under `minimumAge`.
     @Published private(set) var isBlocked = AccountKeyStore.isUnderMinimumAge
 
@@ -43,7 +49,9 @@ final class AgeGate: ObservableObject {
     /// leaves the stored verdict as it was.
     @available(iOS 26.2, macOS 26.2, *)
     func checkOnce(_ requestAgeRange: DeclaredAgeRangeAction) async {
-        guard !Self.checkedThisLaunch else { return }
+        guard !Self.checkedThisLaunch, !Self.checking else { return }
+        Self.checking = true
+        defer { Self.checking = false }
         let answer = await Self.ask(requestAgeRange, blocked: isBlocked)
         // Marked only once the system has answered (or failed to): a check cancelled because
         // its view went away runs again from the next one, rather than never this launch.
