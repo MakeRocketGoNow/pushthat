@@ -10,6 +10,7 @@ import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.app.NotificationManagerCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.isVisible
@@ -240,6 +241,9 @@ class LoginActivity : AppCompatActivity() {
             lifecycleScope.launch {
                 runCatching { withTimeoutOrNull(5_000) { FirebaseMessaging.getInstance().deleteToken().await() } }
             }
+            // Pushes shown before the gate closed would still open their links from the tray:
+            // each notification's intent opens the link itself, not the list.
+            NotificationManagerCompat.from(this).cancelAll()
             signOut(this, auth)
         }
 
