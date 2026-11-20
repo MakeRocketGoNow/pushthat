@@ -176,6 +176,9 @@ struct AgeGateView: View {
                     .resizable()
                     .aspectRatio(contentMode: .fit)
                     .frame(width: 96, height: 96)
+                    // Decoration: VoiceOver would otherwise open this screen by reading the
+                    // asset's name, before the sentence that explains it.
+                    .accessibilityHidden(true)
 
                 Text("PushThat is for people \(AgeGate.minimumAge) and older")
                     .font(.title2.bold())
