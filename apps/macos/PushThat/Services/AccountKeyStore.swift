@@ -23,7 +23,9 @@ struct StoredAccountKey: Codable, Equatable {
 /// generic passwords for the account key and the install's `deviceId`, readable after the
 /// first unlock so that the share extension, and in phase 4 the notification service
 /// extension, can read them while the phone is locked. The `deviceId` also stays on this
-/// device (see `deviceId()`).
+/// device (see `deviceId()`). `AgeGate`'s one-byte verdict is kept here too, though it is
+/// not a key, because this is the store both the app and its share extension can read
+/// (`isUnderMinimumAge`).
 ///
 /// The items live in the access group the app and its share extension already share for
 /// Firebase Auth, so an extension finds the key where it finds the session. This file is
